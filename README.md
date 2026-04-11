@@ -73,7 +73,7 @@ export default defineConfig([
 ```
 
 # Dependencies for Vision Model
-First, install git (https://git-scm.com/install/) to download CLIP package
+First, install git (https://git-scm.com/install/) to download CLIP package.
 Install Tesseract package at https://github.com/UB-Mannheim/tesseract/wiki and add file location to PATH (Windows). 
 Within vision model, change this function to file location:
 ```py
