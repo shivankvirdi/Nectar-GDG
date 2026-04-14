@@ -74,15 +74,9 @@ export default defineConfig([
 
 # Dependencies for Vision Model
 First, install git (https://git-scm.com/install/) to download CLIP package.
-Install Tesseract package at https://github.com/UB-Mannheim/tesseract/wiki and add file location to PATH (Windows). 
-Within vision model, change this function to file location:
-```py
-def load_ocr_path():
-    TESSERACT_PATH = r"tesseract file location"
-```
 pip install these dependencies:
 ```py
-pip install torch torchvision pytesseract tesseract pillow requests matplotlib fastapi
+pip install torch torchvision pillow requests matplotlib fastapi
 ```
 Then, install PyTorch (https://pytorch.org/get-started/locally/) and then install this repo as a Python package. On a CUDA GPU machine, the following will do the trick:
 ```py
