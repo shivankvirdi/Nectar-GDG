@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Nectar",
+  "version": "1.0",
+  "description": "Product Analyzer",
+  "action": {
+    "default_popup": "index.html"
+  },
+  "permissions": []
+}

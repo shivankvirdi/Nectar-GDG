@@ -1,0 +1,191 @@
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg: #0a0a0a;
+  --surface: #111111;
+  --surface2: #1a1a1a;
+  --border: #2a2a2a;
+
+  /* BRAND ACCENT (your “bird” identity color) */
+  --brand: #f97316;
+  --brand-dim: #7c3a0e;
+
+  --text: #f0ece4;
+  --text-muted: #6b6560;
+
+  --font-display: 'Syne', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+}
+
+/* RESET */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* FLOATING EXTENSION BACKGROUND */
+body {
+  background: transparent;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  font-family: var(--font-display);
+  color: var(--text);
+}
+
+/* POPUP CONTAINER */
+#root {
+  width: 360px;
+  height: 600px;
+}
+
+/* MAIN APP CARD */
+.screen {
+  width: 100%;
+  height: 100%;
+  background: var(--surface);
+  border-radius: 20px;
+  padding: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  position: relative;
+  overflow: hidden;
+  color: var(--text);
+}
+
+/* NAVBAR */
+.navbar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+/* BRAND MARK (replace with bird icon if you have one) */
+.logo {
+  font-weight: 800;
+  font-size: 18px;
+  color: var(--text);
+  letter-spacing: 0.2px;
+}
+
+.subtitle {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+/* PRIMARY ACTION BUTTON */
+.premium-btn {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  background: var(--brand);
+  border: none;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 10px;
+  cursor: pointer;
+  color: #ffffff;
+}
+
+/* USAGE HEADER */
+.usage-bar {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  margin: 10px 0;
+  color: var(--text-muted);
+}
+
+/* PROGRESS */
+.progress {
+  height: 6px;
+  background: var(--border);
+  border-radius: 999px;
+  margin: 6px 0 12px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--brand);
+  border-radius: 999px;
+}
+
+/* INFORMATION PANEL */
+.ad-banner {
+  background: var(--surface2);
+  border-radius: 12px;
+  padding: 12px;
+  text-align: center;
+  font-size: 12px;
+  margin: 12px 0;
+  color: var(--text);
+}
+
+/* PRIMARY ACTION */
+.scan-btn {
+  width: 100%;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--brand);
+  background: transparent;
+  color: var(--brand);
+  font-weight: 600;
+  margin-top: 12px;
+  cursor: pointer;
+}
+
+/* SUPPORT TEXT */
+.free-notice {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 10px;
+}
+
+.ad-label {
+  font-size: 9px;
+  opacity: 0.5;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+
+/* CONTENT BLOCKS */
+.graph-box {
+  margin-top: 16px;
+  background: var(--surface2);
+  padding: 12px;
+  border-radius: 12px;
+}
+
+.section-title {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.alert-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.modules {
+  margin-top: 12px;
+}
+
+.module {
+  background: var(--surface2);
+  padding: 12px;
+  border-radius: 10px;
+  margin-bottom: 8px;
+}
