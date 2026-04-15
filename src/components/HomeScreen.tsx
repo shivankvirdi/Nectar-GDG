@@ -12,7 +12,7 @@ export default function HomeScreen({ usage, onScan }: Props) {
       {/* NAVBAR */}
       <div className="navbar">
         <div>
-          <div className="logo">🍊 Nectar</div>
+          <div className="logo"> Nectar</div>
           <div className="subtitle">PRODUCT ANALYZER</div>
         </div>
         <button className="premium-btn">Go Premium</button>
