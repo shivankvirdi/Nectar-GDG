@@ -2,7 +2,6 @@
   "manifest_version": 3,
   "name": "Nectar",
   "version": "1.0",
-<<<<<<< HEAD
   "description": "Product analyzer popup",
   "action": {
     "default_popup": "index.html"
@@ -10,11 +9,3 @@
   "permissions": ["activeTab", "tabs"],
   "host_permissions": ["http://127.0.0.1:8000/*"]
 }
-=======
-  "description": "Product Analyzer",
-  "action": {
-    "default_popup": "index.html"
-  },
-  "permissions": []
-}
->>>>>>> a485975278572ab516bb5d28e998a62913ac2db8

@@ -5,7 +5,7 @@ import os
 import requests
 from dotenv import load_dotenv
 
-from .budget_config import BUDGET_MIN, BUDGET_MAX
+from backend.budget_config import BUDGET_MIN, BUDGET_MAX
 
 load_dotenv()
 
@@ -153,8 +153,6 @@ def get_full_product_profile(asin: str) -> dict:
     }
 
 # In canopy_client.py
-
-from budget_config import BUDGET_MIN, BUDGET_MAX   # import the two values
 
 def search_similar_products(search_term: str) -> list:
     """
