@@ -86,11 +86,14 @@ def analyze_review_integrity(reviews: list) -> dict:
     sentiment_counts = {"Positive": 0, "Neutral": 0, "Negative": 0}
 
     for review in reviews:
-        body = review.get("body", "")                # the full review text from Canopy
-        star_rating = review.get("rating", 3)        # 1-5 star rating, default to 3 if missing
-        is_verified = review.get("verifiedPurchase", False)  # boolean from Canopy
+        if not isinstance(review, dict):
+            continue
 
-        if not body:                                 # skip reviews with no text (rating-only)
+        body = review.get("body", "")
+        star_rating = review.get("rating", 3)
+        is_verified = review.get("verifiedPurchase", False)
+
+        if not body:
             continue
 
         vader_scores = score_single_review(body)     # run VADER — returns neg/neu/pos/compound dict

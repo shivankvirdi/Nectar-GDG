@@ -5,7 +5,7 @@ import os
 import requests
 from dotenv import load_dotenv
 
-from budget_config import BUDGET_MIN, BUDGET_MAX
+from .budget_config import BUDGET_MIN, BUDGET_MAX
 
 load_dotenv()
 

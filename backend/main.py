@@ -27,7 +27,7 @@ async def health():
     return {"ok": True}
 
 
-@app.post("/analyze-product")
+@app.post("/current-url")
 async def analyze_product(payload: UrlPayload):
     try:
         # 1. Core product analysis (vision model / canopy)
