@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import './App.css'
+import HomeScreen from './components/HomeScreen'
+import Navbar from './components/Navbar'
 
 type Insight = {
   topic: string
@@ -30,9 +32,16 @@ type Analysis = {
 }
 
 export default function App() {
+  const [screen, setScreen] = useState<'home' | 'analysis'>('home')
+  const [usage] = useState(1)
+  
   const [currentUrl, setCurrentUrl] = useState('Loading...')
   const [backendStatus, setBackendStatus] = useState('Waiting for backend...')
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
+
+  const handleScan = () => {
+    setScreen('analysis')
+  }
 
   useEffect(() => {
     chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
@@ -72,6 +81,10 @@ export default function App() {
     })
   }, [])
 
+  if(screen === 'home'){
+    return <HomeScreen usage={usage} onScan={handleScan} />
+  }
+  
   return (
     <div className="container">
       <div className="header">
@@ -92,7 +105,7 @@ export default function App() {
       </div>
 
       <div className="card">
-        <h3>Backend Status</h3>
+        <h3>Product Analysis Status</h3>
         <p className="desc">{backendStatus}</p>
       </div>
 
