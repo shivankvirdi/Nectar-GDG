@@ -64,16 +64,33 @@ function SectionCard({
 
 export default function App() {
   const [currentUrl, setCurrentUrl] = useState('Loading...')
-  const [backendStatus, setBackendStatus] = useState('Waiting for backend...')
+  const [backendStatus, setBackendStatus] = useState('Ready to scan')
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    const fetchData = async (url: string) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const url = tabs[0]?.url ?? ''
+      setCurrentUrl(url || 'No active tab URL found')
+    })
+  }, [])
+
+  const handleScan = async () => {
+    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
+      const url = tabs[0]?.url ?? ''
+      setCurrentUrl(url || 'No active tab URL found')
+
+      if (!url) {
+        setError('No URL available to send.')
+        setBackendStatus('No URL available to send.')
+        return
+      }
+
       try {
         setLoading(true)
         setError('')
+        setAnalysis(null)
         setBackendStatus('Sending URL to backend...')
 
         const response = await fetch(`${API_BASE}/current-url`, {
@@ -107,22 +124,8 @@ export default function App() {
       } finally {
         setLoading(false)
       }
-    }
-
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      const url = tabs[0]?.url ?? ''
-      setCurrentUrl(url || 'No active tab URL found')
-
-      if (!url) {
-        setError('No URL available to send.')
-        setBackendStatus('No URL available to send.')
-        setLoading(false)
-        return
-      }
-
-      fetchData(url)
     })
-  }, [])
+  }
 
   return (
     <main className="app-shell">
@@ -142,6 +145,16 @@ export default function App() {
         </header>
 
         <div className="content">
+          <SectionCard title="Scan">
+            <button
+              className="scan-btn"
+              onClick={handleScan}
+              disabled={loading}
+            >
+              {loading ? 'Scanning...' : 'Scan Current Product'}
+            </button>
+          </SectionCard>
+
           <SectionCard title="Overall Score">
             <div className="score-row">
               <span className="score-number">
