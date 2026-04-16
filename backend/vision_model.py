@@ -74,7 +74,7 @@ def analyze_product_url(url: str) -> dict:
     review_integrity = analyze_review_integrity(asin)
     brand_reputation = get_brand_reputation(brand) if brand else {
         "brand": "",
-        "reputation_score_pct": 50,
+        "reputation_score_pct": None,
         "overall_label": "Brand not found.",
         "insights": [],
         "reviews_analyzed": 0,

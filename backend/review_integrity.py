@@ -4,8 +4,6 @@ import nltk                                          # Natural Language Toolkit 
 nltk.download('vader_lexicon', quiet=True)           # downloads VADER's word scoring dictionary (one-time, silent)
 
 from nltk.sentiment.vader import SentimentIntensityAnalyzer   # the actual sentiment scoring engine
-from .canopy_client import get_product_reviews        # reuse the review fetcher we already built
-
 
 # Create one shared analyzer — it's expensive to recreate, so we make it once at module level
 sia = SentimentIntensityAnalyzer()
@@ -61,7 +59,7 @@ def check_star_sentiment_agreement(star_rating: int, compound_score: float) -> b
 
 
 
-def analyze_review_integrity(asin: str) -> dict:
+def analyze_review_integrity(reviews: list) -> dict:
     """
     Master function for the Review Integrity module.
     Pulls 10-15 Amazon reviews via Canopy, runs VADER on each one,
@@ -78,9 +76,7 @@ def analyze_review_integrity(asin: str) -> dict:
       - flags: dict of specific warning flags
     """
 
-    reviews = get_product_reviews(asin)           # get 10 reviews from Canopy
-
-    if not reviews:                                  # guard: if Canopy returns nothing, bail gracefully
+    if not reviews or len(reviews) == 0:                                  # guard: if Canopy returns nothing, bail gracefully
         return {"error": "No reviews found for this product."}
 
     review_details = []         # will hold per-review analysis
