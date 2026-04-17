@@ -19,7 +19,6 @@ HEADERS = {
     "Content-Type": "application/json",
     "API-KEY": API_KEY,
 }
-### REMINDER : NEED TO IMPLEMENT Trustpilot (BRAND REPUTATION)
 
 def get_product_data(asin: str) -> dict:
     """
