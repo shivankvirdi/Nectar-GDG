@@ -92,7 +92,7 @@ def get_full_product_profile(asin: str) -> dict:
             "error": "Failed to fetch product data from Canopy"
         }
 
-    top_reviews = product.get("topReviews", [])
+    top_reviews = product.get("topReviews") or []
 
     cleaned_reviews = [
         {
@@ -102,7 +102,7 @@ def get_full_product_profile(asin: str) -> dict:
             "verifiedPurchase": r.get("verifiedPurchase", False),
         }
         for r in top_reviews
-        if r.get("body")  # skip empty reviews
+        if isinstance(r, dict) and r.get("body")
     ]
 
     return {
@@ -113,12 +113,6 @@ def get_full_product_profile(asin: str) -> dict:
     }
 
 def search_similar_products(search_term: str) -> list:
-    """
-    Searches Amazon for products matching the search term,
-    filtered to the budget range defined in budget_config.py.
-    BUDGET_MIN and BUDGET_MAX can be changed at any time in that file.
-    """
-
     query = """
     query SearchProducts($input: AmazonProductSearchResultsInput!) {
     amazonProductSearchResults(input: $input) {
@@ -142,19 +136,17 @@ def search_similar_products(search_term: str) -> list:
     }
     """
 
-    # Build the input — only add priceRange if at least one bound is set
     search_input = {
         "searchTerm": search_term,
         "domain": "US"
     }
 
-    # Only attach refinements block if we actually have a budget set
     if BUDGET_MIN is not None or BUDGET_MAX is not None:
         price_range = {}
         if BUDGET_MIN is not None:
-            price_range["min"] = BUDGET_MIN     # e.g. 20.00
+            price_range["min"] = BUDGET_MIN
         if BUDGET_MAX is not None:
-            price_range["max"] = BUDGET_MAX     # e.g. 200.00
+            price_range["max"] = BUDGET_MAX
         search_input["refinements"] = {"priceRange": price_range}
 
     variables = {"input": search_input}
@@ -163,8 +155,10 @@ def search_similar_products(search_term: str) -> list:
 
     if response.status_code == 200:
         data = response.json()
-        results = data.get("data", {}).get("amazonProductSearchResults", {})
-        return results.get("productResults", {}).get("results", [])
+        results = data.get("data", {}).get("amazonProductSearchResults") or {}
+        product_results = results.get("productResults") or {}
+        items = product_results.get("results") or []
+        return [item for item in items if isinstance(item, dict)]
     else:
         print(f"[Canopy] Search failed: {response.status_code}")
         return []
