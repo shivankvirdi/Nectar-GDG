@@ -281,7 +281,20 @@ body {
   gap: 12px;
   overflow-x: auto;
   padding: 4px 0 8px;
-  scrollbar-width: thin;
+
+  /* hide scrollbar */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.similar-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* smooth + mobile feel */
+.similar-scroll {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
 }
 
 .similar-card {
@@ -320,6 +333,7 @@ body {
   font-size: 12px;
   font-weight: 700;
   line-height: 1.3;
+  color: #000000;
 }
 
 .similar-card-brand,

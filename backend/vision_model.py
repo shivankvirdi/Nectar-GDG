@@ -81,10 +81,23 @@ def analyze_product_url(url: str) -> dict:
     }
 
     similar_products = []
-    search_term = product_keyword if product_keyword != "unknown" else product.get("title", "")
+
+    title = (product.get("title") or "").strip()
+    brand_name = (brand or "").strip()
+
+    # Use the real product info first, not the generic URL keyword
+    search_term = " ".join(part for part in [brand_name, title] if part).strip()
+
+    # Fallbacks if title/brand are missing
+    if not search_term:
+        search_term = product_keyword if product_keyword != "unknown" else ""
 
     if search_term:
         similar_products = search_similar_products(search_term)
+
+    # If the first search is too specific or returns nothing, try a broader fallback
+    if not similar_products and product_keyword != "unknown":
+        similar_products = search_similar_products(product_keyword)
 
     rating = product.get("rating")
     integrity_score = review_integrity.get("integrity_score_pct", 50)
@@ -129,11 +142,12 @@ def analyze_product_url(url: str) -> dict:
                 "reviewCount": item.get("ratingsTotal"),
                 "price": (item.get("price") or {}).get("display"),
                 "isPrime": item.get("isPrime"),
-                "image": item.get("mainImageUrl"),              ## thumbnail for each product
-                "amazonUrl": f"https://www.amazon.com/dp/{item.get('asin')}",  ## clickable amazon link for each product
+                "image": item.get("mainImageUrl"),
+                "amazonUrl": f"https://www.amazon.com/dp/{item.get('asin')}" if item.get("asin") else None,
             }
-            for item in similar_products[:5] ## 5 different products in array form
-        ],
+            for item in similar_products
+            if item.get("asin")
+        ][:5],
 
         "raw": {
             "product": product,

@@ -5,5 +5,5 @@
 # Set either to None to remove that bound.
 # ─────────────────────────────────────────────
 
-BUDGET_MIN = 20.00      # minimum price in USD — set to None for no lower bound
-BUDGET_MAX = 200.00     # maximum price in USD — set to None for no upper bound
+BUDGET_MIN = None      # minimum price in USD — set to None for no lower bound
+BUDGET_MAX = None     # maximum price in USD — set to None for no upper bound
