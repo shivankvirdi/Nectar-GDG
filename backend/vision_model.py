@@ -1,5 +1,6 @@
 import re
 from urllib.parse import unquote, urlparse
+from .ai_analysis import get_ai_verdict
 
 from .brand_reputation import get_brand_reputation
 from .canopy_client import get_full_product_profile, search_similar_products
@@ -211,6 +212,15 @@ def analyze_product_url(url: str) -> dict:
 
     overall_score = build_overall_score(rating, integrity_score, reputation_score)
 
+    # AI Pros/Cons + Verdict
+    ai_analysis = get_ai_verdict(
+        title=title,
+        reviews=reviews,
+        overall_score=overall_score,
+        integrity_score=integrity_score,
+        reputation_score=reputation_score,
+    )
+
     return {
         "asin": asin,
         "productKeyword": product_keyword,
@@ -239,6 +249,13 @@ def analyze_product_url(url: str) -> dict:
             "insights": brand_reputation.get("insights", []),
             "reviewsAnalyzed": brand_reputation.get("reviews_analyzed", 0),
             "commonKeywords": brand_reputation.get("commonKeywords", []),
+        },
+
+        "aiAnalysis": {
+            "pros": ai_analysis.get("pros", []),
+            "cons": ai_analysis.get("cons", []),
+            "verdict": ai_analysis.get("verdict", ""),
+            "recommendation": ai_analysis.get("recommendation", "COMPARE"),
         },
 
         "similarProducts": [

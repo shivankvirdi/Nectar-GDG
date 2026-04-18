@@ -34,7 +34,7 @@ HEADERS = {
 }
 
 
-# ─── Trustpilot helpers (unchanged) ──────────────────────────────────────────
+# ─── Trustpilot helpers ───────────────────────────────────────────────────────
 
 def normalize_brand(brand: str) -> str:
     if not brand: return ""
@@ -132,19 +132,35 @@ def scrape_trustpilot_reviews(slug: str, max_reviews: int = 20) -> list:
     return reviews[:max_reviews]
 
 
-# ─── Keyword config ────────────────────────────────────────────────────────────
+# ─── Keyword config ───────────────────────────────────────────────────────────
 
 BRAND_NOISE_WORDS = {
+    # generic filler
     "also", "like", "just", "really", "very", "good", "great", "nice", "love",
     "product", "item", "thing", "would", "could", "even", "much", "well",
     "still", "used", "using", "came", "come", "said", "make", "made", "best",
     "ever", "back", "because", "dont", "didnt", "this", "that", "with", "have",
-    "been", "than", "them", "they", "from", "protein", "sugar", "taste",
-    "chocolate", "drink", "banana", "cream", "tried", "whilst", "available",
+    "been", "than", "them", "they", "from", "tried", "whilst", "available",
     "getting", "going", "think", "know", "feel", "looks", "seems", "look",
     "give", "need", "want", "does", "work", "works", "worked", "will", "shall",
     "sure", "your", "their", "about", "there", "here", "when", "then",
     "these", "those", "some", "more", "less", "over", "same", "such",
+    "time", "first", "last", "next", "take", "many", "away", "down",
+    "only", "into", "well", "other", "people", "after", "before",
+    # product/food noise (leak from wrong pages)
+    "protein", "sugar", "taste", "chocolate", "drink", "banana", "cream",
+    "bike", "ride", "rider", "motor", "cycle", "wheel", "gear", "engine",
+    "team", "market", "store", "shop", "brand", "company", "business",
+    # common names that leak through as keywords
+    "john", "jane", "mike", "dave", "mark", "paul", "james", "david",
+    "chris", "steve", "lind", "harley", "davidson", "ford", "honda",
+    # review meta-words
+    "star", "review", "stars", "rating", "reviewed", "reviewer",
+    "bought", "purchase", "purchased", "buying", "ordered", "order",
+    "amazon", "website", "online", "email", "phone", "called",
+    "said", "told", "asked", "answered", "replied", "reply",
+    "will", "want", "cant", "dont", "didnt", "wasnt", "isnt",
+    "ever", "never", "always", "usually", "often", "sometimes",
 }
 
 BRAND_BOOST = {
@@ -154,10 +170,9 @@ BRAND_BOOST = {
     "communication", "contacted", "ignored", "delayed", "fast", "slow",
     "damaged", "broken", "missing", "wrong", "correct", "accurate",
     "trustworthy", "reliable", "unreliable", "scam", "legitimate", "fake",
-    "customer", "experience", "ordered", "order", "received", "waiting",
+    "customer", "experience", "received", "waiting", "quality",
 }
 
-# Meaningful two-word phrases for brand/service reviews.
 BRAND_BIGRAMS = {
     "customer service", "customer support", "customer care",
     "fast delivery",    "fast shipping",    "slow delivery",   "delayed delivery",
@@ -179,23 +194,54 @@ NEGATION_WORDS = {
     "scarcely", "nothing", "neither",
 }
 
-MIN_DOC_FREQ = 2
+MIN_WORD_LENGTH = 5   # skip short words like "guy", "bike", "lind"
+MIN_DOC_FREQ    = 3   # must appear in at least 3 reviews (raised from 2)
 
 
-# ─── Extraction helpers ────────────────────────────────────────────────────────
+# ─── Proper noun detection ────────────────────────────────────────────────────
+
+def _build_proper_noun_set(reviews: list, field: str = "text") -> set[str]:
+    """
+    Collects words that appear capitalised mid-sentence in the majority of
+    their occurrences — strong signal they are names/brands, not concepts.
+    We exclude sentence-start positions to avoid false positives.
+    """
+    cap_count:   Counter = Counter()
+    total_count: Counter = Counter()
+
+    for review in reviews:
+        text = review.get(field, "") or ""
+        try:
+            sentences = sent_tokenize(text)
+        except Exception:
+            sentences = text.split(".")
+
+        for sent in sentences:
+            tokens = sent.split()
+            for i, tok in enumerate(tokens):
+                clean = re.sub(r"[^a-zA-Z]", "", tok).lower()
+                if len(clean) < MIN_WORD_LENGTH:
+                    continue
+                total_count[clean] += 1
+                # capitalised but NOT at sentence start → likely a proper noun
+                if i > 0 and tok[0].isupper():
+                    cap_count[clean] += 1
+
+    # if a word is capitalised >60% of the time mid-sentence, treat as proper noun
+    proper_nouns = set()
+    for word, total in total_count.items():
+        if total >= 2 and cap_count[word] / total > 0.6:
+            proper_nouns.add(word)
+
+    return proper_nouns
+
+
+# ─── Extraction helpers ───────────────────────────────────────────────────────
 
 def _lemma(word: str) -> str:
     return lemmatizer.lemmatize(word.lower())
 
-
 def _sentence_scores_for_term(term: str, reviews: list, field: str) -> list[float]:
-    """
-    Score only the sentences containing `term`.
-
-    Why: "Delivery was great. Customer support never responded." scores positive
-    overall. Without sentence-level scoring "responded" and "never" both look
-    positive. With it, the negative sentence is isolated and scored correctly.
-    """
     scores = []
     pat = re.compile(re.escape(term), re.IGNORECASE)
     for review in reviews:
@@ -209,43 +255,29 @@ def _sentence_scores_for_term(term: str, reviews: list, field: str) -> list[floa
                 scores.append(sia.polarity_scores(sent)["compound"])
     return scores
 
-
 def _negation_bigrams(text: str) -> list[str]:
-    """
-    Detect 'not responsive', 'never delivered', 'cant return' patterns.
-    Returns 'not <lemma>' strings — injected as forced-negative keywords.
-    """
     tokens = re.findall(r"[a-z']+", text.lower())
     pairs  = []
     for i, tok in enumerate(tokens[:-1]):
         if tok.replace("'", "") in NEGATION_WORDS:
             nxt = tokens[i + 1]
-            if len(nxt) >= 3 and nxt not in STOP_WORDS and nxt not in BRAND_NOISE_WORDS:
+            if (len(nxt) >= MIN_WORD_LENGTH
+                    and nxt not in STOP_WORDS
+                    and nxt not in BRAND_NOISE_WORDS):
                 pairs.append(f"not {_lemma(nxt)}")
     return pairs
 
 
-# ─── Main keyword extraction ───────────────────────────────────────────────────
+# ─── Main keyword extraction ──────────────────────────────────────────────────
 
 def extract_common_keywords(reviews: list, top_n: int = 10) -> list:
-    """
-    Extracts the most meaningful brand-experience keywords from Trustpilot reviews.
-
-    Improvements over the original:
-    1. Lemmatization      — "returned"/"returning"/"return" count as one term.
-    2. Negation detection — "never responded", "cant return" become explicit
-                            negative keywords, not invisible noise.
-    3. Sentence-level     — each keyword's sentiment is scored per sentence,
-       sentiment            not the whole (possibly mixed) review.
-    4. IDF weighting      — ubiquitous words like "order"/"delivery" that appear
-                            in every review are penalised; rare problem words rise.
-    5. Min doc-frequency  — one-off mentions (≤1 review) are discarded.
-    6. Curated bigrams    — "customer service", "no response", "refused refund"
-                            surface as phrases instead of split single words.
-    """
     total = len(reviews)
     if total == 0:
         return []
+
+    # Build proper noun blocklist from the actual review text
+    proper_nouns = _build_proper_noun_set(reviews, field="text")
+    print(f"[Keywords] Proper nouns detected and blocked: {proper_nouns}")
 
     word_counts:     Counter = Counter()
     word_doc_freq:   Counter = Counter()
@@ -260,11 +292,14 @@ def extract_common_keywords(reviews: list, top_n: int = 10) -> list:
         text_lower = text.lower()
 
         # ── lemmatized unigrams ────────────────────────────────────────────
-        raw_words   = re.findall(r"[a-z]{4,}", text_lower)
+        raw_words   = re.findall(r"[a-z]{%d,}" % MIN_WORD_LENGTH, text_lower)
         seen_lemmas: set[str] = set()
         for w in raw_words:
             lemma = _lemma(w)
-            if lemma not in STOP_WORDS and lemma not in BRAND_NOISE_WORDS:
+            if (lemma not in STOP_WORDS
+                    and lemma not in BRAND_NOISE_WORDS
+                    and lemma not in proper_nouns
+                    and len(lemma) >= MIN_WORD_LENGTH):
                 word_counts[lemma] += 1
                 if lemma not in seen_lemmas:
                     word_doc_freq[lemma] += 1
@@ -300,15 +335,15 @@ def extract_common_keywords(reviews: list, top_n: int = 10) -> list:
         df = bigram_doc_freq[bg]
         if df < MIN_DOC_FREQ:
             continue
-        scored[bg] = count * idf(df) * 3.0   # bigrams: 3× weight
+        scored[bg] = count * idf(df) * 3.0
 
     for neg, count in negation_counts.items():
         if count >= MIN_DOC_FREQ:
-            scored[neg] = count * 4.0         # negations: 4× weight (high signal)
+            scored[neg] = count * 4.0
 
     top_terms = sorted(scored, key=scored.__getitem__, reverse=True)[:top_n]
 
-    # ── sentence-level sentiment for each top term ────────────────────────
+    # ── sentence-level sentiment ──────────────────────────────────────────
     keywords = []
     for term in top_terms:
         is_negation = term.startswith("not ") and " " in term
@@ -331,7 +366,7 @@ def extract_common_keywords(reviews: list, top_n: int = 10) -> list:
     return keywords
 
 
-# ─── Reputation analysis (unchanged logic) ────────────────────────────────────
+# ─── Reputation analysis ──────────────────────────────────────────────────────
 
 def build_reputation_insights(reviews: list, brand_name: str) -> dict:
     if not reviews:
@@ -350,7 +385,7 @@ def build_reputation_insights(reviews: list, brand_name: str) -> dict:
 
     compound_scores = []
     pos_count = neg_count = neu_count = 0
-    support_texts = []
+    support_texts  = []
     shipping_texts = []
     quality_texts  = []
 
@@ -360,7 +395,7 @@ def build_reputation_insights(reviews: list, brand_name: str) -> dict:
         compound   = sia.polarity_scores(text)["compound"]
         compound_scores.append(compound)
 
-        if compound >= 0.05:   pos_count += 1
+        if compound >= 0.05:    pos_count += 1
         elif compound <= -0.05: neg_count += 1
         else:                   neu_count += 1
 
@@ -387,9 +422,9 @@ def build_reputation_insights(reviews: list, brand_name: str) -> dict:
         {"topic": "Build Quality",       "status": scores_to_status(quality_texts)},
     ]
 
-    avg_rating          = sum(r.get("rating", 3) for r in reviews) / total if total > 0 else 3
-    sentiment_score     = ((avg_compound + 1) / 2) * 100
-    rating_score        = (avg_rating / 5) * 100
+    avg_rating           = sum(r.get("rating", 3) for r in reviews) / total if total > 0 else 3
+    sentiment_score      = ((avg_compound + 1) / 2) * 100
+    rating_score         = (avg_rating / 5) * 100
     reputation_score_pct = round((sentiment_score * 0.45) + (rating_score * 0.55)) if total > 0 else None
 
     if   reputation_score_pct >= 80: overall_label = "Strong overall brand reputation on Trustpilot."
