@@ -22,14 +22,22 @@ type Analysis = {
     label?: string
     verifiedPurchaseRatio?: number
     sentimentConsistencyRatio?: number
-    commonKeywords?: string[]
+    commonKeywords?: {
+      word: string
+      count: number
+      sentiment: "positive" | "negative" | "neutral"
+    }[]
   }
   brandReputation?: {
     score?: number
     label?: string
     insights?: Insight[]
     reviewsAnalyzed?: number
-    commonKeywords?: string[]
+    commonKeywords?: {
+      word: string
+      count: number
+      sentiment: "positive" | "negative" | "neutral"
+    }[]
   }
   similarProducts?: {
     title?: string
@@ -72,6 +80,26 @@ function SectionCard({
       <h3>{title}</h3>
       {children}
     </section>
+  )
+}
+
+function KeywordPills({
+  keywords,
+  emptyMessage,
+}: {
+  keywords?: { word: string; count: number; sentiment: 'positive' | 'negative' | 'neutral' }[]
+  emptyMessage: string
+}) {
+  if (!keywords?.length) return <p className="body-text muted">{emptyMessage}</p>
+
+  return (
+    <div className="keyword-pills">
+      {keywords.map((kw) => (
+        <span key={kw.word} className={`keyword-pill keyword-pill--${kw.sentiment}`}>
+          {kw.word} <em>×{kw.count}</em>
+        </span>
+      ))}
+    </div>
   )
 }
 
@@ -214,10 +242,11 @@ export default function App() {
                     <strong>Sentiment Consistency:</strong>{' '}
                     {analysis?.reviewIntegrity?.sentimentConsistencyRatio ?? 'Waiting...'}
                   </p>
-                  <p>
-                    <strong>Keywords: </strong>{' '}
-                    {analysis?.reviewIntegrity?.commonKeywords?.length? analysis?.reviewIntegrity?.commonKeywords.join(', '): 'No keywords found'}
-                  </p>
+                  <p className="keywords-label"><strong>Top Keywords (why this score):</strong></p>
+                  <KeywordPills
+                    keywords={analysis?.reviewIntegrity?.commonKeywords}
+                    emptyMessage="No keywords found"
+                  />
                 </div>
               </SectionCard>
 
@@ -252,10 +281,11 @@ export default function App() {
                 ) : (
                   <p className="body-text muted">No brand insights yet.</p>
                 )}
-                  <p>
-                    <strong>Keywords: </strong>{' '}
-                    {analysis?.brandReputation?.commonKeywords?.length? analysis?.brandReputation?.commonKeywords.join(', '): 'No keywords found'}
-                  </p>
+                  <p className="keywords-label"><strong>Top Keywords (why this score):</strong></p>
+                  <KeywordPills
+                    keywords={analysis?.brandReputation?.commonKeywords}
+                    emptyMessage="No keywords found"
+                  />
               </SectionCard>
 
               <SectionCard title="Similar Products">

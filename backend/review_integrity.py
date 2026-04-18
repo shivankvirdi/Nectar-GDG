@@ -62,17 +62,17 @@ def check_star_sentiment_agreement(star_rating: int, compound_score: float) -> b
     else:
         return True                          # 3 stars is inherently mixed — always counts as agreement
 
+PRODUCT_NOISE_WORDS = {
+    "also", "like", "just", "really", "very", "good", "great", "nice", "love",
+    "bought", "product", "item", "thing", "would", "could", "even", "much",
+    "well", "still", "used", "using", "came", "come", "said", "says", "make",
+    "made", "best", "ever", "back", "because", "dont", "didnt", "isnt", "wasnt",
+    "this", "that", "with", "have", "been", "than", "them", "they", "from",
+    "premier", "drink", "tried", "banana", "whilst", "available", "excellent",
+}
 
 def extract_common_keywords(reviews: list, top_n: int = 10) -> list:
-    """
-    Extracts the most frequently appearing meaningful words across all Amazon review bodies.
-    Filters out stopwords and short/noisy tokens.
-    Returns a list of dicts: [{word, count, sentiment}] sorted by frequency.
-    The sentiment for each keyword reflects the average VADER compound of reviews
-    containing that word — so the frontend can color-code chips as positive/negative/neutral.
-    """
     word_counts = Counter()
-    # Map each word → list of compound scores from reviews that contain it
     word_sentiments: dict[str, list[float]] = {}
 
     for review in reviews:
@@ -81,33 +81,35 @@ def extract_common_keywords(reviews: list, top_n: int = 10) -> list:
             continue
 
         compound = sia.polarity_scores(body)["compound"]
-
-        # Tokenize: lowercase, letters only, min 4 chars, drop stopwords
         words = re.findall(r"[a-z]{4,}", body.lower())
-        unique_words = set(words)  # count each word once per review to avoid one verbose review dominating
+        unique_words = set(words)
 
         for word in unique_words:
-            if word not in STOP_WORDS:
+            if word not in STOP_WORDS and word not in PRODUCT_NOISE_WORDS:
                 word_counts[word] += 1
                 word_sentiments.setdefault(word, []).append(compound)
 
+    PRODUCT_BOOST = {
+        "quality", "durable", "material", "design", "finish", "texture", "weight",
+        "size", "color", "colour", "thick", "thin", "soft", "hard", "sturdy",
+        "cheap", "premium", "plastic", "metal", "screen", "battery", "charge",
+        "charging", "cable", "case", "grip", "scratch", "clear", "protective",
+        "fits", "fitting", "install", "installation", "camera", "sound", "audio",
+        "display", "bright", "accurate", "comfortable", "lightweight", "heavy",
+    }
+
+    boosted_counts = Counter()
+    for word, count in word_counts.items():
+        boosted_counts[word] = count * 2 if word in PRODUCT_BOOST else count
+
     keywords = []
-    for word, count in word_counts.most_common(top_n):
+    for word, _ in boosted_counts.most_common(top_n):
+        count = word_counts[word]
         scores = word_sentiments.get(word, [])
         avg = sum(scores) / len(scores) if scores else 0
 
-        if avg >= 0.05:
-            sentiment = "positive"
-        elif avg <= -0.05:
-            sentiment = "negative"
-        else:
-            sentiment = "neutral"
-
-        keywords.append({
-            "word": word,
-            "count": count,
-            "sentiment": sentiment,   # frontend can use this to color-code the chip
-        })
+        sentiment = "positive" if avg >= 0.05 else "negative" if avg <= -0.05 else "neutral"
+        keywords.append({"word": word, "count": count, "sentiment": sentiment})
 
     return keywords
 

@@ -186,17 +186,17 @@ def scrape_trustpilot_reviews(slug: str, max_reviews: int = 20) -> list:
 
     return reviews[:max_reviews]
 
+BRAND_NOISE_WORDS = {
+    "also", "like", "just", "really", "very", "good", "great", "nice", "love",
+    "product", "item", "thing", "would", "could", "even", "much", "well",
+    "still", "used", "using", "came", "come", "said", "make", "made", "best",
+    "ever", "back", "because", "dont", "didnt", "this", "that", "with", "have",
+    "been", "than", "them", "they", "from", "protein", "sugar", "taste",
+    "chocolate", "drink", "banana", "cream", "tried", "whilst", "available",
+}
 
 def extract_common_keywords(reviews: list, top_n: int = 10) -> list:
-    """
-    Extracts the most frequently appearing meaningful words across all review texts.
-    Filters out stopwords and short/noisy tokens.
-    Returns a list of dicts: [{word, count, sentiment}] sorted by frequency.
-    The sentiment for each keyword is determined by averaging VADER scores of
-    sentences containing that word — so the frontend can color-code them.
-    """
     word_counts = Counter()
-    # Map each word → list of compound scores from reviews containing it
     word_sentiments: dict[str, list[float]] = {}
 
     for review in reviews:
@@ -205,33 +205,37 @@ def extract_common_keywords(reviews: list, top_n: int = 10) -> list:
             continue
 
         compound = sia.polarity_scores(text)["compound"]
-
-        # Tokenize: lowercase, letters only, drop stopwords and short words
         words = re.findall(r"[a-z]{4,}", text.lower())
-        unique_words = set(words)  # count each word once per review to avoid spam
+        unique_words = set(words)
 
         for word in unique_words:
-            if word not in STOP_WORDS:
+            if word not in STOP_WORDS and word not in BRAND_NOISE_WORDS:
                 word_counts[word] += 1
                 word_sentiments.setdefault(word, []).append(compound)
 
+    # Boost words that describe brand experience
+    BRAND_BOOST = {
+        "shipping", "delivery", "delivered", "arrived", "packaging", "packaged",
+        "support", "service", "response", "responsive", "helpful", "unhelpful",
+        "refund", "return", "returned", "exchange", "resolved", "unresolved",
+        "communication", "contacted", "ignored", "delayed", "fast", "slow",
+        "damaged", "broken", "missing", "wrong", "correct", "accurate",
+        "trustworthy", "reliable", "unreliable", "scam", "legitimate", "fake",
+        "customer", "experience", "ordered", "order", "received", "waiting",
+    }
+
+    boosted_counts = Counter()
+    for word, count in word_counts.items():
+        boosted_counts[word] = count * 2 if word in BRAND_BOOST else count
+
     keywords = []
-    for word, count in word_counts.most_common(top_n):
+    for word, _ in boosted_counts.most_common(top_n):
+        count = word_counts[word]
         scores = word_sentiments.get(word, [])
         avg = sum(scores) / len(scores) if scores else 0
 
-        if avg >= 0.05:
-            sentiment = "positive"
-        elif avg <= -0.05:
-            sentiment = "negative"
-        else:
-            sentiment = "neutral"
-
-        keywords.append({
-            "word": word,
-            "count": count,
-            "sentiment": sentiment,   # frontend can use this to color-code the chip
-        })
+        sentiment = "positive" if avg >= 0.05 else "negative" if avg <= -0.05 else "neutral"
+        keywords.append({"word": word, "count": count, "sentiment": sentiment})
 
     return keywords
 

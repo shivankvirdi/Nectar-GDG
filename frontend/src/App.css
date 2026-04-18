@@ -350,3 +350,48 @@ body {
   font-weight: 700;
   color: #ea580c;
 }
+
+.keywords-label {
+  margin-top: 10px;
+  margin-bottom: 4px;
+  font-size: 13px;
+  color: #1e1e1e;
+}
+
+.keyword-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.keyword-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.keyword-pill em {
+  font-style: normal;
+  opacity: 0.7;
+  font-size: 11px;
+}
+
+.keyword-pill--positive {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.keyword-pill--negative {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.keyword-pill--neutral {
+  background: #fff6a5;
+  color: #7d7317;
+}
