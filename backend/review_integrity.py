@@ -1,14 +1,18 @@
 # review_integrity.py
 
+import re
+from collections import Counter                      # counts word frequencies for commonKeywords
 import nltk                                          # Natural Language Toolkit — VADER lives inside here
 nltk.download('vader_lexicon', quiet=True)           # downloads VADER's word scoring dictionary (one-time, silent)
+nltk.download('stopwords', quiet=True)
 
 from nltk.sentiment.vader import SentimentIntensityAnalyzer   # the actual sentiment scoring engine
-from .canopy_client import get_product_reviews        # reuse the review fetcher we already built
-
+from nltk.corpus import stopwords
 
 # Create one shared analyzer — it's expensive to recreate, so we make it once at module level
 sia = SentimentIntensityAnalyzer()
+
+STOP_WORDS = set(stopwords.words('english'))         # common words to exclude from keyword counts
 
 
 def score_single_review(review_text: str) -> dict:
@@ -58,10 +62,59 @@ def check_star_sentiment_agreement(star_rating: int, compound_score: float) -> b
     else:
         return True                          # 3 stars is inherently mixed — always counts as agreement
 
+PRODUCT_NOISE_WORDS = {
+    "also", "like", "just", "really", "very", "good", "great", "nice", "love",
+    "bought", "product", "item", "thing", "would", "could", "even", "much",
+    "well", "still", "used", "using", "came", "come", "said", "says", "make",
+    "made", "best", "ever", "back", "because", "dont", "didnt", "isnt", "wasnt",
+    "this", "that", "with", "have", "been", "than", "them", "they", "from",
+    "premier", "drink", "tried", "banana", "whilst", "available", "excellent",
+}
+
+def extract_common_keywords(reviews: list, top_n: int = 10) -> list:
+    word_counts = Counter()
+    word_sentiments: dict[str, list[float]] = {}
+
+    for review in reviews:
+        body = review.get("body", "")
+        if not body:
+            continue
+
+        compound = sia.polarity_scores(body)["compound"]
+        words = re.findall(r"[a-z]{4,}", body.lower())
+        unique_words = set(words)
+
+        for word in unique_words:
+            if word not in STOP_WORDS and word not in PRODUCT_NOISE_WORDS:
+                word_counts[word] += 1
+                word_sentiments.setdefault(word, []).append(compound)
+
+    PRODUCT_BOOST = {
+        "quality", "durable", "material", "design", "finish", "texture", "weight",
+        "size", "color", "colour", "thick", "thin", "soft", "hard", "sturdy",
+        "cheap", "premium", "plastic", "metal", "screen", "battery", "charge",
+        "charging", "cable", "case", "grip", "scratch", "clear", "protective",
+        "fits", "fitting", "install", "installation", "camera", "sound", "audio",
+        "display", "bright", "accurate", "comfortable", "lightweight", "heavy",
+    }
+
+    boosted_counts = Counter()
+    for word, count in word_counts.items():
+        boosted_counts[word] = count * 2 if word in PRODUCT_BOOST else count
+
+    keywords = []
+    for word, _ in boosted_counts.most_common(top_n):
+        count = word_counts[word]
+        scores = word_sentiments.get(word, [])
+        avg = sum(scores) / len(scores) if scores else 0
+
+        sentiment = "positive" if avg >= 0.05 else "negative" if avg <= -0.05 else "neutral"
+        keywords.append({"word": word, "count": count, "sentiment": sentiment})
+
+    return keywords
 
 
-
-def analyze_review_integrity(asin: str) -> dict:
+def analyze_review_integrity(reviews: list) -> dict:
     """
     Master function for the Review Integrity module.
     Pulls 10-15 Amazon reviews via Canopy, runs VADER on each one,
@@ -76,11 +129,10 @@ def analyze_review_integrity(asin: str) -> dict:
       - sentiment_breakdown: {"Positive": N, "Neutral": N, "Negative": N}
       - review_details: list of per-review data (for debugging or expanded UI)
       - flags: dict of specific warning flags
+      - commonKeywords: top words from reviews with frequency and sentiment label
     """
 
-    reviews = get_product_reviews(asin)           # get 10 reviews from Canopy
-
-    if not reviews:                                  # guard: if Canopy returns nothing, bail gracefully
+    if not reviews or len(reviews) == 0:                                  # guard: if Canopy returns nothing, bail gracefully
         return {"error": "No reviews found for this product."}
 
     review_details = []         # will hold per-review analysis
@@ -90,11 +142,14 @@ def analyze_review_integrity(asin: str) -> dict:
     sentiment_counts = {"Positive": 0, "Neutral": 0, "Negative": 0}
 
     for review in reviews:
-        body = review.get("body", "")                # the full review text from Canopy
-        star_rating = review.get("rating", 3)        # 1-5 star rating, default to 3 if missing
-        is_verified = review.get("verifiedPurchase", False)  # boolean from Canopy
+        if not isinstance(review, dict):
+            continue
 
-        if not body:                                 # skip reviews with no text (rating-only)
+        body = review.get("body", "")
+        star_rating = review.get("rating", 3)
+        is_verified = review.get("verifiedPurchase", False)
+
+        if not body:
             continue
 
         vader_scores = score_single_review(body)     # run VADER — returns neg/neu/pos/compound dict
@@ -162,4 +217,5 @@ def analyze_review_integrity(asin: str) -> dict:
         "sentiment_breakdown": sentiment_counts,
         "review_details": review_details,
         "flags": flags,
+        "commonKeywords": extract_common_keywords(reviews),  # top words driving the score
     }

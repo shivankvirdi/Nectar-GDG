@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Epilogue:wght@300;400;500;600;700;800&display=swap');
 
 :root {
   --bg: #0a0a0a;
@@ -6,39 +6,41 @@
   --surface2: #1a1a1a;
   --border: #2a2a2a;
 
-  /* BRAND ACCENT (your “bird” identity color) */
   --brand: #f97316;
   --brand-dim: #7c3a0e;
 
-  --text: #f0ece4;
-  --text-muted: #6b6560;
+  --text: #f3efe8;
+  --text-muted: #a19a92;
 
-  --font-display: 'Syne', sans-serif;
+  --font-display: 'Epilogue', sans-serif;
   --font-mono: 'DM Mono', monospace;
 }
 
 /* RESET */
 * {
   box-sizing: border-box;
+}
+
+html,
+body,
+#root {
   margin: 0;
   padding: 0;
 }
 
-/* FLOATING EXTENSION BACKGROUND */
 body {
   background: transparent;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
+  overflow-y: auto;
   font-family: var(--font-display);
   color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* POPUP CONTAINER */
 #root {
-  width: 360px;
-  height: 600px;
+  width: 380px;
+  min-height: auto;
 }
 
 /* MAIN APP CARD */
@@ -62,22 +64,25 @@ body {
   margin-bottom: 16px;
 }
 
-/* BRAND MARK (replace with bird icon if you have one) */
+/* LOGO / TITLE */
 .logo {
-  font-weight: 800;
-  font-size: 18px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 20px;
   color: var(--text);
-  letter-spacing: 0.2px;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
 }
 
 .subtitle {
   font-size: 10px;
-  letter-spacing: 2px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
   color: var(--text-muted);
   text-transform: uppercase;
 }
 
-/* PRIMARY ACTION BUTTON */
+/* TOP BUTTON */
 .premium-btn {
   position: absolute;
   right: 16px;
@@ -85,17 +90,21 @@ body {
   background: var(--brand);
   border: none;
   border-radius: 999px;
-  padding: 6px 12px;
+  padding: 7px 13px;
   font-size: 10px;
+  font-weight: 600;
   cursor: pointer;
   color: #ffffff;
+  font-family: var(--font-display);
 }
 
 /* USAGE HEADER */
 .usage-bar {
   display: flex;
   justify-content: space-between;
-  font-size: 10px;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 500;
   margin: 10px 0;
   color: var(--text-muted);
 }
@@ -106,6 +115,7 @@ body {
   background: var(--border);
   border-radius: 999px;
   margin: 6px 0 12px;
+  overflow: hidden;
 }
 
 .progress-fill {
@@ -114,18 +124,21 @@ body {
   border-radius: 999px;
 }
 
-/* INFORMATION PANEL */
+/* INFO PANEL */
 .ad-banner {
   background: var(--surface2);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px;
   text-align: center;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
   margin: 12px 0;
   color: var(--text);
 }
 
-/* PRIMARY ACTION */
+/* MAIN BUTTON */
 .scan-btn {
   width: 100%;
   padding: 14px;
@@ -134,38 +147,45 @@ body {
   background: transparent;
   color: var(--brand);
   font-weight: 600;
+  font-size: 14px;
+  letter-spacing: -0.01em;
   margin-top: 12px;
   cursor: pointer;
+  font-family: var(--font-display);
 }
 
 /* SUPPORT TEXT */
 .free-notice {
-  font-size: 10px;
+  font-size: 11px;
+  line-height: 1.5;
   color: var(--text-muted);
   margin-top: 10px;
 }
 
 .ad-label {
   font-size: 9px;
-  opacity: 0.5;
-  letter-spacing: 1px;
+  opacity: 0.7;
+  letter-spacing: 0.12em;
   color: var(--text-muted);
+  text-transform: uppercase;
 }
 
 /* CONTENT BLOCKS */
 .graph-box {
   margin-top: 16px;
   background: var(--surface2);
+  border: 1px solid var(--border);
   padding: 12px;
   border-radius: 12px;
 }
 
 .section-title {
   font-size: 10px;
+  font-weight: 600;
   color: var(--text-muted);
   margin-bottom: 8px;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.12em;
 }
 
 .alert-btn {
@@ -176,6 +196,8 @@ body {
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text-muted);
+  font-family: var(--font-display);
+  font-weight: 500;
   cursor: pointer;
 }
 
@@ -185,6 +207,7 @@ body {
 
 .module {
   background: var(--surface2);
+  border: 1px solid var(--border);
   padding: 12px;
   border-radius: 10px;
   margin-bottom: 8px;
@@ -209,4 +232,21 @@ body {
   padding: 12px;
   height: 100%;
   overflow-y: auto;
+  color: var(--text);
+}
+
+.info-list {
+  margin-top: 12px;
+}
+
+.info-list p {
+  margin: 6px 0;
+}
+
+.progress {
+  margin-bottom: 10px;
+}
+
+.keywords-text {
+  color: #000000;
 }

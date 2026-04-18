@@ -1,0 +1,1 @@
+Nectar is a product analyzer extension that provides in-depth information comparing products’ price point/history, quality, reputability, etc., recommending the best option. Our mission is to reduce shopper’s stress when buying products amongst the infinite options in our consumerist society. 

@@ -63,7 +63,7 @@ export default function PremiumScreen({ onBack }: Props) {
 
       <div className="navbar">
         <div>
-          <div className="logo">🍊 Nectar</div>
+          <div className="logo"> Nectar</div>
           <div className="subtitle">PRODUCT ANALYZER</div>
         </div>
         <button className="premium-btn" onClick={onBack}>← Back</button>

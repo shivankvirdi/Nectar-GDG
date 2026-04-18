@@ -5,7 +5,7 @@ import os
 import requests
 from dotenv import load_dotenv
 
-from backend.budget_config import BUDGET_MIN, BUDGET_MAX
+from .budget_config import BUDGET_MIN, BUDGET_MAX
 
 load_dotenv()
 
@@ -19,7 +19,6 @@ HEADERS = {
     "Content-Type": "application/json",
     "API-KEY": API_KEY,
 }
-### REMINDER : NEED TO IMPLEMENT Trustpilot (BRAND REPUTATION)
 
 def get_product_data(asin: str) -> dict:
     """
@@ -79,93 +78,46 @@ def get_product_data(asin: str) -> dict:
         return {}
 
 
-def get_product_reviews(asin: str, page: int = 1) -> list:
-    """
-    Fetches Amazon reviews for a product by ASIN.
-    'page' lets you paginate through more reviews if needed.
-    Returns a list of review dicts — each one has text, rating, verified status.
-    """
-
-    query = """
-    query amazonProductReviews($asin: String!, $page: Int) {
-      amazonProductReviews(input: {asin: $asin, page: $page}) {
-        reviews {
-          title           
-          body            
-          rating          
-          date            
-          verifiedPurchase 
-          reviewerName    
-        }
-      }
-    }
-    """
-
-    variables = {
-        "asin": asin,
-        "page": page,   # Canopy returns ~10 reviews per page
-    }
-
-    payload = {"query": query, "variables": variables}
-
-    response = requests.post(CANOPY_URL, json=payload, headers=HEADERS)
-
-    if response.status_code == 200:
-        data = response.json()
-        # Drill into the nested response to just return the reviews list
-        reviews_data = data.get("data", {}).get("amazonProductReviews", {})
-        return reviews_data.get("reviews", [])  # returns [] if no reviews found
-    else:
-        print(f"[Canopy] Reviews fetch failed: {response.status_code}")
-        return []
-
-
 def get_full_product_profile(asin: str) -> dict:
-    """
-    Master function — calls both above functions and combines the results.
-    This is what your FastAPI POST /analyze endpoint will call.
-    Returns one clean dict with everything Nectar needs for all 7 modules.
-    """
-
     print(f"[Canopy] Fetching full profile for ASIN: {asin}")
 
-    product = get_product_data(asin)    # core product info
-    reviews = get_product_reviews(asin) # list of review objects
-    top_reviews = product.pop("topReviews", [])  # pull topReviews out of product dict
+    product = get_product_data(asin)
 
-    # Merge paginated reviews + Amazon's curated topReviews for better star spread
-    # Use a set to avoid duplicates by review title
-    seen_titles = set()
-    combined_reviews = []
-    for r in (top_reviews + reviews):
-        title = r.get("title", "")
-        if title not in seen_titles:
-            seen_titles.add(title)
-            combined_reviews.append(r)
-    
-    # Combine into one unified response object
-    # Your analysis functions (VADER, pandas, etc.) will receive this
+    if not product:
+        return {
+            "asin": asin,
+            "brand": "",
+            "product": {},
+            "reviews": [],
+            "error": "Failed to fetch product data from Canopy"
+        }
+
+    top_reviews = product.get("topReviews") or []
+
+    cleaned_reviews = [
+        {
+            "title": r.get("title", ""),
+            "body": r.get("body", ""),
+            "rating": r.get("rating", 3),
+            "verifiedPurchase": r.get("verifiedPurchase", False),
+        }
+        for r in top_reviews
+        if isinstance(r, dict) and r.get("body")
+    ]
+
     return {
         "asin": asin,
-        "brand": product.get("brand",""),
-        "product": product,   # title, price, rating, brand, features
-        "reviews": reviews,   # list of individual review dicts
+        "brand": product.get("brand", ""),
+        "product": product,
+        "reviews": cleaned_reviews,
     }
 
-# In canopy_client.py
-
 def search_similar_products(search_term: str) -> list:
-    """
-    Searches Amazon for products matching the search term,
-    filtered to the budget range defined in budget_config.py.
-    BUDGET_MIN and BUDGET_MAX can be changed at any time in that file.
-    """
-
     query = """
     query SearchProducts($input: AmazonProductSearchResultsInput!) {
-      amazonProductSearchResults(input: $input) {
+    amazonProductSearchResults(input: $input) {
         productResults(input: { page: 1, sort: AVERAGE_CUSTOMER_REVIEW }) {
-          results {
+        results {
             title
             asin
             brand
@@ -174,29 +126,27 @@ def search_similar_products(search_term: str) -> list:
             mainImageUrl
             isPrime
             price {
-              display
-              value
+            display
+            value
             }
             featureBullets
-          }
         }
-      }
+        }
+    }
     }
     """
 
-    # Build the input — only add priceRange if at least one bound is set
     search_input = {
         "searchTerm": search_term,
         "domain": "US"
     }
 
-    # Only attach refinements block if we actually have a budget set
     if BUDGET_MIN is not None or BUDGET_MAX is not None:
         price_range = {}
         if BUDGET_MIN is not None:
-            price_range["min"] = BUDGET_MIN     # e.g. 20.00
+            price_range["min"] = BUDGET_MIN
         if BUDGET_MAX is not None:
-            price_range["max"] = BUDGET_MAX     # e.g. 200.00
+            price_range["max"] = BUDGET_MAX
         search_input["refinements"] = {"priceRange": price_range}
 
     variables = {"input": search_input}
@@ -205,8 +155,10 @@ def search_similar_products(search_term: str) -> list:
 
     if response.status_code == 200:
         data = response.json()
-        results = data.get("data", {}).get("amazonProductSearchResults", {})
-        return results.get("productResults", {}).get("results", [])
+        results = data.get("data", {}).get("amazonProductSearchResults") or {}
+        product_results = results.get("productResults") or {}
+        items = product_results.get("results") or []
+        return [item for item in items if isinstance(item, dict)]
     else:
         print(f"[Canopy] Search failed: {response.status_code}")
         return []

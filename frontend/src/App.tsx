@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import './App.css'
 import PremiumScreen from './PremiumScreen'
 
+const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+
 type Insight = {
   topic: string
   status: string
@@ -21,33 +23,121 @@ type Analysis = {
     label?: string
     verifiedPurchaseRatio?: number
     sentimentConsistencyRatio?: number
+    commonKeywords?: {
+      word: string
+      count: number
+      sentiment: "positive" | "negative" | "neutral"
+    }[]
   }
   brandReputation?: {
     score?: number
     label?: string
     insights?: Insight[]
     reviewsAnalyzed?: number
+    commonKeywords?: {
+      word: string
+      count: number
+      sentiment: "positive" | "negative" | "neutral"
+    }[]
   }
+  similarProducts?: {
+    title?: string
+    asin?: string
+    brand?: string
+    rating?: string | number
+    reviewCount?: number
+    price?: string
+    isPrime?: boolean
+    image?: string
+    amazonUrl?: string
+  }[]
+}
+
+function MetricBar({ label, value }: { label: string; value?: number }) {
+  const safeValue = Math.max(0, Math.min(100, value ?? 0))
+
+  return (
+    <div className="metric">
+      <div className="metric-top">
+        <span>{label}</span>
+        <span>{safeValue}/100</span>
+      </div>
+      <div className="metric-track">
+        <div className="metric-fill" style={{ width: `${safeValue}%` }} />
+      </div>
+    </div>
+  )
+}
+
+function SectionCard({
+  title,
+  children,
+}: {
+  title: string
+  children: React.ReactNode
+}) {
+  return (
+    <section className="section-card">
+      <h3>{title}</h3>
+      {children}
+    </section>
+  )
+}
+
+function KeywordPills({
+  keywords,
+  emptyMessage,
+}: {
+  keywords?: { word: string; count: number; sentiment: 'positive' | 'negative' | 'neutral' }[]
+  emptyMessage: string
+}) {
+  if (!keywords?.length) return <p className="body-text muted">{emptyMessage}</p>
+
+  return (
+    <div className="keyword-pills">
+      {keywords.map((kw) => (
+        <span key={kw.word} className={`keyword-pill keyword-pill--${kw.sentiment}`}>
+          {kw.word} <em>×{kw.count}</em>
+        </span>
+      ))}
+    </div>
+  )
 }
 
 export default function App() {
   const [currentUrl, setCurrentUrl] = useState('Loading...')
-  const [backendStatus, setBackendStatus] = useState('Waiting for backend...')
+  const [backendStatus, setBackendStatus] = useState('Ready to scan')
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
   const [view, setView] = useState<'home' | 'premium'>('home')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [hasScanned, setHasScanned] = useState(false)
 
   useEffect(() => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const url = tabs[0]?.url ?? ''
+      setCurrentUrl(url || 'No active tab ASIN found')
+    })
+  }, [])
+
+  const handleScan = async () => {
     chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
       const url = tabs[0]?.url ?? ''
-      setCurrentUrl(url || 'No active tab URL found')
+      setCurrentUrl(url || 'No active tab ASIN found')
 
       if (!url) {
-        setBackendStatus('No URL available to send.')
+        setError('No URL available to send.')
+        setBackendStatus('No ASIN available to send.')
         return
       }
 
       try {
-        const response = await fetch('http://127.0.0.1:8000/current-url', {
+        setLoading(true)
+        setError('')
+        setAnalysis(null)
+        setBackendStatus('Sending ASIN to backend...')
+
+        const response = await fetch(`${API_BASE}/current-url`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -60,84 +150,199 @@ export default function App() {
 
         if (!response.ok) {
           const errorMessage =
-            typeof data.detail === 'string' ? data.detail : 'Backend request failed.'
+            typeof data.detail === 'string'
+              ? data.detail
+              : 'Request failed.'
           setBackendStatus(errorMessage)
+          setError(errorMessage)
           return
         }
 
         setAnalysis(data.analysis ?? null)
         setBackendStatus('Analysis complete')
-      } catch (error) {
-        console.error('Failed to send URL:', error)
-        setBackendStatus('Backend request failed. Is FastAPI running on port 8000?')
+        setHasScanned(true)
+      } catch (err) {
+        console.error('Failed to send URL:', err)
+        const message = 'Scan failed. Is server running?'
+        setBackendStatus(message)
+        setError(message)
+      } finally {
+        setLoading(false)
       }
     })
-  }, [])
+  }
 
   if (view === 'premium') return <PremiumScreen onBack={() => setView('home')} />
   
   return (
-    <div className="container">
-      <div className="header">
-        <div>
-          <h2>Nectar</h2>
-          <p className="subtitle">PRODUCT ANALYZER</p>
+    <main className="app-shell">
+      <div className="popup-shell">
+        <header className="top-header">
+          <div className="brand-row">
+            <img src="/icons/logo.png" alt="Nectar logo" className="brand-logo" />
+            <div className="brand-block">
+              <h1>Nectar</h1>
+              <p>SMART PRODUCT ANALYZER</p>
+            </div>
+          </div>
+
+          <button className="premium-btn" onClick={() => setView('premium')}>Go Premium</button>
+        </header>
+
+        <div className="content">
+          <SectionCard title="Product Analysis">
+            <p className={`body-text ${error ? 'status-error' : 'status-ok'}`}>
+              {error || backendStatus}
+            </p>
+            <button
+              className="scan-btn"
+              onClick={handleScan}
+              disabled={loading}
+            >
+              {loading ? 'Scanning...' : 'Scan Product'}
+            </button>
+          </SectionCard>
+
+          {hasScanned && (
+            <>
+              <SectionCard title="Overall Score">
+                <div className="score-row">
+                  <span className="score-number">
+                    {loading ? '--' : analysis?.overallScore ?? '--'}
+                  </span>
+                  <span className="score-max">/100</span>
+                </div>
+                <MetricBar label="Trust Score" value={analysis?.overallScore} />
+              </SectionCard>
+
+              <SectionCard title="Product">
+                <div className="info-list">
+                  <p><strong>Title:</strong> {analysis?.title ?? 'Waiting...'}</p>
+                  <p><strong>Brand:</strong> {analysis?.brand ?? 'Waiting...'}</p>
+                  <p><strong>Price:</strong> {analysis?.price ?? 'Waiting...'}</p>
+                  <p><strong>Rating:</strong> {analysis?.rating ?? 'Waiting...'}</p>
+                  <p><strong>Review Count:</strong> {analysis?.reviewCount ?? 'Waiting...'}</p>
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Review Integrity">
+                <div className="mini-score">
+                  <span>Score</span>
+                  <strong>{analysis?.reviewIntegrity?.score ?? 'Waiting...'}</strong>
+                </div>
+
+                <MetricBar
+                  label="Review Integrity"
+                  value={analysis?.reviewIntegrity?.score}
+                />
+
+                <div className="info-list">
+                  <p><strong>Label:</strong> {analysis?.reviewIntegrity?.label ?? 'Waiting...'}</p>
+                  <p>
+                    <strong>Verified Purchase Ratio:</strong>{' '}
+                    {analysis?.reviewIntegrity?.verifiedPurchaseRatio ?? 'Waiting...'}
+                  </p>
+                  <p>
+                    <strong>Sentiment Consistency:</strong>{' '}
+                    {analysis?.reviewIntegrity?.sentimentConsistencyRatio ?? 'Waiting...'}
+                  </p>
+                  <p className="keywords-label"><strong>Top Keywords (why this score):</strong></p>
+                  <KeywordPills
+                    keywords={analysis?.reviewIntegrity?.commonKeywords}
+                    emptyMessage="No keywords found"
+                  />
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Brand Reputation">
+                <div className="mini-score">
+                  <span>Score</span>
+                  <strong>{analysis?.brandReputation?.score ?? 'Waiting...'}</strong>
+                </div>
+
+                <MetricBar
+                  label="Brand Reputation"
+                  value={analysis?.brandReputation?.score}
+                />
+
+                <div className="info-list">
+                  <p><strong>Label:</strong> {analysis?.brandReputation?.label ?? 'Waiting...'}</p>
+                  <p>
+                    <strong>Reviews Analyzed:</strong>{' '}
+                    {analysis?.brandReputation?.reviewsAnalyzed ?? 'Waiting...'}
+                  </p>
+                </div>
+
+                {analysis?.brandReputation?.insights?.length ? (
+                  <div className="insight-list">
+                    {analysis.brandReputation.insights.map((insight) => (
+                      <div key={insight.topic} className="insight-pill">
+                        <span>{insight.topic}</span>
+                        <strong>{insight.status}</strong>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="body-text muted">No brand insights yet.</p>
+                )}
+                  <p className="keywords-label"><strong>Top Keywords (why this score):</strong></p>
+                  <KeywordPills
+                    keywords={analysis?.brandReputation?.commonKeywords}
+                    emptyMessage="No keywords found"
+                  />
+              </SectionCard>
+
+              <SectionCard title="Similar Products">
+                {(analysis?.similarProducts?.length ?? 0) > 0 ? (
+                  <div className="similar-scroll">
+                    {analysis?.similarProducts?.map((product, i) => (
+                      <a
+                        key={product.asin ?? i}
+                        href={product.amazonUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="similar-card"
+                      >
+                        {product.image ? (
+                          <img
+                            src={product.image}
+                            alt={product.title ?? 'Similar product'}
+                            className="similar-card-image"
+                          />
+                        ) : (
+                          <div className="similar-card-image placeholder">No Image</div>
+                        )}
+
+                        <p className="similar-card-title">
+                          {product.title ?? 'Untitled Product'}
+                        </p>
+
+                        <p className="similar-card-brand">
+                          {product.brand ?? 'Unknown brand'}
+                        </p>
+
+                        <p className="similar-card-price">
+                          {product.price ?? 'No price'}
+                        </p>
+
+                        <p className="similar-card-rating">
+                          ⭐ {product.rating ?? 'N/A'}
+                        </p>
+
+                        {product.isPrime && (
+                          <p className="similar-card-prime">Prime</p>
+                        )}
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="body-text muted">No similar products found.</p>
+                )}
+              </SectionCard>
+            </>
+          )}
         </div>
-        <button className="premium" onClick={() => setView('premium')}>Go Premium</button>
       </div>
-      
-
-      <div className="card">
-        <h3>Overall Score</h3>
-        <h1>{analysis?.overallScore ?? 'Waiting...'}</h1>
-      </div>
-
-      <div className="card">
-        <h3>Current Page</h3>
-        <p className="desc">{currentUrl}</p>
-      </div>
-
-      <div className="card">
-        <h3>Backend Status</h3>
-        <p className="desc">{backendStatus}</p>
-      </div>
-
-      <div className="card">
-        <h3>Product</h3>
-        <p className="desc">Keyword: {analysis?.productKeyword ?? 'Not detected yet'}</p>
-        <p className="desc">ASIN: {analysis?.asin ?? 'Not found yet'}</p>
-        <p className="desc">Title: {analysis?.title ?? 'Waiting...'}</p>
-        <p className="desc">Brand: {analysis?.brand ?? 'Waiting...'}</p>
-        <p className="desc">Price: {analysis?.price ?? 'Waiting...'}</p>
-        <p className="desc">Rating: {analysis?.rating ?? 'Waiting...'}</p>
-        <p className="desc">Review Count: {analysis?.reviewCount ?? 'Waiting...'}</p>
-      </div>
-
-      <div className="card">
-        <h3>Review Integrity</h3>
-        <p className="desc">Score: {analysis?.reviewIntegrity?.score ?? 'Waiting...'}</p>
-        <p className="desc">{analysis?.reviewIntegrity?.label ?? 'Waiting...'}</p>
-        <p className="desc">
-          Verified Purchase Ratio: {analysis?.reviewIntegrity?.verifiedPurchaseRatio ?? 'Waiting...'}
-        </p>
-        <p className="desc">
-          Sentiment Consistency: {analysis?.reviewIntegrity?.sentimentConsistencyRatio ?? 'Waiting...'}
-        </p>
-      </div>
-
-      <div className="card">
-        <h3>Brand Reputation</h3>
-        <p className="desc">Score: {analysis?.brandReputation?.score ?? 'Waiting...'}</p>
-        <p className="desc">{analysis?.brandReputation?.label ?? 'Waiting...'}</p>
-        <p className="desc">
-          Reviews Analyzed: {analysis?.brandReputation?.reviewsAnalyzed ?? 'Waiting...'}
-        </p>
-        {analysis?.brandReputation?.insights?.map((insight) => (
-          <p key={insight.topic} className="desc">
-            {insight.topic}: {insight.status}
-          </p>
-        ))}
-      </div>
-    </div>
+    </main>
   )
 }

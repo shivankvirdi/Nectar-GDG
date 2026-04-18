@@ -6,6 +6,14 @@ from .canopy_client import get_full_product_profile, search_similar_products
 from .review_integrity import analyze_review_integrity
 
 PRODUCT_KEYWORDS = [
+    "screen protector",
+    "phone case",
+    "case",
+    "charger",
+    "charging cable",
+    "cable",
+    "wireless charger",
+    "power bank",
     "laptop",
     "smartphone",
     "wired earbuds",
@@ -20,7 +28,6 @@ PRODUCT_KEYWORDS = [
     "keyboard",
     "printer",
     "gaming console",
-    "charger",
     "router",
     "microphone",
     "watch",
@@ -59,6 +66,108 @@ def build_overall_score(product_rating: float | int | None, integrity_score: int
 
     return round((rating_component * 0.4) + (integrity_score * 0.35) + (reputation_score * 0.25))
 
+def detect_accessory_type(title: str, fallback_keyword: str) -> str:
+    text = (title or "").lower()
+
+    if "screen protector" in text or "tempered glass" in text:
+        return "screen protector"
+    if "phone case" in text or re.search(r"\bcase\b", text):
+        return "phone case"
+    if "charger" in text:
+        return "charger"
+    if "cable" in text:
+        return "charging cable"
+    if "wireless charger" in text:
+        return "wireless charger"
+    if "power bank" in text:
+        return "power bank"
+
+    return fallback_keyword if fallback_keyword != "unknown" else ""
+
+
+def extract_device_name(title: str) -> str:
+    text = (title or "").strip()
+
+    patterns = [
+        r"(iPhone\s+\d+(?:\s*(?:Pro Max|Pro|Plus|Mini))?)",
+        r"(Samsung\s+Galaxy\s+[A-Z0-9+\- ]+)",
+        r"(Galaxy\s+S\d+(?:\s*(?:Plus|Ultra|FE))?)",
+        r"(Galaxy\s+Z\s+(?:Fold|Flip)\s*\d*)",
+        r"(iPad\s+[A-Za-z0-9\s]+)",
+        r"(MacBook\s+(?:Air|Pro)\s+\d+(?:-inch)?)",
+        r"(Pixel\s+\d+(?:\s*(?:Pro|a|XL))?)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+
+    return ""
+
+def clean_similar_products(similar_products: list, original_asin: str) -> list:
+    cleaned = []
+    seen_asins = set()
+
+    for item in similar_products:
+        if not isinstance(item, dict):
+            continue
+
+        asin = item.get("asin")
+        title = (item.get("title") or "").strip()
+
+        if not asin or asin == original_asin:
+            continue
+
+        if asin in seen_asins:
+            continue
+
+        if not title:
+            continue
+
+        seen_asins.add(asin)
+        cleaned.append(item)
+
+    return cleaned
+
+def build_similar_search_terms(title: str, brand_name: str, product_keyword: str) -> list[str]:
+    title = (title or "").strip()
+    brand_name = (brand_name or "").strip()
+    accessory_type = detect_accessory_type(title, product_keyword)
+    device_name = extract_device_name(title)
+
+    search_terms = []
+
+    # Best search for accessories: device + type
+    if device_name and accessory_type:
+        if accessory_type == "screen protector":
+            search_terms.append(f"{device_name} tempered glass {accessory_type}")
+            search_terms.append(f"{device_name} {accessory_type}")
+        else:
+            search_terms.append(f"{device_name} {accessory_type}")
+
+    # Brand-aware but shorter than full raw title
+    if brand_name and accessory_type:
+        search_terms.append(f"{brand_name} {accessory_type}")
+
+    # Broader fallback
+    if accessory_type:
+        search_terms.append(accessory_type)
+
+    # Last-resort raw title
+    if title:
+        search_terms.append(title)
+
+    # Remove duplicates while preserving order
+    deduped = []
+    seen = set()
+    for term in search_terms:
+        normalized = term.lower().strip()
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            deduped.append(term)
+
+    return deduped
 
 def analyze_product_url(url: str) -> dict:
     asin = extract_asin(url)
@@ -71,22 +180,34 @@ def analyze_product_url(url: str) -> dict:
     product = profile.get("product", {})
     brand = profile.get("brand", "") or product.get("brand", "")
 
-    review_integrity = analyze_review_integrity(asin)
+    reviews = profile.get("reviews") or []
+    review_integrity = analyze_review_integrity(reviews)
     brand_reputation = get_brand_reputation(brand) if brand else {
         "brand": "",
-        "reputation_score_pct": 50,
+        "reputation_score_pct": None,
         "overall_label": "Brand not found.",
         "insights": [],
         "reviews_analyzed": 0,
     }
 
     similar_products = []
-    if product_keyword != "unknown":
-        similar_products = search_similar_products(product_keyword)
+
+    title = (product.get("title") or "").strip()
+    brand_name = (brand or "").strip()
+
+    search_terms = build_similar_search_terms(title, brand_name, product_keyword)
+
+    for term in search_terms:
+        results = search_similar_products(term)
+        if results:
+            similar_products = results
+            break
+
+    similar_products = clean_similar_products(similar_products, asin)
 
     rating = product.get("rating")
     integrity_score = review_integrity.get("integrity_score_pct", 50)
-    reputation_score = brand_reputation.get("reputation_score_pct", 50)
+    reputation_score = brand_reputation.get("reputation_score_pct") or 50
 
     overall_score = build_overall_score(rating, integrity_score, reputation_score)
 
@@ -98,7 +219,8 @@ def analyze_product_url(url: str) -> dict:
         "price": (product.get("price") or {}).get("display"),
         "rating": rating,
         "reviewCount": product.get("ratingsTotal"),
-        "image": product.get("mainImageUrl"),
+        "image": product.get("mainImageUrl"), ## image available for Scanned product
+        "amazonUrl": f"https://www.amazon.com/dp/{asin}", ## link available for Scanned product 
 
         "overallScore": overall_score,
 
@@ -108,6 +230,7 @@ def analyze_product_url(url: str) -> dict:
             "verifiedPurchaseRatio": review_integrity.get("verified_purchase_ratio"),
             "sentimentConsistencyRatio": review_integrity.get("sentiment_consistency_ratio"),
             "flags": review_integrity.get("flags", {}),
+            "commonKeywords": review_integrity.get("commonKeywords", []),
         },
 
         "brandReputation": {
@@ -115,6 +238,7 @@ def analyze_product_url(url: str) -> dict:
             "label": brand_reputation.get("overall_label"),
             "insights": brand_reputation.get("insights", []),
             "reviewsAnalyzed": brand_reputation.get("reviews_analyzed", 0),
+            "commonKeywords": brand_reputation.get("commonKeywords", []),
         },
 
         "similarProducts": [
@@ -126,12 +250,15 @@ def analyze_product_url(url: str) -> dict:
                 "reviewCount": item.get("ratingsTotal"),
                 "price": (item.get("price") or {}).get("display"),
                 "isPrime": item.get("isPrime"),
+                "image": item.get("mainImageUrl"),
+                "amazonUrl": f"https://www.amazon.com/dp/{item.get('asin')}" if item.get("asin") else None,
             }
-            for item in similar_products[:3]
-        ],
+            for item in similar_products
+            if isinstance(item, dict) and item.get("asin")
+        ][:5],
 
         "raw": {
             "product": product,
-            "reviews": profile.get("reviews", []),
+            "reviews": reviews,
         },
     }
