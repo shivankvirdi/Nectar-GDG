@@ -172,7 +172,13 @@ export default function App() {
     })
   }
 
-  if (view === 'premium') return <PremiumScreen onBack={() => setView('home')} />
+  if (view === 'premium') return (
+    <main className="app-shell">
+      <div className="popup-shell">
+        <PremiumScreen onBack={() => setView('home')} />
+      </div>
+    </main>
+  )
   
   return (
     <main className="app-shell">

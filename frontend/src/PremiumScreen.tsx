@@ -59,17 +59,20 @@ const plans = [
 
 export default function PremiumScreen({ onBack }: Props) {
   return (
-    <div className="screen" style={{ overflowY: 'auto' }}>
+    <div className="screen">
 
-      <div className="navbar">
-        <div>
-          <div className="logo"> Nectar</div>
-          <div className="subtitle">PRODUCT ANALYZER</div>
+      <div className="top-header">
+        <div className="brand-row">
+          <img src="/icons/logo.png" alt="Nectar logo" className="brand-logo" />
+          <div className="brand-block">
+            <h1>Nectar</h1>
+            <p>SMART PRODUCT ANALYZER</p>
+          </div>
         </div>
         <button className="premium-btn" onClick={onBack}>← Back</button>
       </div>
 
-      <div style={{ textAlign: 'center', margin: '12px 0 16px' }}>
+      <div style={{ textAlign: 'center', margin: '12px 16px 16px' }}>
         <p style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', letterSpacing: '0.05em' }}>
           Choose Your Plan
         </p>
@@ -78,96 +81,98 @@ export default function PremiumScreen({ onBack }: Props) {
         </p>
       </div>
 
-      {plans.map((plan) => (
-        <div
-          key={plan.name}
-          style={{
-            background: plan.highlight ? 'var(--brand)' : 'var(--surface2)',
-            border: plan.highlight ? 'none' : '1px solid var(--border)',
-            borderRadius: 14,
-            padding: '14px 16px',
-            marginBottom: 10,
-            position: 'relative',
-          }}
-        >
-          {plan.highlight && (
-            <div style={{
-              position: 'absolute',
-              top: -10,
-              right: 14,
-              background: '#fff',
-              color: 'var(--brand)',
-              fontSize: 9,
-              fontWeight: 800,
-              letterSpacing: '0.15em',
-              padding: '3px 8px',
-              borderRadius: 999,
-            }}>
-              POPULAR
-            </div>
-          )}
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <p style={{
-                fontSize: 11,
+      <div style={{ padding: '0 16px 16px' }}>
+        {plans.map((plan) => (
+          <div
+            key={plan.name}
+            style={{
+              background: plan.highlight ? 'var(--brand)' : 'var(--surface2)',
+              border: plan.highlight ? 'none' : '1px solid var(--border)',
+              borderRadius: 14,
+              padding: '14px 16px',
+              marginBottom: 10,
+              position: 'relative',
+            }}
+          >
+            {plan.highlight && (
+              <div style={{
+                position: 'absolute',
+                top: -10,
+                right: 14,
+                background: '#fff',
+                color: 'var(--brand)',
+                fontSize: 9,
                 fontWeight: 800,
-                letterSpacing: '0.2em',
-                color: plan.highlight ? '#fff' : 'var(--text-muted)',
+                letterSpacing: '0.15em',
+                padding: '3px 8px',
+                borderRadius: 999,
               }}>
-                {plan.name}
-              </p>
-              <p style={{
-                fontSize: 10,
-                color: plan.highlight ? 'rgba(255,255,255,0.7)' : 'var(--text-muted)',
-                marginTop: 2,
-              }}>
-                {plan.desc}
-              </p>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <span style={{ fontSize: 22, fontWeight: 800, color: plan.highlight ? '#fff' : 'var(--text)' }}>
-                {plan.price}
-              </span>
-              <span style={{ fontSize: 10, color: plan.highlight ? 'rgba(255,255,255,0.7)' : 'var(--text-muted)' }}>
-                {plan.period}
-              </span>
-            </div>
-          </div>
+                POPULAR
+              </div>
+            )}
 
-          <div style={{ margin: '10px 0 12px' }}>
-            {plan.features.map((f) => (
-              <p key={f} style={{
-                fontSize: 11,
-                color: plan.highlight ? 'rgba(255,255,255,0.9)' : 'var(--text)',
-                marginBottom: 4,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-              }}>
-                <span style={{ color: plan.highlight ? '#fff' : 'var(--brand)', fontSize: 10 }}>✦</span>
-                {f}
-              </p>
-            ))}
-          </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <p style={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  letterSpacing: '0.2em',
+                  color: plan.highlight ? '#fff' : 'var(--text-muted)',
+                }}>
+                  {plan.name}
+                </p>
+                <p style={{
+                  fontSize: 10,
+                  color: plan.highlight ? 'rgba(255,255,255,0.7)' : 'var(--text-muted)',
+                  marginTop: 2,
+                }}>
+                  {plan.desc}
+                </p>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <span style={{ fontSize: 22, fontWeight: 800, color: plan.highlight ? '#fff' : 'var(--text)' }}>
+                  {plan.price}
+                </span>
+                <span style={{ fontSize: 10, color: plan.highlight ? 'rgba(255,255,255,0.7)' : 'var(--text-muted)' }}>
+                  {plan.period}
+                </span>
+              </div>
+            </div>
 
-          <button style={{
-            width: '100%',
-            padding: '9px',
-            borderRadius: 10,
-            border: plan.highlight ? 'none' : '1px solid var(--brand)',
-            background: plan.highlight ? 'rgba(0,0,0,0.2)' : 'transparent',
-            color: plan.highlight ? '#fff' : 'var(--brand)',
-            fontWeight: 700,
-            fontSize: 11,
-            letterSpacing: '0.1em',
-            cursor: 'pointer',
-            fontFamily: 'var(--font-display)',
-          }}>
-            {plan.cta}
-          </button>
-        </div>
-      ))}
+            <div style={{ margin: '10px 0 12px' }}>
+              {plan.features.map((f) => (
+                <p key={f} style={{
+                  fontSize: 11,
+                  color: plan.highlight ? 'rgba(255,255,255,0.9)' : 'var(--text)',
+                  marginBottom: 4,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}>
+                  <span style={{ color: plan.highlight ? '#fff' : 'var(--brand)', fontSize: 10 }}>✦</span>
+                  {f}
+                </p>
+              ))}
+            </div>
+
+            <button style={{
+              width: '100%',
+              padding: '9px',
+              borderRadius: 10,
+              border: plan.highlight ? 'none' : '1px solid var(--brand)',
+              background: plan.highlight ? 'rgba(0,0,0,0.2)' : 'transparent',
+              color: plan.highlight ? '#fff' : 'var(--brand)',
+              fontWeight: 700,
+              fontSize: 11,
+              letterSpacing: '0.1em',
+              cursor: 'pointer',
+              fontFamily: 'var(--font-display)',
+            }}>
+              {plan.cta}
+            </button>
+          </div>
+        ))}
+      </div>
 
     </div>
   )

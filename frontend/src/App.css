@@ -395,3 +395,19 @@ body {
   background: #fff6a5;
   color: #7d7317;
 }
+
+.screen {
+  padding: 0;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  max-height: 600px;
+  border-radius: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.screen::-webkit-scrollbar {
+  display: none;
+}
