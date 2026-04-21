@@ -33,7 +33,7 @@ npm run build
 ## Deploying Backend Server
 Use hosted backend already deployed on Render -- no setup required.  
 ### Deploy locally (optional)
-Change frontend/env.production to:
+Change frontend/.env.production to:
 ```
 VITE_API_URL=http://127.0.0.1:8000
 ```
