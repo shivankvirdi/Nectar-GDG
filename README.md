@@ -22,6 +22,6 @@ npm run build #sets up frontend
 cd..
 uvicorn backend.main:app --reload #starts backend server (port 8000)
 ```
-Go to chrome://extensions/, turn on "Developer mode", click load unpacked, and upload the GDGC-Ballers/frontend/dist file. 
-______________________________________________________________________________________________________________________________________________________
-We hope you enjoy using our extension!
+Go to chrome://extensions/, turn on "Developer mode", click load unpacked, and upload the Nectar/frontend/dist file.  
+_____________________________________________________________________________________________________________________________________________________
+Co-developed with Iyanna Arches, Jaycob Pakingan, Aanya Agarwal, & Kaylana Chaun. We hope you enjoy using our extension!
