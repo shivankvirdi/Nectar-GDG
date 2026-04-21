@@ -1,17 +1,19 @@
 # ai_analysis.py
 import os
 import json
-import re
-from groq import Groq
+import time
+
 from dotenv import load_dotenv
+from google import genai
+from google.genai import types
 
 load_dotenv()
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-if not GROQ_API_KEY:
-    raise RuntimeError("❌ GROQ_API_KEY is missing from your .env file")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if not GEMINI_API_KEY:
+    raise RuntimeError("❌ GEMINI_API_KEY is missing from your .env file")
 
-client = Groq(api_key=GROQ_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 
 def get_ai_verdict(
@@ -45,58 +47,95 @@ Brand Reputation: {reputation_score}/100
 Customer reviews:
 {review_snippets}
 
-Return ONLY valid JSON (no markdown, no explanation) in this exact shape:
-{{
-  "pros": ["string", "string", "string"],
-  "cons": ["string", "string", "string"],
-  "verdict": "one sentence plain-English summary of whether this product is worth buying",
-  "recommendation": "BUY" | "COMPARE" | "SKIP"
-}}
+Return JSON only.
 
 Rules:
 - pros/cons must come directly from patterns in the reviews, not invented
 - verdict must be one sentence, max 20 words
 - recommendation: BUY if score>=75, SKIP if score<50, otherwise COMPARE
-- if reviews are overwhelmingly positive with no real cons, make the cons minor nitpicks only"""
+- if reviews are overwhelmingly positive with no real cons, make the cons minor nitpicks only
+"""
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "pros": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 3,
+                "maxItems": 3,
+            },
+            "cons": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 3,
+                "maxItems": 3,
+            },
+            "verdict": {"type": "string"},
+            "recommendation": {
+                "type": "string",
+                "enum": ["BUY", "COMPARE", "SKIP"],
+            },
+        },
+        "required": ["pros", "cons", "verdict", "recommendation"],
+    }
 
     try:
-        print("[AI Analysis] Calling Groq...")
-        response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=512,
-            temperature=0.3,
-        )
-        raw = response.choices[0].message.content.strip()
-        print(f"[AI Analysis] ✅ Groq responded: {raw[:300]}")
+        print("[AI Analysis] Calling Gemini...")
 
-        json_match = re.search(r'\{.*\}', raw, re.DOTALL)
-        if not json_match:
-            print("[AI Analysis] ❌ No JSON found in response")
-            return _fallback(overall_score)
+        models_to_try = [
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
+        ]
 
-        result = json.loads(json_match.group())
+        for model_name in models_to_try:
+            for attempt in range(3):
+                try:
+                    print(f"[AI Analysis] Trying {model_name} (attempt {attempt + 1})")
 
-        pros = result.get("pros", [])
-        cons = result.get("cons", [])
-        while len(pros) < 3:
-            pros.append("No further pros identified")
-        while len(cons) < 3:
-            cons.append("No further cons identified")
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            temperature=0.3,
+                            response_mime_type="application/json",
+                            response_json_schema=schema,
+                        ),
+                    )
 
-        rec = result.get("recommendation", "COMPARE")
-        if rec not in ("BUY", "COMPARE", "SKIP"):
-            rec = "COMPARE"
+                    raw = (response.text or "").strip()
+                    print(f"[AI Analysis] ✅ Gemini responded: {raw[:300]}")
 
-        return {
-            "pros": pros[:3],
-            "cons": cons[:3],
-            "verdict": result.get("verdict", "See scores above for details."),
-            "recommendation": rec,
-        }
+                    result = json.loads(raw)
+
+                    pros = result.get("pros", [])
+                    cons = result.get("cons", [])
+
+                    while len(pros) < 3:
+                        pros.append("No further pros identified")
+                    while len(cons) < 3:
+                        cons.append("No further cons identified")
+
+                    rec = result.get("recommendation", "COMPARE")
+                    if rec not in ("BUY", "COMPARE", "SKIP"):
+                        rec = "COMPARE"
+
+                    return {
+                        "pros": pros[:3],
+                        "cons": cons[:3],
+                        "verdict": result.get("verdict", "See scores above."),
+                        "recommendation": rec,
+                    }
+
+                except Exception as e:
+                    print(f"[AI Analysis] ⚠️ {model_name} failed: {e}")
+                    time.sleep(1.5 * (attempt + 1))
+
+        print("[AI Analysis] ❌ All Gemini attempts failed")
+        return _fallback(overall_score)
 
     except Exception as e:
-        print(f"[AI Analysis] ❌ EXCEPTION — {type(e).__name__}: {e}")
+        print(f"[AI Analysis] ❌ FINAL EXCEPTION: {e}")
         import traceback
         traceback.print_exc()
         return _fallback(overall_score)
@@ -105,8 +144,16 @@ Rules:
 def _fallback(overall_score: int) -> dict:
     rec = "BUY" if overall_score >= 75 else "SKIP" if overall_score < 50 else "COMPARE"
     return {
-        "pros": ["Verified purchase ratio is strong", "Rating aligns with review sentiment", "Brand has positive reputation"],
-        "cons": ["Limited review data available", "Could not extract detailed feedback", "Manual review recommended"],
+        "pros": [
+            "Verified purchase ratio is strong",
+            "Rating aligns with review sentiment",
+            "Brand has positive reputation",
+        ],
+        "cons": [
+            "Limited review data available",
+            "Could not extract detailed feedback",
+            "Manual review recommended",
+        ],
         "verdict": "Analysis based on scores only — not enough review text available.",
         "recommendation": rec,
     }
