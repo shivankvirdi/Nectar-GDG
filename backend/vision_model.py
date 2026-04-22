@@ -67,6 +67,7 @@ def build_overall_score(product_rating: float | int | None, integrity_score: int
 
     return round((rating_component * 0.4) + (integrity_score * 0.35) + (reputation_score * 0.25))
 
+
 def detect_accessory_type(title: str, fallback_keyword: str) -> str:
     text = (title or "").lower()
 
@@ -76,10 +77,10 @@ def detect_accessory_type(title: str, fallback_keyword: str) -> str:
         return "phone case"
     if "charger" in text:
         return "charger"
-    if "cable" in text:
-        return "charging cable"
     if "wireless charger" in text:
         return "wireless charger"
+    if "cable" in text:
+        return "charging cable"
     if "power bank" in text:
         return "power bank"
 
@@ -106,6 +107,7 @@ def extract_device_name(title: str) -> str:
 
     return ""
 
+
 def clean_similar_products(similar_products: list, original_asin: str) -> list:
     cleaned = []
     seen_asins = set()
@@ -131,6 +133,7 @@ def clean_similar_products(similar_products: list, original_asin: str) -> list:
 
     return cleaned
 
+
 def build_similar_search_terms(title: str, brand_name: str, product_keyword: str) -> list[str]:
     title = (title or "").strip()
     brand_name = (brand_name or "").strip()
@@ -139,7 +142,6 @@ def build_similar_search_terms(title: str, brand_name: str, product_keyword: str
 
     search_terms = []
 
-    # Best search for accessories: device + type
     if device_name and accessory_type:
         if accessory_type == "screen protector":
             search_terms.append(f"{device_name} tempered glass {accessory_type}")
@@ -147,19 +149,15 @@ def build_similar_search_terms(title: str, brand_name: str, product_keyword: str
         else:
             search_terms.append(f"{device_name} {accessory_type}")
 
-    # Brand-aware but shorter than full raw title
     if brand_name and accessory_type:
         search_terms.append(f"{brand_name} {accessory_type}")
 
-    # Broader fallback
     if accessory_type:
         search_terms.append(accessory_type)
 
-    # Last-resort raw title
     if title:
         search_terms.append(title)
 
-    # Remove duplicates while preserving order
     deduped = []
     seen = set()
     for term in search_terms:
@@ -170,7 +168,8 @@ def build_similar_search_terms(title: str, brand_name: str, product_keyword: str
 
     return deduped
 
-def analyze_product_url(url: str) -> dict:
+
+async def analyze_product_url(url: str) -> dict:
     asin = extract_asin(url)
     if not asin:
         raise ValueError("Could not find an Amazon ASIN in the provided URL.")
@@ -183,12 +182,14 @@ def analyze_product_url(url: str) -> dict:
 
     reviews = profile.get("reviews") or []
     review_integrity = analyze_review_integrity(reviews)
-    brand_reputation = get_brand_reputation(brand) if brand else {
+
+    brand_reputation = await get_brand_reputation(brand, reviews) if brand else {
         "brand": "",
         "reputation_score_pct": None,
         "overall_label": "Brand not found.",
         "insights": [],
         "reviews_analyzed": 0,
+        "commonKeywords": [],
     }
 
     similar_products = []
@@ -212,7 +213,6 @@ def analyze_product_url(url: str) -> dict:
 
     overall_score = build_overall_score(rating, integrity_score, reputation_score)
 
-    # AI Pros/Cons + Verdict
     ai_analysis = get_ai_verdict(
         title=title,
         reviews=reviews,
@@ -229,8 +229,8 @@ def analyze_product_url(url: str) -> dict:
         "price": (product.get("price") or {}).get("display"),
         "rating": rating,
         "reviewCount": product.get("ratingsTotal"),
-        "image": product.get("mainImageUrl"), ## image available for Scanned product
-        "amazonUrl": f"https://www.amazon.com/dp/{asin}", ## link available for Scanned product 
+        "image": product.get("mainImageUrl"),
+        "amazonUrl": f"https://www.amazon.com/dp/{asin}",
 
         "overallScore": overall_score,
 
@@ -249,6 +249,7 @@ def analyze_product_url(url: str) -> dict:
             "insights": brand_reputation.get("insights", []),
             "reviewsAnalyzed": brand_reputation.get("reviews_analyzed", 0),
             "commonKeywords": brand_reputation.get("commonKeywords", []),
+            "source": brand_reputation.get("source"),
         },
 
         "aiAnalysis": {

@@ -1,6 +1,5 @@
 fastapi
 uvicorn
-vaderSentiment
 nltk
 requests
 beautifulsoup4

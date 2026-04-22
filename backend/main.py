@@ -1,3 +1,9 @@
+import sys
+import asyncio
+
+if sys.platform.startswith("win"):
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,7 +36,7 @@ async def health():
 @app.post("/current-url")
 async def analyze_product(payload: UrlPayload):
     try:
-        analysis = analyze_product_url(payload.url)
+        analysis = await analyze_product_url(payload.url)
         return {"ok": True, "analysis": analysis}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -44,7 +50,7 @@ async def explain_score(payload: ExplainScorePayload):
         return {"ok": True, **answer}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-    
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     print(f"[REQUEST] {request.method} {request.url}")

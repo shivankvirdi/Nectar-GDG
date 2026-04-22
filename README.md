@@ -23,6 +23,7 @@ pip install -r requirements.txt
 ```
 CANOPY_API_KEY="your_api_key_here"
 GEMINI_API_KEY="your_api_key_here"
+GOOGLE_PLACES_API_KEY=your_api_key_here
 ```
 ## Frontend Setup
 Install Node.js (http://nodejs.org/en/download) and add to PATH.
