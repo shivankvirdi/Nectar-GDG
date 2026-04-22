@@ -29,6 +29,10 @@ type Analysis = {
   rating?: string | number | null
   reviewCount?: number | null
   overallScore?: number
+  image?: string
+  imageUrl?: string
+  mainImageUrl?: string
+  mainImage?: string
   reviewIntegrity?: {
     score?: number
     label?: string
@@ -90,8 +94,13 @@ function compareProductAgainstCurrent(current: Analysis | null, product?: Simila
   const currentRating = Number(current?.rating ?? NaN)
   const otherRating = Number(product?.rating ?? NaN)
 
+  const currentReviewCount = Number(current?.reviewCount ?? NaN)
+  const otherReviewCount = Number(product?.reviewCount ?? NaN)
+
   const hasCurrentRating = Number.isFinite(currentRating)
   const hasOtherRating = Number.isFinite(otherRating)
+  const hasCurrentReviewCount = Number.isFinite(currentReviewCount)
+  const hasOtherReviewCount = Number.isFinite(otherReviewCount)
 
   const priceDiff =
     currentPrice !== null && otherPrice !== null
@@ -102,21 +111,31 @@ function compareProductAgainstCurrent(current: Analysis | null, product?: Simila
   let score = 0
 
   if (priceDiff !== null) {
-    if (priceDiff <= -12) score += 1
-    if (priceDiff >= 12) score -= 1
+    if (priceDiff <= -12) score += 2
+    else if (priceDiff < 0) score += 1
+    else if (priceDiff >= 12) score -= 2
+    else if (priceDiff > 0) score -= 1
   }
 
   if (hasCurrentRating && hasOtherRating) {
-    if (otherRating >= currentRating + 0.4) score += 1
-    if (otherRating <= currentRating - 0.4) score -= 1
+    if (otherRating >= currentRating + 0.4) score += 2
+    else if (otherRating > currentRating) score += 1
+    else if (otherRating <= currentRating - 0.4) score -= 2
+    else if (otherRating < currentRating) score -= 1
   }
 
-  if (score >= 1) tag = 'BETTER'
-  else if (score <= -1) tag = 'WORSE'
+  if (hasCurrentReviewCount && hasOtherReviewCount) {
+    if (otherReviewCount >= currentReviewCount * 1.2) score += 0.5
+    if (otherReviewCount <= currentReviewCount * 0.6) score -= 0.5
+  }
+
+  if (score >= 1.5) tag = 'BETTER'
+  else if (score <= -1.5) tag = 'WORSE'
 
   return {
     tag,
     priceDiff,
+    score,
   }
 }
 
@@ -124,6 +143,24 @@ function getTagClassName(tag: 'BETTER' | 'SIMILAR' | 'WORSE') {
   if (tag === 'BETTER') return 'comparison-badge comparison-badge--better'
   if (tag === 'WORSE') return 'comparison-badge comparison-badge--worse'
   return 'comparison-badge comparison-badge--similar'
+}
+
+function getBestAlternativeIndex(current: Analysis | null, products?: SimilarProduct[]) {
+  if (!products?.length) return -1
+
+  let bestIndex = -1
+  let bestScore = Number.NEGATIVE_INFINITY
+
+  products.forEach((product, index) => {
+    const comparison = compareProductAgainstCurrent(current, product)
+
+    if (comparison.score > bestScore) {
+      bestScore = comparison.score
+      bestIndex = index
+    }
+  })
+
+  return bestScore > 0 ? bestIndex : -1
 }
 
 function storageGet<T>(key: string): Promise<T | null> {
@@ -163,6 +200,7 @@ const mockAnalysis: Analysis = {
   rating: 4.7,
   reviewCount: 12000,
   overallScore: 84,
+  image: '',
   reviewIntegrity: {
     score: 82,
     label: 'Mostly authentic',
@@ -284,11 +322,11 @@ function SkeletonResults() {
   )
 }
 
-function ProductImagePlaceholder() {
+function ProductImagePlaceholder({ className = 'similar-card-image' }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 110 110"
-      className="similar-card-image"
+      className={className}
       xmlns="http://www.w3.org/2000/svg"
       style={{ background: '#f8f7f5' }}
     >
@@ -463,7 +501,7 @@ export default function App() {
   const [currentUrl, setCurrentUrl] = useState('Loading...')
   const [backendStatus, setBackendStatus] = useState('Ready to scan')
   const [analysis, setAnalysis] = useState<Analysis | null>(DEV_PREVIEW ? mockAnalysis : null)
-  const [view, setView] = useState<'home' | 'premium'>('home')
+  const [view, setView] = useState<'home' | 'premium' | 'compare'>('home')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [hasScanned, setHasScanned] = useState<boolean>(DEV_PREVIEW)
@@ -471,8 +509,61 @@ export default function App() {
   const [currentSavedScan, setCurrentSavedScan] = useState<ScanRecord | null>(null)
   const [previousSavedScan, setPreviousSavedScan] = useState<ScanRecord | null>(null)
   const [scanHistory, setScanHistory] = useState<ScanRecord[]>([])
+  const [selectedCompareIds, setSelectedCompareIds] = useState<string[]>([])
+  const [compareRecords, setCompareRecords] = useState<[ScanRecord, ScanRecord] | null>(null)
 
-  const loadableLastScan = previousSavedScan ?? currentSavedScan
+  const toggleCompareSelection = (id: string) => {
+    setSelectedCompareIds((prev) => {
+      if (prev.includes(id)) return prev.filter((item) => item !== id)
+      if (prev.length >= 2) return [prev[1], id]
+      return [...prev, id]
+    })
+  }
+
+  function renderMetricValue(value?: string | number | null) {
+    return value ?? 'N/A'
+  }
+
+  function getAnalysisImage(item: Analysis | null | undefined): string | undefined {
+    if (!item) return undefined
+    return item.image || item.imageUrl || item.mainImageUrl || item.mainImage || undefined
+  }
+
+  function getNumericMetric(value?: string | number | null): number | null {
+    if (value === null || value === undefined) return null
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null
+
+    const cleaned = String(value).replace(/[^0-9.\-]/g, '')
+    const parsed = Number(cleaned)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+
+  function getMetricWinner(
+    leftValue: string | number | null | undefined,
+    rightValue: string | number | null | undefined,
+    direction: 'higher' | 'lower' = 'higher'
+  ): 'left' | 'right' | 'tie' {
+    const leftNum = getNumericMetric(leftValue)
+    const rightNum = getNumericMetric(rightValue)
+
+    if (leftNum === null || rightNum === null) return 'tie'
+    if (leftNum === rightNum) return 'tie'
+
+    if (direction === 'higher') {
+      return leftNum > rightNum ? 'left' : 'right'
+    }
+
+    return leftNum < rightNum ? 'left' : 'right'
+  }
+
+  function getCompareValueClass(
+    winner: 'left' | 'right' | 'tie',
+    side: 'left' | 'right'
+  ) {
+    if (winner === 'tie') return 'compare-value'
+    if (winner === side) return 'compare-value compare-value--winner'
+    return 'compare-value compare-value--muted'
+  }
 
   useEffect(() => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -519,7 +610,7 @@ export default function App() {
         setLoading(true)
         setError('')
         setAnalysis(null)
-        setBackendStatus('Analyzing product...')
+        setBackendStatus('Running product analyses...')
 
         const response = await fetch(`${API_BASE}/current-url`, {
           method: 'POST',
@@ -549,6 +640,7 @@ export default function App() {
         setBackendStatus('Analysis complete')
         setHasScanned(true)
         setError('')
+        setView('home')
 
         const oldCurrent = await loadCurrentSavedScan()
 
@@ -576,7 +668,7 @@ export default function App() {
 
         setScanHistory(nextHistory)
       } catch {
-        const msg = 'Scan failed. Is the server running?'
+        const msg = 'Scan failed. Please open an Amazon product or start server.'
         setBackendStatus(msg)
         setError(msg)
       } finally {
@@ -585,11 +677,356 @@ export default function App() {
     })
   }
 
+  const scanHistorySection = scanHistory.length > 0 && (
+    <SectionCard title="Scan History" collapsible defaultOpen={false}>
+      <div className="scan-history-list">
+        {scanHistory.map((item) => {
+          const isSelected = selectedCompareIds.includes(item.id)
+
+          return (
+            <div
+              key={item.id}
+              className={`history-item history-item--selectable ${isSelected ? 'history-item--selected' : ''}`}
+            >
+              <button
+                type="button"
+                className="history-load-btn"
+                onClick={() => {
+                  setAnalysis(item.analysis)
+                  setHasScanned(true)
+                  setBackendStatus('Loaded scan from history')
+                  setError('')
+                }}
+              >
+                <div className="history-item-top">
+                  <p className="history-item-title">{item.analysis.title ?? 'Untitled Product'}</p>
+                  <span className="history-score">{item.analysis.overallScore ?? '--'}</span>
+                </div>
+
+                <p className="history-item-meta">
+                  {item.analysis.brand ?? 'Unknown brand'} • {new Date(item.scannedAt).toLocaleString()}
+                </p>
+              </button>
+
+              <div className="history-item-actions">
+                <button
+                  type="button"
+                  className={`why-score-btn ${isSelected ? 'secondary-btn--active' : ''}`}
+                  onClick={() => toggleCompareSelection(item.id)}
+                >
+                  {isSelected ? 'Selected for Compare' : 'Select to Compare'}
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {scanHistory.length >= 2 && (
+        <div className="compare-history-actions">
+          <button
+            className="scan-btn"
+            disabled={selectedCompareIds.length !== 2}
+            onClick={() => {
+              const selected = scanHistory.filter((item) => selectedCompareIds.includes(item.id))
+              if (selected.length === 2) {
+                setCompareRecords([selected[0], selected[1]])
+                setView('compare')
+                setSelectedCompareIds([])
+              }
+            }}
+          >
+            {selectedCompareIds.length === 2
+              ? 'Compare Selected Products'
+              : 'Select 2 Products to Compare'}
+          </button>
+        </div>
+      )}
+    </SectionCard>
+  )
+
+  if (view === 'compare' && compareRecords) {
+    const [left, right] = compareRecords
+    const leftAnalysis = left.analysis
+    const rightAnalysis = right.analysis
+
+    const leftImage = getAnalysisImage(leftAnalysis)
+    const rightImage = getAnalysisImage(rightAnalysis)
+
+    const scoreWinner = getMetricWinner(leftAnalysis.overallScore, rightAnalysis.overallScore, 'higher')
+    const priceWinner = getMetricWinner(leftAnalysis.price, rightAnalysis.price, 'lower')
+    const ratingWinner = getMetricWinner(leftAnalysis.rating, rightAnalysis.rating, 'higher')
+    const reviewCountWinner = getMetricWinner(leftAnalysis.reviewCount, rightAnalysis.reviewCount, 'higher')
+    const integrityWinner = getMetricWinner(leftAnalysis.reviewIntegrity?.score, rightAnalysis.reviewIntegrity?.score, 'higher')
+    const brandWinner = getMetricWinner(leftAnalysis.brandReputation?.score, rightAnalysis.brandReputation?.score, 'higher')
+
+    const leftWins =
+      (scoreWinner === 'left' ? 1 : 0) +
+      (priceWinner === 'left' ? 1 : 0) +
+      (ratingWinner === 'left' ? 1 : 0) +
+      (reviewCountWinner === 'left' ? 1 : 0) +
+      (integrityWinner === 'left' ? 1 : 0) +
+      (brandWinner === 'left' ? 1 : 0)
+
+    const rightWins =
+      (scoreWinner === 'right' ? 1 : 0) +
+      (priceWinner === 'right' ? 1 : 0) +
+      (ratingWinner === 'right' ? 1 : 0) +
+      (reviewCountWinner === 'right' ? 1 : 0) +
+      (integrityWinner === 'right' ? 1 : 0) +
+      (brandWinner === 'right' ? 1 : 0)
+
+    const summaryLabel =
+      leftWins === rightWins
+        ? 'CLOSE MATCH'
+        : leftWins > rightWins
+          ? 'LEFT PRODUCT LEADS'
+          : 'RIGHT PRODUCT LEADS'
+
+    return (
+      <main className="app-shell">
+        <div className="popup-shell">
+          <header className="top-header">
+            <div className="brand-row">
+              <img src="/icons/logo.png" alt="Nectar logo" className="brand-logo" />
+              <div className="brand-block">
+                <h1>Nectar</h1>
+                <p>PRODUCT COMPARISON</p>
+              </div>
+            </div>
+            <button className="premium-btn" onClick={() => setView('home')}>Back</button>
+          </header>
+
+          <div className="content" key="compare-view">
+            <div className="cascade-item cascade-delay-1"><section className="section-card compare-hero">
+              <div className="compare-hero-top">
+                <div>
+                  <h3 className="compare-hero-title">Compare Products</h3>
+                  <p className="compare-hero-text">
+                    A cleaner side-by-side view of pricing, trust, ratings, and AI verdicts.
+                  </p>
+                </div>
+                <span className="compare-summary-badge">{summaryLabel}</span>
+              </div>
+
+              <div className="compare-summary-chips">
+                <span className="compare-chip">
+                  Best Value: {priceWinner === 'tie' ? 'Tie' : priceWinner === 'left' ? 'Left' : 'Right'}
+                </span>
+                <span className="compare-chip">
+                  Higher Rated: {ratingWinner === 'tie' ? 'Tie' : ratingWinner === 'left' ? 'Left' : 'Right'}
+                </span>
+                <span className="compare-chip">
+                  More Trusted: {integrityWinner === 'tie' ? 'Tie' : integrityWinner === 'left' ? 'Left' : 'Right'}
+                </span>
+                <span className="compare-chip">
+                  Better Brand: {brandWinner === 'tie' ? 'Tie' : brandWinner === 'left' ? 'Left' : 'Right'}
+                </span>
+              </div>
+            </section></div>
+
+            <div className="cascade-item cascade-delay-2"><section className="compare-products-grid">
+              <article className={`compare-product-card ${leftWins > rightWins ? 'compare-product-card--leader' : ''}`}>
+                <div className="compare-product-image-wrap">
+                  {leftImage ? (
+                    <img src={leftImage} alt={leftAnalysis.title ?? 'Product'} className="compare-product-image" />
+                  ) : (
+                    <ProductImagePlaceholder className="compare-product-image" />
+                  )}
+                </div>
+
+                <div className="compare-product-card-body">
+                  <div className="compare-product-card-top">
+                    <span className="compare-side-badge">LEFT</span>
+                    {leftWins > rightWins && <span className="compare-winner-badge">BEST PICK</span>}
+                  </div>
+
+                  <p className="compare-product-title">{leftAnalysis.title ?? 'Untitled Product'}</p>
+                  <p className="compare-product-meta">
+                    {leftAnalysis.brand ?? 'Unknown brand'} • {new Date(left.scannedAt).toLocaleString()}
+                  </p>
+
+                  <div className="compare-quick-stats">
+                    <div className="compare-quick-stat">
+                      <span>Score</span>
+                      <strong>{renderMetricValue(leftAnalysis.overallScore)}</strong>
+                    </div>
+                    <div className="compare-quick-stat">
+                      <span>Price</span>
+                      <strong>{renderMetricValue(leftAnalysis.price)}</strong>
+                    </div>
+                    <div className="compare-quick-stat">
+                      <span>Rating</span>
+                      <strong>{renderMetricValue(leftAnalysis.rating)}</strong>
+                    </div>
+                  </div>
+                </div>
+              </article>
+
+              <article className={`compare-product-card ${rightWins > leftWins ? 'compare-product-card--leader' : ''}`}>
+                <div className="compare-product-image-wrap">
+                  {rightImage ? (
+                    <img src={rightImage} alt={rightAnalysis.title ?? 'Product'} className="compare-product-image" />
+                  ) : (
+                    <ProductImagePlaceholder className="compare-product-image" />
+                  )}
+                </div>
+
+                <div className="compare-product-card-body">
+                  <div className="compare-product-card-top">
+                    <span className="compare-side-badge">RIGHT</span>
+                    {rightWins > leftWins && <span className="compare-winner-badge">BEST PICK</span>}
+                  </div>
+
+                  <p className="compare-product-title">{rightAnalysis.title ?? 'Untitled Product'}</p>
+                  <p className="compare-product-meta">
+                    {rightAnalysis.brand ?? 'Unknown brand'} • {new Date(right.scannedAt).toLocaleString()}
+                  </p>
+
+                  <div className="compare-quick-stats">
+                    <div className="compare-quick-stat">
+                      <span>Score</span>
+                      <strong>{renderMetricValue(rightAnalysis.overallScore)}</strong>
+                    </div>
+                    <div className="compare-quick-stat">
+                      <span>Price</span>
+                      <strong>{renderMetricValue(rightAnalysis.price)}</strong>
+                    </div>
+                    <div className="compare-quick-stat">
+                      <span>Rating</span>
+                      <strong>{renderMetricValue(rightAnalysis.rating)}</strong>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            </section></div>
+
+            <div className="cascade-item cascade-delay-3"><section className="section-card compare-section-card">
+              <h3 className="compare-section-title">Core Metrics</h3>
+
+              <div className="compare-rows">
+                <div className="compare-row">
+                  <div className="compare-row-label">Overall Score</div>
+                  <div className={getCompareValueClass(scoreWinner, 'left')}>{renderMetricValue(leftAnalysis.overallScore)}</div>
+                  <div className={getCompareValueClass(scoreWinner, 'right')}>{renderMetricValue(rightAnalysis.overallScore)}</div>
+                </div>
+
+                <div className="compare-row">
+                  <div className="compare-row-label">Price</div>
+                  <div className={getCompareValueClass(priceWinner, 'left')}>{renderMetricValue(leftAnalysis.price)}</div>
+                  <div className={getCompareValueClass(priceWinner, 'right')}>{renderMetricValue(rightAnalysis.price)}</div>
+                </div>
+
+                <div className="compare-row">
+                  <div className="compare-row-label">Rating</div>
+                  <div className={getCompareValueClass(ratingWinner, 'left')}>{renderMetricValue(leftAnalysis.rating)}</div>
+                  <div className={getCompareValueClass(ratingWinner, 'right')}>{renderMetricValue(rightAnalysis.rating)}</div>
+                </div>
+
+                <div className="compare-row">
+                  <div className="compare-row-label">Review Count</div>
+                  <div className={getCompareValueClass(reviewCountWinner, 'left')}>{renderMetricValue(leftAnalysis.reviewCount)}</div>
+                  <div className={getCompareValueClass(reviewCountWinner, 'right')}>{renderMetricValue(rightAnalysis.reviewCount)}</div>
+                </div>
+              </div>
+            </section></div>
+
+            <div className="cascade-item cascade-delay-4"><section className="section-card compare-section-card">
+              <h3 className="compare-section-title">Trust & Reputation</h3>
+
+              <div className="compare-rows">
+                <div className="compare-row">
+                  <div className="compare-row-label">Review Integrity</div>
+                  <div className={getCompareValueClass(integrityWinner, 'left')}>{renderMetricValue(leftAnalysis.reviewIntegrity?.score)}</div>
+                  <div className={getCompareValueClass(integrityWinner, 'right')}>{renderMetricValue(rightAnalysis.reviewIntegrity?.score)}</div>
+                </div>
+
+                <div className="compare-row">
+                  <div className="compare-row-label">Integrity Label</div>
+                  <div className="compare-value">{renderMetricValue(leftAnalysis.reviewIntegrity?.label)}</div>
+                  <div className="compare-value">{renderMetricValue(rightAnalysis.reviewIntegrity?.label)}</div>
+                </div>
+
+                <div className="compare-row">
+                  <div className="compare-row-label">Verified Ratio</div>
+                  <div className="compare-value">{renderMetricValue(leftAnalysis.reviewIntegrity?.verifiedPurchaseRatio)}</div>
+                  <div className="compare-value">{renderMetricValue(rightAnalysis.reviewIntegrity?.verifiedPurchaseRatio)}</div>
+                </div>
+
+                <div className="compare-row">
+                  <div className="compare-row-label">Brand Reputation</div>
+                  <div className={getCompareValueClass(brandWinner, 'left')}>{renderMetricValue(leftAnalysis.brandReputation?.score)}</div>
+                  <div className={getCompareValueClass(brandWinner, 'right')}>{renderMetricValue(rightAnalysis.brandReputation?.score)}</div>
+                </div>
+
+                <div className="compare-row">
+                  <div className="compare-row-label">Brand Label</div>
+                  <div className="compare-value">{renderMetricValue(leftAnalysis.brandReputation?.label)}</div>
+                  <div className="compare-value">{renderMetricValue(rightAnalysis.brandReputation?.label)}</div>
+                </div>
+              </div>
+            </section></div>
+
+            <div className="cascade-item cascade-delay-5"><section className="section-card compare-section-card">
+              <h3 className="compare-section-title">AI Verdict</h3>
+
+              <div className="compare-ai-grid">
+                <div className="compare-ai-card">
+                  <p className="compare-ai-label">Recommendation</p>
+                  <p className="compare-ai-recommendation">{renderMetricValue(leftAnalysis.aiAnalysis?.recommendation)}</p>
+                  <p className="compare-ai-verdict">{renderMetricValue(leftAnalysis.aiAnalysis?.verdict)}</p>
+                </div>
+
+                <div className="compare-ai-card">
+                  <p className="compare-ai-label">Recommendation</p>
+                  <p className="compare-ai-recommendation">{renderMetricValue(rightAnalysis.aiAnalysis?.recommendation)}</p>
+                  <p className="compare-ai-verdict">{renderMetricValue(rightAnalysis.aiAnalysis?.verdict)}</p>
+                </div>
+              </div>
+            </section></div>
+
+            <div className="cascade-item cascade-delay-6"><SectionCard title="Review Integrity Keywords">
+              <p className="compare-subtitle">{leftAnalysis.title ?? 'Left Product'}</p>
+              <KeywordPills
+                keywords={leftAnalysis.reviewIntegrity?.commonKeywords}
+                emptyMessage="No keywords found"
+              />
+
+              <div style={{ height: 14 }} />
+
+              <p className="compare-subtitle">{rightAnalysis.title ?? 'Right Product'}</p>
+              <KeywordPills
+                keywords={rightAnalysis.reviewIntegrity?.commonKeywords}
+                emptyMessage="No keywords found"
+              />
+            </SectionCard></div>
+
+            <div className="cascade-item cascade-delay-7"><SectionCard title="Brand Reputation Keywords">
+              <p className="compare-subtitle">{leftAnalysis.title ?? 'Left Product'}</p>
+              <KeywordPills
+                keywords={leftAnalysis.brandReputation?.commonKeywords}
+                emptyMessage="No keywords found"
+              />
+
+              <div style={{ height: 14 }} />
+
+              <p className="compare-subtitle">{rightAnalysis.title ?? 'Right Product'}</p>
+              <KeywordPills
+                keywords={rightAnalysis.brandReputation?.commonKeywords}
+                emptyMessage="No keywords found"
+              />
+            </SectionCard></div>
+          </div>
+        </div>
+      </main>
+    )
+  }
+
   if (view === 'premium') {
     return (
       <main className="app-shell">
         <div className="popup-shell">
-          <PremiumScreen onBack={() => setView('home')} />
+          <PremiumScreen key="premium-screen" onBack={() => setView('home')} />
         </div>
       </main>
     )
@@ -609,98 +1046,31 @@ export default function App() {
           <button className="premium-btn" onClick={() => setView('premium')}>Go Premium</button>
         </header>
 
-        <div className="content">
-          <SectionCard title="Product Analysis">
+        <div className="content" key="home-view">
+          <div className="cascade-item cascade-delay-1"><SectionCard title="Product Analysis">
             <p className={`body-text ${error ? 'status-error' : 'status-ok'}`}>
               {error || backendStatus}
             </p>
             <button className="scan-btn" onClick={handleScan} disabled={loading}>
               {loading ? 'Scanning...' : 'Scan Product'}
             </button>
-          </SectionCard>
+          </SectionCard></div>
 
-          {(loadableLastScan || scanHistory.length > 0) && (
-            <SectionCard title="Scan History" collapsible defaultOpen={false}>
-              <div className="scan-history-list">
-                {loadableLastScan && (
-                  <div className="history-featured">
-                    <div className="history-featured-header">
-                      <p className="history-featured-label">LAST SAVED SCAN</p>
-                      <span className="history-score">{loadableLastScan.analysis.overallScore ?? '--'}</span>
-                    </div>
-
-                    <p className="history-item-title">
-                      {loadableLastScan.analysis.title ?? 'Untitled Product'}
-                    </p>
-
-                    <div className="info-list">
-                      <p><strong>Brand:</strong> {loadableLastScan.analysis.brand ?? 'N/A'}</p>
-                      <p><strong>Price:</strong> {loadableLastScan.analysis.price ?? 'N/A'}</p>
-                      <p><strong>Rating:</strong> {loadableLastScan.analysis.rating ?? 'N/A'}</p>
-                      <p><strong>Review Count:</strong> {loadableLastScan.analysis.reviewCount ?? 'N/A'}</p>
-                      <p><strong>Review Integrity:</strong> {loadableLastScan.analysis.reviewIntegrity?.score ?? 'N/A'}</p>
-                      <p><strong>Brand Reputation:</strong> {loadableLastScan.analysis.brandReputation?.score ?? 'N/A'}</p>
-                    </div>
-
-                    <p className="history-item-meta">
-                      Saved {new Date(loadableLastScan.scannedAt).toLocaleString()}
-                    </p>
-
-                    <div className="saved-scan-actions">
-                      <button
-                        className="secondary-btn"
-                        onClick={() => {
-                          setAnalysis(loadableLastScan.analysis)
-                          setHasScanned(true)
-                          setBackendStatus('Loaded last saved scan')
-                          setError('')
-                        }}
-                      >
-                        Load Last Scan
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {scanHistory.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className="history-item"
-                    onClick={() => {
-                      setAnalysis(item.analysis)
-                      setHasScanned(true)
-                      setBackendStatus('Loaded scan from history')
-                      setError('')
-                    }}
-                  >
-                    <div className="history-item-top">
-                      <p className="history-item-title">{item.analysis.title ?? 'Untitled Product'}</p>
-                      <span className="history-score">{item.analysis.overallScore ?? '--'}</span>
-                    </div>
-
-                    <p className="history-item-meta">
-                      {item.analysis.brand ?? 'Unknown brand'} • {new Date(item.scannedAt).toLocaleString()}
-                    </p>
-                  </button>
-                ))}
-              </div>
-            </SectionCard>
-          )}
+          {!hasScanned && <div className="cascade-item cascade-delay-2">{scanHistorySection}</div>}
 
           {loading && <SkeletonResults />}
 
           {!loading && hasScanned && analysis && (
             <div className="results-animate">
-              <SectionCard title="Overall Score" collapsible>
+              <div className="cascade-item cascade-delay-1"><SectionCard title="Overall Score" collapsible>
                 <div className="score-row">
                   <span className="score-number">{analysis.overallScore ?? '--'}</span>
                   <span className="score-max">/100</span>
                 </div>
                 <MetricBar label="Trust Score" value={analysis.overallScore} />
-              </SectionCard>
+              </SectionCard></div>
 
-              <SectionCard title="Product" collapsible>
+              <div className="cascade-item cascade-delay-2"><SectionCard title="Product" collapsible>
                 <div className="info-list">
                   <p><strong>Title:</strong> {analysis.title ?? 'N/A'}</p>
                   <p><strong>Brand:</strong> {analysis.brand ?? 'N/A'}</p>
@@ -708,11 +1078,11 @@ export default function App() {
                   <p><strong>Rating:</strong> {analysis.rating ?? 'N/A'}</p>
                   <p><strong>Review Count:</strong> {analysis.reviewCount ?? 'N/A'}</p>
                 </div>
-              </SectionCard>
+              </SectionCard></div>
 
-              {analysis.aiAnalysis && <VerdictCard ai={analysis.aiAnalysis} />}
+              {analysis.aiAnalysis && <div className="cascade-item cascade-delay-3"><VerdictCard ai={analysis.aiAnalysis} /></div>}
 
-              <SectionCard title="Review Integrity" collapsible>
+              <div className="cascade-item cascade-delay-4"><SectionCard title="Review Integrity" collapsible>
                 <div className="mini-score">
                   <span>Score</span>
                   <strong>{analysis.reviewIntegrity?.score ?? 'N/A'}</strong>
@@ -726,9 +1096,9 @@ export default function App() {
                   <KeywordPills keywords={analysis.reviewIntegrity?.commonKeywords} emptyMessage="No keywords found" />
                 </div>
                 <ScoreExplainer metric="review_integrity" analysis={analysis} />
-              </SectionCard>
+              </SectionCard></div>
 
-              <SectionCard title="Brand Reputation" collapsible>
+              <div className="cascade-item cascade-delay-5"><SectionCard title="Brand Reputation" collapsible>
                 <div className="mini-score">
                   <span>Score</span>
                   <strong>{analysis.brandReputation?.score ?? 'N/A'}</strong>
@@ -753,58 +1123,71 @@ export default function App() {
                 <p className="keywords-label"><strong>Top Keywords:</strong></p>
                 <KeywordPills keywords={analysis.brandReputation?.commonKeywords} emptyMessage="No keywords found" />
                 <ScoreExplainer metric="brand_reputation" analysis={analysis} />
-              </SectionCard>
+              </SectionCard></div>
 
-              <SectionCard title="Similar Products" collapsible>
+              <div className="cascade-item cascade-delay-6"><SectionCard title="Similar Products" collapsible>
                 {(analysis.similarProducts?.length ?? 0) > 0 ? (
                   <div className="similar-scroll">
-                    {analysis.similarProducts?.map((product, i) => {
-                      const comparison = compareProductAgainstCurrent(analysis, product)
+                    {(() => {
+                      const bestAlternativeIndex = getBestAlternativeIndex(analysis, analysis.similarProducts)
 
-                      return (
-                        <a
-                          key={product.asin ?? i}
-                          href={product.amazonUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="similar-card"
-                        >
-                          <div className="similar-card-top">
-                            <span className={getTagClassName(comparison.tag)}>
-                              {comparison.tag}
-                            </span>
-                            {product.isPrime && <span className="prime-badge">Prime</span>}
-                          </div>
+                      return analysis.similarProducts?.map((product, i) => {
+                        const comparison = compareProductAgainstCurrent(analysis, product)
+                        const isBestAlternative = i === bestAlternativeIndex
 
-                          {product.image
-                            ? <img src={product.image} alt={product.title ?? 'Product'} className="similar-card-image" />
-                            : <ProductImagePlaceholder />
-                          }
+                        return (
+                          <a
+                            key={product.asin ?? i}
+                            href={product.amazonUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={`similar-card ${isBestAlternative ? 'similar-card--best' : ''}`}
+                          >
+                            <div className="similar-card-top">
+                              <div className="similar-card-badges">
+                                {isBestAlternative && (
+                                  <span className="best-alt-badge">BEST ALT</span>
+                                )}
+                                <span className={getTagClassName(comparison.tag)}>
+                                  {comparison.tag}
+                                </span>
+                              </div>
 
-                          <p className="similar-card-title">{product.title ?? 'Untitled Product'}</p>
-                          <p className="similar-card-brand">{product.brand ?? 'Unknown brand'}</p>
+                              {product.isPrime && <span className="prime-badge">Prime</span>}
+                            </div>
 
-                          <div className="similar-card-price-row">
-                            <p className="similar-card-price">{product.price ?? 'No price'}</p>
-                            {comparison.priceDiff !== null && (
-                              <span className={`price-diff ${comparison.priceDiff <= 0 ? 'price-diff--down' : 'price-diff--up'}`}>
-                                {formatPriceDifference(comparison.priceDiff)}
-                              </span>
-                            )}
-                          </div>
+                            {product.image
+                              ? <img src={product.image} alt={product.title ?? 'Product'} className="similar-card-image" />
+                              : <ProductImagePlaceholder />
+                            }
 
-                          <p className="similar-card-rating">
-                            ⭐ {product.rating ?? 'N/A'}
-                            {product.reviewCount ? ` • ${product.reviewCount.toLocaleString()} reviews` : ''}
-                          </p>
-                        </a>
-                      )
-                    })}
+                            <p className="similar-card-title">{product.title ?? 'Untitled Product'}</p>
+                            <p className="similar-card-brand">{product.brand ?? 'Unknown brand'}</p>
+
+                            <div className="similar-card-price-row">
+                              <p className="similar-card-price">{product.price ?? 'No price'}</p>
+                              {comparison.priceDiff !== null && (
+                                <span className={`price-diff ${comparison.priceDiff <= 0 ? 'price-diff--down' : 'price-diff--up'}`}>
+                                  {formatPriceDifference(comparison.priceDiff)}
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="similar-card-rating">
+                              ⭐ {product.rating ?? 'N/A'}
+                              {product.reviewCount ? ` • ${product.reviewCount.toLocaleString()} reviews` : ''}
+                            </p>
+                          </a>
+                        )
+                      })
+                    })()}
                   </div>
                 ) : (
                   <p className="body-text muted">No similar products found.</p>
                 )}
-              </SectionCard>
+              </SectionCard></div>
+
+              {hasScanned && <div className="cascade-item cascade-delay-7">{scanHistorySection}</div>}
             </div>
           )}
         </div>

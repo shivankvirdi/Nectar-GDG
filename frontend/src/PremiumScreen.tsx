@@ -15,7 +15,8 @@ const plans = [
       'Brand Reputation score',
       'Similar product suggestions',
       'One product scan at a time',
-      '10 analysis history database',
+      'Analysis history database',
+      'Side-by-side product comparison',
     ],
     highlight: false,
     cta: 'Current Plan',
@@ -30,7 +31,6 @@ const plans = [
       '1,500 scans per month',
       'Deep sentiment analysis',
       'Bulk analysis (up to 50 at once)',
-      'Side-by-side product comparison',
       'Search by keyword and URL',
       'Increased max analysis history database',
     ],
@@ -75,65 +75,71 @@ export default function PremiumScreen({ onBack }: Props) {
         </button>
       </header>
 
-      <div className="content">
-        <div className="premium-hero">
-          <p className="premium-hero-title">Choose Your Plan</p>
-          <p className="premium-hero-subtitle">
-            Unlock the full power of Nectar
-          </p>
+      <div className="content" key="premium-content">
+        <div className="cascade-item cascade-delay-1">
+          <div className="premium-hero">
+            <p className="premium-hero-title">Choose Your Plan</p>
+            <p className="premium-hero-subtitle">
+              Unlock the full power of Nectar
+            </p>
+          </div>
         </div>
 
-        {plans.map((plan) => (
-          <section
+        {plans.map((plan, index) => (
+          <div
             key={plan.name}
-            className={`premium-plan-card ${plan.highlight ? 'premium-plan-card--highlight' : ''}`}
+            className={`cascade-item cascade-delay-${Math.min(index + 2, 8)}`}
           >
-            {plan.highlight && (
-              <div className="premium-badge">POPULAR</div>
-            )}
-
-            <div className="premium-plan-top">
-              <div>
-                <p className={`premium-plan-name ${plan.highlight ? 'premium-plan-name--highlight' : ''}`}>
-                  {plan.name}
-                </p>
-                <p className={`premium-plan-desc ${plan.highlight ? 'premium-plan-desc--highlight' : ''}`}>
-                  {plan.desc}
-                </p>
-              </div>
-
-              <div className="premium-plan-price-wrap">
-                <span className={`premium-plan-price ${plan.highlight ? 'premium-plan-price--highlight' : ''}`}>
-                  {plan.price}
-                </span>
-                <span className={`premium-plan-period ${plan.highlight ? 'premium-plan-period--highlight' : ''}`}>
-                  {plan.period}
-                </span>
-              </div>
-            </div>
-
-            <div className="premium-feature-list">
-              {plan.features.map((feature) => (
-                <p
-                  key={feature}
-                  className={`premium-feature ${plan.highlight ? 'premium-feature--highlight' : ''}`}
-                >
-                  <span
-                    className={`premium-feature-icon ${plan.highlight ? 'premium-feature-icon--highlight' : ''}`}
-                  >
-                    ✦
-                  </span>
-                  {feature}
-                </p>
-              ))}
-            </div>
-
-            <button
-              className={`premium-plan-cta ${plan.highlight ? 'premium-plan-cta--highlight' : ''}`}
+            <section
+              className={`premium-plan-card ${plan.highlight ? 'premium-plan-card--highlight' : ''}`}
             >
-              {plan.cta}
-            </button>
-          </section>
+              {plan.highlight && (
+                <div className="premium-badge">POPULAR</div>
+              )}
+
+              <div className="premium-plan-top">
+                <div>
+                  <p className={`premium-plan-name ${plan.highlight ? 'premium-plan-name--highlight' : ''}`}>
+                    {plan.name}
+                  </p>
+                  <p className={`premium-plan-desc ${plan.highlight ? 'premium-plan-desc--highlight' : ''}`}>
+                    {plan.desc}
+                  </p>
+                </div>
+
+                <div className="premium-plan-price-wrap">
+                  <span className={`premium-plan-price ${plan.highlight ? 'premium-plan-price--highlight' : ''}`}>
+                    {plan.price}
+                  </span>
+                  <span className={`premium-plan-period ${plan.highlight ? 'premium-plan-period--highlight' : ''}`}>
+                    {plan.period}
+                  </span>
+                </div>
+              </div>
+
+              <div className="premium-feature-list">
+                {plan.features.map((feature) => (
+                  <p
+                    key={feature}
+                    className={`premium-feature ${plan.highlight ? 'premium-feature--highlight' : ''}`}
+                  >
+                    <span
+                      className={`premium-feature-icon ${plan.highlight ? 'premium-feature-icon--highlight' : ''}`}
+                    >
+                      ✦
+                    </span>
+                    {feature}
+                  </p>
+                ))}
+              </div>
+
+              <button
+                className={`premium-plan-cta ${plan.highlight ? 'premium-plan-cta--highlight' : ''}`}
+              >
+                {plan.cta}
+              </button>
+            </section>
+          </div>
         ))}
       </div>
     </>
