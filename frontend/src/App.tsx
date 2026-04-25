@@ -5,6 +5,11 @@ import PremiumScreen from './PremiumScreen'
 const DEV_PREVIEW = import.meta.env.DEV && false
 const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 
+// Animation timing constants — keep in sync with App.css cascade delays
+const EXIT_ANIMATION_MS = 720  // last staggered item: 0.30s delay + 0.38s anim = 680ms → round up
+const DELETE_ENTRY_DELAY_MS = 240
+const CLEAR_ALL_ENTRY_DELAY_MS = 260
+
 type Insight = { topic: string; status: string }
 type Keyword = { word: string; count: number; sentiment: 'positive' | 'negative' | 'neutral' }
 
@@ -75,7 +80,6 @@ const MAX_SCAN_HISTORY = 10
 function getNumericPrice(price?: string | number | null): number | null {
   if (price === null || price === undefined) return null
   if (typeof price === 'number') return Number.isFinite(price) ? price : null
-
   const cleaned = String(price).replace(/[^0-9.]/g, '')
   const parsed = Number(cleaned)
   return Number.isFinite(parsed) ? parsed : null
@@ -90,22 +94,16 @@ function formatPriceDifference(diff: number): string {
 function compareProductAgainstCurrent(current: Analysis | null, product?: SimilarProduct) {
   const currentPrice = getNumericPrice(current?.price)
   const otherPrice = getNumericPrice(product?.price)
-
   const currentRating = Number(current?.rating ?? NaN)
   const otherRating = Number(product?.rating ?? NaN)
-
   const currentReviewCount = Number(current?.reviewCount ?? NaN)
   const otherReviewCount = Number(product?.reviewCount ?? NaN)
-
   const hasCurrentRating = Number.isFinite(currentRating)
   const hasOtherRating = Number.isFinite(otherRating)
   const hasCurrentReviewCount = Number.isFinite(currentReviewCount)
   const hasOtherReviewCount = Number.isFinite(otherReviewCount)
-
   const priceDiff =
-    currentPrice !== null && otherPrice !== null
-      ? otherPrice - currentPrice
-      : null
+    currentPrice !== null && otherPrice !== null ? otherPrice - currentPrice : null
 
   let tag: 'BETTER' | 'SIMILAR' | 'WORSE' = 'SIMILAR'
   let score = 0
@@ -132,11 +130,7 @@ function compareProductAgainstCurrent(current: Analysis | null, product?: Simila
   if (score >= 1.5) tag = 'BETTER'
   else if (score <= -1.5) tag = 'WORSE'
 
-  return {
-    tag,
-    priceDiff,
-    score,
-  }
+  return { tag, priceDiff, score }
 }
 
 function getTagClassName(tag: 'BETTER' | 'SIMILAR' | 'WORSE') {
@@ -147,19 +141,15 @@ function getTagClassName(tag: 'BETTER' | 'SIMILAR' | 'WORSE') {
 
 function getBestAlternativeIndex(current: Analysis | null, products?: SimilarProduct[]) {
   if (!products?.length) return -1
-
   let bestIndex = -1
   let bestScore = Number.NEGATIVE_INFINITY
-
   products.forEach((product, index) => {
     const comparison = compareProductAgainstCurrent(current, product)
-
     if (comparison.score > bestScore) {
       bestScore = comparison.score
       bestIndex = index
     }
   })
-
   return bestScore > 0 ? bestIndex : -1
 }
 
@@ -272,7 +262,6 @@ function SkeletonResults() {
         </div>
         <SkeletonLine width="100%" height={8} />
       </SkeletonCard>
-
       <SkeletonCard title="Product">
         <SkeletonLine width="85%" />
         <SkeletonLine width="50%" />
@@ -280,7 +269,6 @@ function SkeletonResults() {
         <SkeletonLine width="30%" />
         <SkeletonLine width="55%" />
       </SkeletonCard>
-
       <SkeletonCard title="AI Analysis">
         <SkeletonLine width="90%" height={52} />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 4 }}>
@@ -294,7 +282,6 @@ function SkeletonResults() {
           </div>
         </div>
       </SkeletonCard>
-
       <SkeletonCard title="Review Integrity">
         <SkeletonLine width="100%" height={8} />
         <SkeletonLine width="65%" mb={4} />
@@ -305,13 +292,11 @@ function SkeletonResults() {
           ))}
         </div>
       </SkeletonCard>
-
       <SkeletonCard title="Brand Reputation">
         <SkeletonLine width="100%" height={8} />
         <SkeletonLine width="70%" mb={4} />
         <SkeletonLine width="45%" />
       </SkeletonCard>
-
       <SkeletonCard title="Similar Products">
         <div style={{ display: 'flex', gap: 12, overflow: 'hidden' }}>
           {[0, 1, 2].map((i) => (
@@ -376,7 +361,6 @@ function SectionCard({
     <section className={`section-card ${open || !collapsible ? 'section-card--open' : 'section-card--closed'}`}>
       <div className="section-card-header">
         <h3>{title}</h3>
-
         {collapsible && (
           <button
             type="button"
@@ -389,7 +373,6 @@ function SectionCard({
           </button>
         )}
       </div>
-
       <div className={`section-content ${!collapsible || open ? 'open' : ''}`}>
         <div className="section-content-inner">
           {children}
@@ -407,7 +390,6 @@ function KeywordPills({
   emptyMessage: string
 }) {
   if (!keywords?.length) return <p className="body-text muted">{emptyMessage}</p>
-
   return (
     <div className="keyword-pills">
       {keywords.map((kw) => (
@@ -432,25 +414,20 @@ function ScoreExplainer({
 
   const handleExplain = async () => {
     if (!analysis) return
-
     try {
       setLoading(true)
       setError('')
       const { raw: _raw, ...safeAnalysis } = analysis
-
       const response = await fetch(`${API_BASE}/explain-score`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ metric, analysis: safeAnalysis }),
       })
-
       const data = await response.json()
-
       if (!response.ok) {
         setError(typeof data.detail === 'string' ? data.detail : 'Could not explain this score.')
         return
       }
-
       setAnswer(data.answer ?? 'No explanation returned.')
     } catch {
       setError('Could not explain this score right now.')
@@ -462,7 +439,7 @@ function ScoreExplainer({
   return (
     <div className="score-explainer">
       <button className="why-score-btn" onClick={handleExplain} disabled={loading || !analysis}>
-        {loading ? 'Explaining...' : 'Why this score'}
+        {loading ? 'Explaining…' : 'Why this score?'}
       </button>
       {error ? <p className="body-text status-error explain-text">{error}</p> : null}
       {answer ? <div className="explain-box"><p className="body-text explain-text">{answer}</p></div> : null}
@@ -524,6 +501,7 @@ export default function App() {
   const [scanHistory, setScanHistory] = useState<ScanRecord[]>([])
   const [selectedCompareIds, setSelectedCompareIds] = useState<string[]>([])
   const [compareRecords, setCompareRecords] = useState<[ScanRecord, ScanRecord] | null>(null)
+  // FIX: tracks whether the results container is playing its exit waterfall animation
   const [isClearingCurrentView, setIsClearingCurrentView] = useState(false)
 
   const toggleCompareSelection = (id: string) => {
@@ -546,7 +524,6 @@ export default function App() {
   function getNumericMetric(value?: string | number | null): number | null {
     if (value === null || value === undefined) return null
     if (typeof value === 'number') return Number.isFinite(value) ? value : null
-
     const cleaned = String(value).replace(/[^0-9.\-]/g, '')
     const parsed = Number(cleaned)
     return Number.isFinite(parsed) ? parsed : null
@@ -559,21 +536,13 @@ export default function App() {
   ): 'left' | 'right' | 'tie' {
     const leftNum = getNumericMetric(leftValue)
     const rightNum = getNumericMetric(rightValue)
-
     if (leftNum === null || rightNum === null) return 'tie'
     if (leftNum === rightNum) return 'tie'
-
-    if (direction === 'higher') {
-      return leftNum > rightNum ? 'left' : 'right'
-    }
-
+    if (direction === 'higher') return leftNum > rightNum ? 'left' : 'right'
     return leftNum < rightNum ? 'left' : 'right'
   }
 
-  function getCompareValueClass(
-    winner: 'left' | 'right' | 'tie',
-    side: 'left' | 'right'
-  ) {
+  function getCompareValueClass(winner: 'left' | 'right' | 'tie', side: 'left' | 'right') {
     if (winner === 'tie') return 'compare-value'
     if (winner === side) return 'compare-value compare-value--winner'
     return 'compare-value compare-value--muted'
@@ -583,18 +552,9 @@ export default function App() {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       setCurrentUrl(tabs[0]?.url ?? 'No active tab found')
     })
-
-    loadCurrentSavedScan().then((saved) => {
-      setCurrentSavedScan(saved)
-    })
-
-    loadPreviousSavedScan().then((saved) => {
-      setPreviousSavedScan(saved)
-    })
-
-    loadScanHistory().then((history) => {
-      setScanHistory(history)
-    })
+    loadCurrentSavedScan().then((saved) => { setCurrentSavedScan(saved) })
+    loadPreviousSavedScan().then((saved) => { setPreviousSavedScan(saved) })
+    loadScanHistory().then((history) => { setScanHistory(history) })
   }, [])
 
   const handleScan = async () => {
@@ -624,7 +584,7 @@ export default function App() {
         setLoading(true)
         setError('')
         setAnalysis(null)
-        setBackendStatus('Running product analyses...')
+        setBackendStatus('Running product analyses…')
 
         const response = await fetch(`${API_BASE}/current-url`, {
           method: 'POST',
@@ -676,10 +636,7 @@ export default function App() {
         const existingHistory = (await loadScanHistory()) ?? []
         const nextHistory = [record, ...existingHistory].slice(0, MAX_SCAN_HISTORY)
 
-        await storageSet({
-          [SCAN_HISTORY_KEY]: nextHistory,
-        })
-
+        await storageSet({ [SCAN_HISTORY_KEY]: nextHistory })
         setScanHistory(nextHistory)
       } catch {
         const msg = 'Scan failed. Please open an Amazon product or start server.'
@@ -691,6 +648,15 @@ export default function App() {
     })
   }
 
+  // FIX: Trigger animated exit waterfall, then clear state after animation completes
+  const triggerResultsExit = (onComplete: () => void) => {
+    setIsClearingCurrentView(true)
+    setTimeout(() => {
+      onComplete()
+      setIsClearingCurrentView(false)
+    }, EXIT_ANIMATION_MS)
+  }
+
   const handleDeleteScan = async (id: string) => {
     setDeletingScanIds((prev) => [...prev, id])
 
@@ -698,9 +664,7 @@ export default function App() {
       const itemToDelete = scanHistory.find((item) => item.id === id)
       const nextHistory = scanHistory.filter((item) => item.id !== id)
 
-      await storageSet({
-        [SCAN_HISTORY_KEY]: nextHistory,
-      })
+      await storageSet({ [SCAN_HISTORY_KEY]: nextHistory })
 
       const currentScan = await loadCurrentSavedScan()
       const previousScan = await loadPreviousSavedScan()
@@ -716,20 +680,18 @@ export default function App() {
       if (currentSavedScan?.id === id) setCurrentSavedScan(null)
       if (previousSavedScan?.id === id) setPreviousSavedScan(null)
 
+      // Only animate out the results if the deleted scan is currently displayed
       if (itemToDelete?.analysis === analysis) {
-        setIsClearingCurrentView(true)
-
-        setTimeout(() => {
+        triggerResultsExit(() => {
           setAnalysis(null)
           setHasScanned(false)
-          setIsClearingCurrentView(false)
-        }, 420)
+        })
       }
 
       setDeletingScanIds((prev) => prev.filter((itemId) => itemId !== id))
       setBackendStatus('Removed scan from history')
       setError('')
-    }, 240)
+    }, DELETE_ENTRY_DELAY_MS)
   }
 
   const handleClearScanHistory = async () => {
@@ -737,9 +699,7 @@ export default function App() {
     setDeletingScanIds(scanHistory.map((item) => item.id))
 
     setTimeout(async () => {
-      await storageSet({
-        [SCAN_HISTORY_KEY]: [],
-      })
+      await storageSet({ [SCAN_HISTORY_KEY]: [] })
       await storageRemove([CURRENT_SCAN_KEY, PREVIOUS_SCAN_KEY])
 
       setScanHistory([])
@@ -749,13 +709,11 @@ export default function App() {
       setPreviousSavedScan(null)
 
       if (analysis) {
-        setIsClearingCurrentView(true)
-
-        setTimeout(() => {
+        // Animate results out before clearing state
+        triggerResultsExit(() => {
           setAnalysis(null)
           setHasScanned(false)
-          setIsClearingCurrentView(false)
-        }, 420)
+        })
       } else {
         setAnalysis(null)
         setHasScanned(false)
@@ -766,7 +724,7 @@ export default function App() {
       setView('home')
       setDeletingScanIds([])
       setIsClearingHistory(false)
-    }, 260)
+    }, CLEAR_ALL_ENTRY_DELAY_MS)
   }
 
   const scanHistorySection = scanHistory.length > 0 && (
@@ -779,8 +737,9 @@ export default function App() {
           type="button"
           className="history-clear-btn"
           onClick={handleClearScanHistory}
+          disabled={isClearingHistory}
         >
-          Clear All
+          {isClearingHistory ? 'Clearing…' : 'Clear All'}
         </button>
       </div>
 
@@ -807,9 +766,8 @@ export default function App() {
                   <p className="history-item-title">{item.analysis.title ?? 'Untitled Product'}</p>
                   <span className="history-score">{item.analysis.overallScore ?? '--'}</span>
                 </div>
-
                 <p className="history-item-meta">
-                  {item.analysis.brand ?? 'Unknown brand'} • {new Date(item.scannedAt).toLocaleString()}
+                  {item.analysis.brand ?? 'Unknown brand'} · {new Date(item.scannedAt).toLocaleString()}
                 </p>
               </button>
 
@@ -819,7 +777,7 @@ export default function App() {
                   className={`why-score-btn history-compare-btn ${isSelected ? 'secondary-btn--active' : ''}`}
                   onClick={() => toggleCompareSelection(item.id)}
                 >
-                  {isSelected ? 'Selected for Compare' : 'Select to Compare'}
+                  {isSelected ? '✓ Selected' : 'Select to Compare'}
                 </button>
                 <button
                   type="button"
@@ -863,7 +821,6 @@ export default function App() {
     const [left, right] = compareRecords
     const leftAnalysis = left.analysis
     const rightAnalysis = right.analysis
-
     const leftImage = getAnalysisImage(leftAnalysis)
     const rightImage = getAnalysisImage(rightAnalysis)
 
@@ -875,26 +832,18 @@ export default function App() {
     const brandWinner = getMetricWinner(leftAnalysis.brandReputation?.score, rightAnalysis.brandReputation?.score, 'higher')
 
     const leftWins =
-      (scoreWinner === 'left' ? 1 : 0) +
-      (priceWinner === 'left' ? 1 : 0) +
-      (ratingWinner === 'left' ? 1 : 0) +
-      (reviewCountWinner === 'left' ? 1 : 0) +
-      (integrityWinner === 'left' ? 1 : 0) +
-      (brandWinner === 'left' ? 1 : 0)
+      (scoreWinner === 'left' ? 1 : 0) + (priceWinner === 'left' ? 1 : 0) +
+      (ratingWinner === 'left' ? 1 : 0) + (reviewCountWinner === 'left' ? 1 : 0) +
+      (integrityWinner === 'left' ? 1 : 0) + (brandWinner === 'left' ? 1 : 0)
 
     const rightWins =
-      (scoreWinner === 'right' ? 1 : 0) +
-      (priceWinner === 'right' ? 1 : 0) +
-      (ratingWinner === 'right' ? 1 : 0) +
-      (reviewCountWinner === 'right' ? 1 : 0) +
-      (integrityWinner === 'right' ? 1 : 0) +
-      (brandWinner === 'right' ? 1 : 0)
+      (scoreWinner === 'right' ? 1 : 0) + (priceWinner === 'right' ? 1 : 0) +
+      (ratingWinner === 'right' ? 1 : 0) + (reviewCountWinner === 'right' ? 1 : 0) +
+      (integrityWinner === 'right' ? 1 : 0) + (brandWinner === 'right' ? 1 : 0)
 
     const summaryLabel =
-      leftWins === rightWins
-        ? 'CLOSE MATCH'
-        : leftWins > rightWins
-          ? 'LEFT PRODUCT LEADS'
+      leftWins === rightWins ? 'CLOSE MATCH'
+        : leftWins > rightWins ? 'LEFT PRODUCT LEADS'
           : 'RIGHT PRODUCT LEADS'
 
     return (
@@ -908,7 +857,7 @@ export default function App() {
                 <p>PRODUCT COMPARISON</p>
               </div>
             </div>
-            <button className="premium-btn" onClick={() => setView('home')}>Back</button>
+            <button className="premium-btn" onClick={() => setView('home')}>← Back</button>
           </header>
 
           <div className="content" key="compare-view">
@@ -916,103 +865,57 @@ export default function App() {
               <div className="compare-hero-top">
                 <div>
                   <h3 className="compare-hero-title">Compare Products</h3>
-                  <p className="compare-hero-text">
-                    A cleaner side-by-side view of pricing, trust, ratings, and AI verdicts.
-                  </p>
+                  <p className="compare-hero-text">Side-by-side view of pricing, trust, ratings, and AI verdicts.</p>
                 </div>
                 <span className="compare-summary-badge">{summaryLabel}</span>
               </div>
-
               <div className="compare-summary-pills">
-                <span className={`compare-chip ${priceWinner}`}>
-                  Best Value · {priceWinner === 'tie' ? 'Tie' : priceWinner === 'left' ? 'Left' : 'Right'}
-                </span>
-
-                <span className={`compare-chip ${ratingWinner}`}>
-                  Higher Rated · {ratingWinner === 'tie' ? 'Tie' : ratingWinner === 'left' ? 'Left' : 'Right'}
-                </span>
-
-                <span className={`compare-chip ${integrityWinner}`}>
-                  More Trusted · {integrityWinner === 'tie' ? 'Tie' : integrityWinner === 'left' ? 'Left' : 'Right'}
-                </span>
-
-                <span className={`compare-chip ${brandWinner}`}>
-                  Better Brand · {brandWinner === 'tie' ? 'Tie' : brandWinner === 'left' ? 'Left' : 'Right'}
-                </span>
+                <span className={`compare-chip ${priceWinner}`}>Best Value · {priceWinner === 'tie' ? 'Tie' : priceWinner === 'left' ? 'Left' : 'Right'}</span>
+                <span className={`compare-chip ${ratingWinner}`}>Higher Rated · {ratingWinner === 'tie' ? 'Tie' : ratingWinner === 'left' ? 'Left' : 'Right'}</span>
+                <span className={`compare-chip ${integrityWinner}`}>More Trusted · {integrityWinner === 'tie' ? 'Tie' : integrityWinner === 'left' ? 'Left' : 'Right'}</span>
+                <span className={`compare-chip ${brandWinner}`}>Better Brand · {brandWinner === 'tie' ? 'Tie' : brandWinner === 'left' ? 'Left' : 'Right'}</span>
               </div>
             </section></div>
 
             <div className="cascade-item cascade-delay-2"><section className="compare-products-grid">
               <article className={`compare-product-card ${leftWins > rightWins ? 'compare-product-card--leader' : ''}`}>
                 <div className="compare-product-image-wrap">
-                  {leftImage ? (
-                    <img src={leftImage} alt={leftAnalysis.title ?? 'Product'} className="compare-product-image" />
-                  ) : (
-                    <ProductImagePlaceholder className="compare-product-image" />
-                  )}
+                  {leftImage
+                    ? <img src={leftImage} alt={leftAnalysis.title ?? 'Product'} className="compare-product-image" />
+                    : <ProductImagePlaceholder className="compare-product-image" />}
                 </div>
-
                 <div className="compare-product-card-body">
                   <div className="compare-product-card-top">
                     <span className="compare-side-badge">LEFT</span>
                     {leftWins > rightWins && <span className="compare-winner-badge">BEST PICK</span>}
                   </div>
-
                   <p className="compare-product-title">{leftAnalysis.title ?? 'Untitled Product'}</p>
-                  <p className="compare-product-meta">
-                    {leftAnalysis.brand ?? 'Unknown brand'} • {new Date(left.scannedAt).toLocaleString()}
-                  </p>
-
+                  <p className="compare-product-meta">{leftAnalysis.brand ?? 'Unknown brand'} · {new Date(left.scannedAt).toLocaleString()}</p>
                   <div className="compare-quick-stats">
-                    <div className="compare-quick-stat">
-                      <span>Score</span>
-                      <strong>{renderMetricValue(leftAnalysis.overallScore)}</strong>
-                    </div>
-                    <div className="compare-quick-stat">
-                      <span>Price</span>
-                      <strong>{renderMetricValue(leftAnalysis.price)}</strong>
-                    </div>
-                    <div className="compare-quick-stat">
-                      <span>Rating</span>
-                      <strong>{renderMetricValue(leftAnalysis.rating)}</strong>
-                    </div>
+                    <div className="compare-quick-stat"><span>Score</span><strong>{renderMetricValue(leftAnalysis.overallScore)}</strong></div>
+                    <div className="compare-quick-stat"><span>Price</span><strong>{renderMetricValue(leftAnalysis.price)}</strong></div>
+                    <div className="compare-quick-stat"><span>Rating</span><strong>{renderMetricValue(leftAnalysis.rating)}</strong></div>
                   </div>
                 </div>
               </article>
 
               <article className={`compare-product-card ${rightWins > leftWins ? 'compare-product-card--leader' : ''}`}>
                 <div className="compare-product-image-wrap">
-                  {rightImage ? (
-                    <img src={rightImage} alt={rightAnalysis.title ?? 'Product'} className="compare-product-image" />
-                  ) : (
-                    <ProductImagePlaceholder className="compare-product-image" />
-                  )}
+                  {rightImage
+                    ? <img src={rightImage} alt={rightAnalysis.title ?? 'Product'} className="compare-product-image" />
+                    : <ProductImagePlaceholder className="compare-product-image" />}
                 </div>
-
                 <div className="compare-product-card-body">
                   <div className="compare-product-card-top">
                     <span className="compare-side-badge">RIGHT</span>
                     {rightWins > leftWins && <span className="compare-winner-badge">BEST PICK</span>}
                   </div>
-
                   <p className="compare-product-title">{rightAnalysis.title ?? 'Untitled Product'}</p>
-                  <p className="compare-product-meta">
-                    {rightAnalysis.brand ?? 'Unknown brand'} • {new Date(right.scannedAt).toLocaleString()}
-                  </p>
-
+                  <p className="compare-product-meta">{rightAnalysis.brand ?? 'Unknown brand'} · {new Date(right.scannedAt).toLocaleString()}</p>
                   <div className="compare-quick-stats">
-                    <div className="compare-quick-stat">
-                      <span>Score</span>
-                      <strong>{renderMetricValue(rightAnalysis.overallScore)}</strong>
-                    </div>
-                    <div className="compare-quick-stat">
-                      <span>Price</span>
-                      <strong>{renderMetricValue(rightAnalysis.price)}</strong>
-                    </div>
-                    <div className="compare-quick-stat">
-                      <span>Rating</span>
-                      <strong>{renderMetricValue(rightAnalysis.rating)}</strong>
-                    </div>
+                    <div className="compare-quick-stat"><span>Score</span><strong>{renderMetricValue(rightAnalysis.overallScore)}</strong></div>
+                    <div className="compare-quick-stat"><span>Price</span><strong>{renderMetricValue(rightAnalysis.price)}</strong></div>
+                    <div className="compare-quick-stat"><span>Rating</span><strong>{renderMetricValue(rightAnalysis.rating)}</strong></div>
                   </div>
                 </div>
               </article>
@@ -1020,80 +923,33 @@ export default function App() {
 
             <div className="cascade-item cascade-delay-3"><section className="section-card compare-section-card">
               <h3 className="compare-section-title">Core Metrics</h3>
-
               <div className="compare-rows">
-                <div className="compare-row">
-                  <div className="compare-row-label">Overall Score</div>
-                  <div className={getCompareValueClass(scoreWinner, 'left')}>{renderMetricValue(leftAnalysis.overallScore)}</div>
-                  <div className={getCompareValueClass(scoreWinner, 'right')}>{renderMetricValue(rightAnalysis.overallScore)}</div>
-                </div>
-
-                <div className="compare-row">
-                  <div className="compare-row-label">Price</div>
-                  <div className={getCompareValueClass(priceWinner, 'left')}>{renderMetricValue(leftAnalysis.price)}</div>
-                  <div className={getCompareValueClass(priceWinner, 'right')}>{renderMetricValue(rightAnalysis.price)}</div>
-                </div>
-
-                <div className="compare-row">
-                  <div className="compare-row-label">Rating</div>
-                  <div className={getCompareValueClass(ratingWinner, 'left')}>{renderMetricValue(leftAnalysis.rating)}</div>
-                  <div className={getCompareValueClass(ratingWinner, 'right')}>{renderMetricValue(rightAnalysis.rating)}</div>
-                </div>
-
-                <div className="compare-row">
-                  <div className="compare-row-label">Review Count</div>
-                  <div className={getCompareValueClass(reviewCountWinner, 'left')}>{renderMetricValue(leftAnalysis.reviewCount)}</div>
-                  <div className={getCompareValueClass(reviewCountWinner, 'right')}>{renderMetricValue(rightAnalysis.reviewCount)}</div>
-                </div>
+                <div className="compare-row"><div className="compare-row-label">Overall Score</div><div className={getCompareValueClass(scoreWinner, 'left')}>{renderMetricValue(leftAnalysis.overallScore)}</div><div className={getCompareValueClass(scoreWinner, 'right')}>{renderMetricValue(rightAnalysis.overallScore)}</div></div>
+                <div className="compare-row"><div className="compare-row-label">Price</div><div className={getCompareValueClass(priceWinner, 'left')}>{renderMetricValue(leftAnalysis.price)}</div><div className={getCompareValueClass(priceWinner, 'right')}>{renderMetricValue(rightAnalysis.price)}</div></div>
+                <div className="compare-row"><div className="compare-row-label">Rating</div><div className={getCompareValueClass(ratingWinner, 'left')}>{renderMetricValue(leftAnalysis.rating)}</div><div className={getCompareValueClass(ratingWinner, 'right')}>{renderMetricValue(rightAnalysis.rating)}</div></div>
+                <div className="compare-row"><div className="compare-row-label">Review Count</div><div className={getCompareValueClass(reviewCountWinner, 'left')}>{renderMetricValue(leftAnalysis.reviewCount)}</div><div className={getCompareValueClass(reviewCountWinner, 'right')}>{renderMetricValue(rightAnalysis.reviewCount)}</div></div>
               </div>
             </section></div>
 
             <div className="cascade-item cascade-delay-4"><section className="section-card compare-section-card">
               <h3 className="compare-section-title">Trust & Reputation</h3>
-
               <div className="compare-rows">
-                <div className="compare-row">
-                  <div className="compare-row-label">Review Integrity</div>
-                  <div className={getCompareValueClass(integrityWinner, 'left')}>{renderMetricValue(leftAnalysis.reviewIntegrity?.score)}</div>
-                  <div className={getCompareValueClass(integrityWinner, 'right')}>{renderMetricValue(rightAnalysis.reviewIntegrity?.score)}</div>
-                </div>
-
-                <div className="compare-row">
-                  <div className="compare-row-label">Integrity Label</div>
-                  <div className="compare-value">{renderMetricValue(leftAnalysis.reviewIntegrity?.label)}</div>
-                  <div className="compare-value">{renderMetricValue(rightAnalysis.reviewIntegrity?.label)}</div>
-                </div>
-
-                <div className="compare-row">
-                  <div className="compare-row-label">Verified Ratio</div>
-                  <div className="compare-value">{renderMetricValue(leftAnalysis.reviewIntegrity?.verifiedPurchaseRatio)}</div>
-                  <div className="compare-value">{renderMetricValue(rightAnalysis.reviewIntegrity?.verifiedPurchaseRatio)}</div>
-                </div>
-
-                <div className="compare-row">
-                  <div className="compare-row-label">Brand Reputation</div>
-                  <div className={getCompareValueClass(brandWinner, 'left')}>{renderMetricValue(leftAnalysis.brandReputation?.score)}</div>
-                  <div className={getCompareValueClass(brandWinner, 'right')}>{renderMetricValue(rightAnalysis.brandReputation?.score)}</div>
-                </div>
-
-                <div className="compare-row">
-                  <div className="compare-row-label">Brand Label</div>
-                  <div className="compare-value">{renderMetricValue(leftAnalysis.brandReputation?.label)}</div>
-                  <div className="compare-value">{renderMetricValue(rightAnalysis.brandReputation?.label)}</div>
-                </div>
+                <div className="compare-row"><div className="compare-row-label">Review Integrity</div><div className={getCompareValueClass(integrityWinner, 'left')}>{renderMetricValue(leftAnalysis.reviewIntegrity?.score)}</div><div className={getCompareValueClass(integrityWinner, 'right')}>{renderMetricValue(rightAnalysis.reviewIntegrity?.score)}</div></div>
+                <div className="compare-row"><div className="compare-row-label">Integrity Label</div><div className="compare-value">{renderMetricValue(leftAnalysis.reviewIntegrity?.label)}</div><div className="compare-value">{renderMetricValue(rightAnalysis.reviewIntegrity?.label)}</div></div>
+                <div className="compare-row"><div className="compare-row-label">Verified Ratio</div><div className="compare-value">{renderMetricValue(leftAnalysis.reviewIntegrity?.verifiedPurchaseRatio)}</div><div className="compare-value">{renderMetricValue(rightAnalysis.reviewIntegrity?.verifiedPurchaseRatio)}</div></div>
+                <div className="compare-row"><div className="compare-row-label">Brand Reputation</div><div className={getCompareValueClass(brandWinner, 'left')}>{renderMetricValue(leftAnalysis.brandReputation?.score)}</div><div className={getCompareValueClass(brandWinner, 'right')}>{renderMetricValue(rightAnalysis.brandReputation?.score)}</div></div>
+                <div className="compare-row"><div className="compare-row-label">Brand Label</div><div className="compare-value">{renderMetricValue(leftAnalysis.brandReputation?.label)}</div><div className="compare-value">{renderMetricValue(rightAnalysis.brandReputation?.label)}</div></div>
               </div>
             </section></div>
 
             <div className="cascade-item cascade-delay-5"><section className="section-card compare-section-card">
               <h3 className="compare-section-title">AI Verdict</h3>
-
               <div className="compare-ai-grid">
                 <div className="compare-ai-card">
                   <p className="compare-ai-label">Recommendation</p>
                   <p className="compare-ai-recommendation">{renderMetricValue(leftAnalysis.aiAnalysis?.recommendation)}</p>
                   <p className="compare-ai-verdict">{renderMetricValue(leftAnalysis.aiAnalysis?.verdict)}</p>
                 </div>
-
                 <div className="compare-ai-card">
                   <p className="compare-ai-label">Recommendation</p>
                   <p className="compare-ai-recommendation">{renderMetricValue(rightAnalysis.aiAnalysis?.recommendation)}</p>
@@ -1104,34 +960,18 @@ export default function App() {
 
             <div className="cascade-item cascade-delay-6"><SectionCard title="Review Integrity Keywords">
               <p className="compare-subtitle">{leftAnalysis.title ?? 'Left Product'}</p>
-              <KeywordPills
-                keywords={leftAnalysis.reviewIntegrity?.commonKeywords}
-                emptyMessage="No keywords found"
-              />
-
+              <KeywordPills keywords={leftAnalysis.reviewIntegrity?.commonKeywords} emptyMessage="No keywords found" />
               <div style={{ height: 14 }} />
-
               <p className="compare-subtitle">{rightAnalysis.title ?? 'Right Product'}</p>
-              <KeywordPills
-                keywords={rightAnalysis.reviewIntegrity?.commonKeywords}
-                emptyMessage="No keywords found"
-              />
+              <KeywordPills keywords={rightAnalysis.reviewIntegrity?.commonKeywords} emptyMessage="No keywords found" />
             </SectionCard></div>
 
             <div className="cascade-item cascade-delay-7"><SectionCard title="Brand Reputation Keywords">
               <p className="compare-subtitle">{leftAnalysis.title ?? 'Left Product'}</p>
-              <KeywordPills
-                keywords={leftAnalysis.brandReputation?.commonKeywords}
-                emptyMessage="No keywords found"
-              />
-
+              <KeywordPills keywords={leftAnalysis.brandReputation?.commonKeywords} emptyMessage="No keywords found" />
               <div style={{ height: 14 }} />
-
               <p className="compare-subtitle">{rightAnalysis.title ?? 'Right Product'}</p>
-              <KeywordPills
-                keywords={rightAnalysis.brandReputation?.commonKeywords}
-                emptyMessage="No keywords found"
-              />
+              <KeywordPills keywords={rightAnalysis.brandReputation?.commonKeywords} emptyMessage="No keywords found" />
             </SectionCard></div>
           </div>
         </div>
@@ -1164,147 +1004,155 @@ export default function App() {
         </header>
 
         <div className="content" key="home-view">
-          <div className="cascade-item cascade-delay-1"><SectionCard title="Product Analysis">
-            <p className={`body-text ${error ? 'status-error' : 'status-ok'}`}>
-              {error || backendStatus}
-            </p>
-            <button className="scan-btn" onClick={handleScan} disabled={loading}>
-              {loading ? 'Scanning...' : 'Scan Product'}
-            </button>
-          </SectionCard></div>
+          <div className="cascade-item cascade-delay-1">
+            <SectionCard title="Product Analysis">
+              <p className={`body-text ${error ? 'status-error' : 'status-ok'}`}>
+                {error || backendStatus}
+              </p>
+              <button className="scan-btn" onClick={handleScan} disabled={loading}>
+                {loading ? 'Scanning…' : 'Scan Product'}
+              </button>
+            </SectionCard>
+          </div>
 
           {!hasScanned && <div className="cascade-item cascade-delay-2">{scanHistorySection}</div>}
 
           {loading && <SkeletonResults />}
 
+          {/* FIX: apply results-exit-waterfall class when isClearingCurrentView is true
+              This triggers the left-sweep cascade animation before state is cleared */}
           {!loading && hasScanned && analysis && (
-            <div className="results-animate">
-              <div className="cascade-item cascade-delay-1"><SectionCard title="Overall Score" collapsible>
-                <div className="score-row">
-                  <span className="score-number">{analysis.overallScore ?? '--'}</span>
-                  <span className="score-max">/100</span>
-                </div>
-                <MetricBar label="Trust Score" value={analysis.overallScore} />
-              </SectionCard></div>
+            <div className={`results-animate${isClearingCurrentView ? ' results-exit-waterfall' : ''}`}>
+              <div className="cascade-item cascade-delay-1">
+                <SectionCard title="Overall Score" collapsible>
+                  <div className="score-row">
+                    <span className="score-number">{analysis.overallScore ?? '--'}</span>
+                    <span className="score-max">/100</span>
+                  </div>
+                  <MetricBar label="Trust Score" value={analysis.overallScore} />
+                </SectionCard>
+              </div>
 
-              <div className="cascade-item cascade-delay-2"><SectionCard title="Product" collapsible>
-                <div className="info-list">
-                  <p><strong>Title:</strong> {analysis.title ?? 'N/A'}</p>
-                  <p><strong>Brand:</strong> {analysis.brand ?? 'N/A'}</p>
-                  <p><strong>Price:</strong> {analysis.price ?? 'N/A'}</p>
-                  <p><strong>Rating:</strong> {analysis.rating ?? 'N/A'}</p>
-                  <p><strong>Review Count:</strong> {analysis.reviewCount ?? 'N/A'}</p>
-                </div>
-              </SectionCard></div>
+              <div className="cascade-item cascade-delay-2">
+                <SectionCard title="Product" collapsible>
+                  <div className="info-list">
+                    <p><strong>Title:</strong> {analysis.title ?? 'N/A'}</p>
+                    <p><strong>Brand:</strong> {analysis.brand ?? 'N/A'}</p>
+                    <p><strong>Price:</strong> {analysis.price ?? 'N/A'}</p>
+                    <p><strong>Rating:</strong> {analysis.rating ?? 'N/A'}</p>
+                    <p><strong>Review Count:</strong> {analysis.reviewCount ?? 'N/A'}</p>
+                  </div>
+                </SectionCard>
+              </div>
 
-              {analysis.aiAnalysis && <div className="cascade-item cascade-delay-3"><VerdictCard ai={analysis.aiAnalysis} /></div>}
-
-              <div className="cascade-item cascade-delay-4"><SectionCard title="Review Integrity" collapsible>
-                <div className="mini-score">
-                  <span>Score</span>
-                  <strong>{analysis.reviewIntegrity?.score ?? 'N/A'}</strong>
+              {analysis.aiAnalysis && (
+                <div className="cascade-item cascade-delay-3">
+                  <VerdictCard ai={analysis.aiAnalysis} />
                 </div>
-                <MetricBar label="Review Integrity" value={analysis.reviewIntegrity?.score} />
-                <div className="info-list">
-                  <p><strong>Label:</strong> {analysis.reviewIntegrity?.label ?? 'N/A'}</p>
-                  <p><strong>Verified Purchase Ratio:</strong> {analysis.reviewIntegrity?.verifiedPurchaseRatio ?? 'N/A'}</p>
-                  <p><strong>Sentiment Consistency:</strong> {analysis.reviewIntegrity?.sentimentConsistencyRatio ?? 'N/A'}</p>
+              )}
+
+              <div className="cascade-item cascade-delay-4">
+                <SectionCard title="Review Integrity" collapsible>
+                  <div className="mini-score">
+                    <span>Score</span>
+                    <strong>{analysis.reviewIntegrity?.score ?? 'N/A'}</strong>
+                  </div>
+                  <MetricBar label="Review Integrity" value={analysis.reviewIntegrity?.score} />
+                  <div className="info-list">
+                    <p><strong>Label:</strong> {analysis.reviewIntegrity?.label ?? 'N/A'}</p>
+                    <p><strong>Verified Purchase Ratio:</strong> {analysis.reviewIntegrity?.verifiedPurchaseRatio ?? 'N/A'}</p>
+                    <p><strong>Sentiment Consistency:</strong> {analysis.reviewIntegrity?.sentimentConsistencyRatio ?? 'N/A'}</p>
+                    <p className="keywords-label"><strong>Top Keywords:</strong></p>
+                    <KeywordPills keywords={analysis.reviewIntegrity?.commonKeywords} emptyMessage="No keywords found" />
+                  </div>
+                  <ScoreExplainer metric="review_integrity" analysis={analysis} />
+                </SectionCard>
+              </div>
+
+              <div className="cascade-item cascade-delay-5">
+                <SectionCard title="Brand Reputation" collapsible>
+                  <div className="mini-score">
+                    <span>Score</span>
+                    <strong>{analysis.brandReputation?.score ?? 'N/A'}</strong>
+                  </div>
+                  <MetricBar label="Brand Reputation" value={analysis.brandReputation?.score} />
+                  <div className="info-list">
+                    <p><strong>Label:</strong> {analysis.brandReputation?.label ?? 'N/A'}</p>
+                    <p><strong>Reviews Analyzed:</strong> {analysis.brandReputation?.reviewsAnalyzed ?? 'N/A'}</p>
+                  </div>
+                  {analysis.brandReputation?.insights?.length ? (
+                    <div className="insight-list">
+                      {analysis.brandReputation.insights.map((insight) => (
+                        <div key={insight.topic} className="insight-pill">
+                          <span>{insight.topic}</span>
+                          <strong>{insight.status}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="body-text muted">No brand insights yet.</p>
+                  )}
                   <p className="keywords-label"><strong>Top Keywords:</strong></p>
-                  <KeywordPills keywords={analysis.reviewIntegrity?.commonKeywords} emptyMessage="No keywords found" />
-                </div>
-                <ScoreExplainer metric="review_integrity" analysis={analysis} />
-              </SectionCard></div>
+                  <KeywordPills keywords={analysis.brandReputation?.commonKeywords} emptyMessage="No keywords found" />
+                  <ScoreExplainer metric="brand_reputation" analysis={analysis} />
+                </SectionCard>
+              </div>
 
-              <div className="cascade-item cascade-delay-5"><SectionCard title="Brand Reputation" collapsible>
-                <div className="mini-score">
-                  <span>Score</span>
-                  <strong>{analysis.brandReputation?.score ?? 'N/A'}</strong>
-                </div>
-                <MetricBar label="Brand Reputation" value={analysis.brandReputation?.score} />
-                <div className="info-list">
-                  <p><strong>Label:</strong> {analysis.brandReputation?.label ?? 'N/A'}</p>
-                  <p><strong>Reviews Analyzed:</strong> {analysis.brandReputation?.reviewsAnalyzed ?? 'N/A'}</p>
-                </div>
-                {analysis.brandReputation?.insights?.length ? (
-                  <div className="insight-list">
-                    {analysis.brandReputation.insights.map((insight) => (
-                      <div key={insight.topic} className="insight-pill">
-                        <span>{insight.topic}</span>
-                        <strong>{insight.status}</strong>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="body-text muted">No brand insights yet.</p>
-                )}
-                <p className="keywords-label"><strong>Top Keywords:</strong></p>
-                <KeywordPills keywords={analysis.brandReputation?.commonKeywords} emptyMessage="No keywords found" />
-                <ScoreExplainer metric="brand_reputation" analysis={analysis} />
-              </SectionCard></div>
-
-              <div className="cascade-item cascade-delay-6"><SectionCard title="Similar Products" collapsible>
-                {(analysis.similarProducts?.length ?? 0) > 0 ? (
-                  <div className="similar-scroll">
-                    {(() => {
-                      const bestAlternativeIndex = getBestAlternativeIndex(analysis, analysis.similarProducts)
-
-                      return analysis.similarProducts?.map((product, i) => {
-                        const comparison = compareProductAgainstCurrent(analysis, product)
-                        const isBestAlternative = i === bestAlternativeIndex
-
-                        return (
-                          <a
-                            key={product.asin ?? i}
-                            href={product.amazonUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className={`similar-card ${isBestAlternative ? 'similar-card--best' : ''}`}
-                          >
-                            <div className="similar-card-top">
-                              <div className="similar-card-badges">
-                                {isBestAlternative && (
-                                  <span className="best-alt-badge">BEST ALT</span>
-                                )}
-                                <span className={getTagClassName(comparison.tag)}>
-                                  {comparison.tag}
-                                </span>
+              <div className="cascade-item cascade-delay-6">
+                <SectionCard title="Similar Products" collapsible>
+                  {(analysis.similarProducts?.length ?? 0) > 0 ? (
+                    <div className="similar-scroll">
+                      {(() => {
+                        const bestAlternativeIndex = getBestAlternativeIndex(analysis, analysis.similarProducts)
+                        return analysis.similarProducts?.map((product, i) => {
+                          const comparison = compareProductAgainstCurrent(analysis, product)
+                          const isBestAlternative = i === bestAlternativeIndex
+                          return (
+                            <a
+                              key={product.asin ?? i}
+                              href={product.amazonUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className={`similar-card ${isBestAlternative ? 'similar-card--best' : ''}`}
+                            >
+                              <div className="similar-card-top">
+                                <div className="similar-card-badges">
+                                  {isBestAlternative && <span className="best-alt-badge">BEST ALT</span>}
+                                  <span className={getTagClassName(comparison.tag)}>{comparison.tag}</span>
+                                </div>
+                                {product.isPrime && <span className="prime-badge">Prime</span>}
                               </div>
+                              {product.image
+                                ? <img src={product.image} alt={product.title ?? 'Product'} className="similar-card-image" />
+                                : <ProductImagePlaceholder />}
+                              <p className="similar-card-title">{product.title ?? 'Untitled Product'}</p>
+                              <p className="similar-card-brand">{product.brand ?? 'Unknown brand'}</p>
+                              <div className="similar-card-price-row">
+                                <p className="similar-card-price">{product.price ?? 'No price'}</p>
+                                {comparison.priceDiff !== null && (
+                                  <span className={`price-diff ${comparison.priceDiff <= 0 ? 'price-diff--down' : 'price-diff--up'}`}>
+                                    {formatPriceDifference(comparison.priceDiff)}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="similar-card-rating">
+                                ⭐ {product.rating ?? 'N/A'}
+                                {product.reviewCount ? ` · ${product.reviewCount.toLocaleString()} reviews` : ''}
+                              </p>
+                            </a>
+                          )
+                        })
+                      })()}
+                    </div>
+                  ) : (
+                    <p className="body-text muted">No similar products found.</p>
+                  )}
+                </SectionCard>
+              </div>
 
-                              {product.isPrime && <span className="prime-badge">Prime</span>}
-                            </div>
-
-                            {product.image
-                              ? <img src={product.image} alt={product.title ?? 'Product'} className="similar-card-image" />
-                              : <ProductImagePlaceholder />
-                            }
-
-                            <p className="similar-card-title">{product.title ?? 'Untitled Product'}</p>
-                            <p className="similar-card-brand">{product.brand ?? 'Unknown brand'}</p>
-
-                            <div className="similar-card-price-row">
-                              <p className="similar-card-price">{product.price ?? 'No price'}</p>
-                              {comparison.priceDiff !== null && (
-                                <span className={`price-diff ${comparison.priceDiff <= 0 ? 'price-diff--down' : 'price-diff--up'}`}>
-                                  {formatPriceDifference(comparison.priceDiff)}
-                                </span>
-                              )}
-                            </div>
-
-                            <p className="similar-card-rating">
-                              ⭐ {product.rating ?? 'N/A'}
-                              {product.reviewCount ? ` • ${product.reviewCount.toLocaleString()} reviews` : ''}
-                            </p>
-                          </a>
-                        )
-                      })
-                    })()}
-                  </div>
-                ) : (
-                  <p className="body-text muted">No similar products found.</p>
-                )}
-              </SectionCard></div>
-
-              {hasScanned && <div className="cascade-item cascade-delay-7">{scanHistorySection}</div>}
+              {hasScanned && (
+                <div className="cascade-item cascade-delay-7">{scanHistorySection}</div>
+              )}
             </div>
           )}
         </div>

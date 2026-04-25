@@ -165,6 +165,7 @@ h5 {
   display: none;
 }
 
+/* ── Base card styles ─────────────────────────────────────────────────── */
 .section-card,
 .history-item,
 .similar-card,
@@ -227,6 +228,7 @@ h5 {
   gap: 8px;
 }
 
+/* ── Collapse button ───────────────────────────────────────────────────── */
 .collapse-icon-btn {
   width: 32px !important;
   height: 32px !important;
@@ -288,6 +290,7 @@ h5 {
   transform: rotate(225deg) !important;
 }
 
+/* ── Section content collapse/expand ──────────────────────────────────── */
 .section-content {
   display: grid;
   grid-template-rows: 0fr;
@@ -309,6 +312,7 @@ h5 {
   min-height: 0;
 }
 
+/* ── Score display ─────────────────────────────────────────────────────── */
 .score-row {
   display: flex;
   align-items: baseline;
@@ -329,6 +333,7 @@ h5 {
   font-weight: 600;
 }
 
+/* ── Metric bar ────────────────────────────────────────────────────────── */
 .metric {
   display: flex;
   flex-direction: column;
@@ -357,8 +362,10 @@ h5 {
   height: 100%;
   border-radius: 999px;
   background: linear-gradient(90deg, #f17922, #f5a25d);
+  transition: width 0.6s var(--motion-smooth);
 }
 
+/* ── Typography helpers ────────────────────────────────────────────────── */
 .body-text {
   margin: 0;
   font-size: 13px;
@@ -410,6 +417,7 @@ h5 {
   color: #1c1c1c;
 }
 
+/* ── Insight pills ─────────────────────────────────────────────────────── */
 .insight-list {
   display: flex;
   flex-direction: column;
@@ -441,6 +449,7 @@ h5 {
   color: #78716c !important;
 }
 
+/* ── Buttons ───────────────────────────────────────────────────────────── */
 .scan-btn,
 .premium-btn,
 .premium-plan-cta,
@@ -451,11 +460,11 @@ h5 {
   cursor: pointer;
   font-family: 'Epilogue', sans-serif;
   transition:
-    background 0.26s var(--motion-smooth),
-    border-color 0.26s var(--motion-smooth),
-    box-shadow 0.26s var(--motion-smooth),
-    color 0.22s ease,
-    opacity 0.22s ease !important;
+    background 0.22s var(--motion-smooth),
+    border-color 0.22s var(--motion-smooth),
+    box-shadow 0.22s var(--motion-smooth),
+    color 0.18s ease,
+    opacity 0.18s ease !important;
 }
 
 .scan-btn {
@@ -470,15 +479,15 @@ h5 {
   box-shadow: var(--shadow-warm);
 }
 
-.scan-btn:hover {
+.scan-btn:hover:not(:disabled) {
   background: var(--brand-deep);
   color: #ffffff;
-  box-shadow: 0 9px 24px rgba(249, 115, 22, 0.14);
+  box-shadow: 0 9px 24px rgba(249, 115, 22, 0.18);
   transform: none;
 }
 
 .scan-btn:disabled {
-  opacity: 0.7;
+  opacity: 0.65;
   cursor: not-allowed;
 }
 
@@ -489,10 +498,11 @@ h5 {
 .premium-plan-cta:active,
 .history-clear-btn:active,
 .history-delete-btn:active {
-  opacity: 0.88;
+  opacity: 0.84;
   transform: none !important;
 }
 
+/* ── Similar products scroll ───────────────────────────────────────────── */
 .similar-scroll {
   display: flex;
   gap: 12px;
@@ -519,11 +529,11 @@ h5 {
   flex-direction: column;
   gap: 8px;
   transition:
-    background 0.26s var(--motion-smooth),
-    border-color 0.26s var(--motion-smooth),
-    box-shadow 0.26s var(--motion-smooth),
-    color 0.22s ease,
-    opacity 0.22s ease !important;
+    background 0.22s var(--motion-smooth),
+    border-color 0.22s var(--motion-smooth),
+    box-shadow 0.22s var(--motion-smooth),
+    color 0.18s ease,
+    opacity 0.18s ease !important;
 }
 
 .similar-card:hover {
@@ -544,14 +554,6 @@ h5 {
 .similar-card-image {
   height: 110px;
   padding: 6px;
-}
-
-.similar-card-image.placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #78716c;
-  font-size: 12px;
 }
 
 .similar-card-title {
@@ -582,6 +584,7 @@ h5 {
   color: var(--brand-deep);
 }
 
+/* ── Keyword pills ─────────────────────────────────────────────────────── */
 .keywords-label {
   margin-top: 10px;
   margin-bottom: 4px;
@@ -698,6 +701,7 @@ h5 {
   padding: 3px 7px;
 }
 
+/* ── Premium screen ────────────────────────────────────────────────────── */
 .premium-hero {
   text-align: center;
   padding: 6px 2px 10px;
@@ -876,6 +880,7 @@ h5 {
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.10);
 }
 
+/* ── Score explainer ───────────────────────────────────────────────────── */
 .score-explainer {
   margin-top: 12px;
 }
@@ -894,7 +899,7 @@ h5 {
 }
 
 .why-score-btn:hover:not(:disabled) {
-  border-color: rgba(249, 115, 22, 0.34);
+  border-color: rgba(249, 115, 22, 0.38);
   background: linear-gradient(180deg, #fffaf7 0%, #fff1e8 100%);
   color: var(--brand-deep);
   box-shadow: none;
@@ -902,7 +907,7 @@ h5 {
 }
 
 .why-score-btn:disabled {
-  opacity: 0.7;
+  opacity: 0.6;
   cursor: wait;
 }
 
@@ -913,6 +918,13 @@ h5 {
   border-radius: var(--radius-md);
   padding: 12px 13px;
   box-shadow: none;
+  /* smooth entrance */
+  animation: explainFadeIn 0.3s var(--motion-soft);
+}
+
+@keyframes explainFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .explain-text {
@@ -924,6 +936,7 @@ h5 {
   color: #4b4039;
 }
 
+/* ── Secondary button ──────────────────────────────────────────────────── */
 .secondary-btn {
   border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.9);
@@ -944,6 +957,7 @@ h5 {
   transform: none;
 }
 
+/* ── Scan history ──────────────────────────────────────────────────────── */
 .scan-history-list {
   display: flex;
   flex-direction: column;
@@ -979,11 +993,11 @@ h5 {
   padding: 12px;
   cursor: pointer;
   transition:
-    background 0.26s var(--motion-smooth),
-    border-color 0.26s var(--motion-smooth),
-    box-shadow 0.26s var(--motion-smooth),
-    color 0.22s ease,
-    opacity 0.22s ease !important;
+    background 0.22s var(--motion-smooth),
+    border-color 0.22s var(--motion-smooth),
+    box-shadow 0.22s var(--motion-smooth),
+    color 0.18s ease,
+    opacity 0.18s ease !important;
 }
 
 .history-item:hover {
@@ -1036,6 +1050,7 @@ h5 {
   padding: 4px 9px;
   font-size: 11px;
   font-weight: 780;
+  border-radius: 999px;
 }
 
 .history-item-actions {
@@ -1065,12 +1080,17 @@ h5 {
   box-shadow: none;
 }
 
-.history-clear-btn:hover {
+.history-clear-btn:hover:not(:disabled) {
   border-color: rgba(249, 115, 22, 0.3);
   background: #fff1e7;
   color: var(--brand-deep);
   box-shadow: none;
   transform: none;
+}
+
+.history-clear-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .history-delete-btn {
@@ -1099,6 +1119,7 @@ h5 {
   margin-top: 12px;
 }
 
+/* ── Compare view ──────────────────────────────────────────────────────── */
 .compare-grid {
   display: grid;
   grid-template-columns: 110px 1fr 1fr;
@@ -1324,13 +1345,10 @@ h5 {
   color: #374151;
 }
 
+/* ── Skeleton loader ───────────────────────────────────────────────────── */
 @keyframes shimmer {
-  0% {
-    background-position: -900px 0;
-  }
-  100% {
-    background-position: 900px 0;
-  }
+  0%   { background-position: -900px 0; }
+  100% { background-position: 900px 0; }
 }
 
 .skeleton {
@@ -1345,6 +1363,7 @@ h5 {
   animation: cascadeIn 0.25s var(--motion-soft);
 }
 
+/* ── Results container ─────────────────────────────────────────────────── */
 .results-animate {
   display: flex;
   flex-direction: column;
@@ -1352,6 +1371,26 @@ h5 {
   animation: cascadeIn 0.35s var(--motion-soft);
 }
 
+/* ── Exit waterfall: applied when isClearingCurrentView=true ──────────── */
+/*    Each cascade-item slides left and fades out with a short stagger.    */
+/*    Timing synced to EXIT_ANIMATION_MS = 720ms in App.tsx.               */
+.results-exit-waterfall .cascade-item {
+  animation: moduleExitLeft 0.38s cubic-bezier(0.4, 0, 0.6, 1) forwards !important;
+  /* override the cascadeIn fill so we start from visible state */
+  animation-fill-mode: forwards !important;
+}
+
+/* Staggered delays — last item: 0.30s + 0.38s = 0.68s < EXIT_ANIMATION_MS */
+.results-exit-waterfall .cascade-delay-1 { animation-delay: 0.00s !important; }
+.results-exit-waterfall .cascade-delay-2 { animation-delay: 0.04s !important; }
+.results-exit-waterfall .cascade-delay-3 { animation-delay: 0.08s !important; }
+.results-exit-waterfall .cascade-delay-4 { animation-delay: 0.12s !important; }
+.results-exit-waterfall .cascade-delay-5 { animation-delay: 0.17s !important; }
+.results-exit-waterfall .cascade-delay-6 { animation-delay: 0.22s !important; }
+.results-exit-waterfall .cascade-delay-7 { animation-delay: 0.27s !important; }
+.results-exit-waterfall .cascade-delay-8 { animation-delay: 0.32s !important; }
+
+/* Focus styles */
 .scan-btn:focus-visible,
 .premium-btn:focus-visible,
 .premium-plan-cta:focus-visible,
@@ -1364,6 +1403,7 @@ h5 {
   box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.18);
 }
 
+/* ── Reduced motion overrides ─────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .content,
   .screen,
@@ -1373,7 +1413,8 @@ h5 {
 
   .cascade-item,
   .skeleton,
-  .results-animate {
+  .results-animate,
+  .explain-box {
     animation: none !important;
     opacity: 1;
     filter: none;
@@ -1392,12 +1433,13 @@ h5 {
   .premium-plan-cta,
   .history-clear-btn,
   .history-delete-btn,
-  .collapse-icon-btn {
+  .collapse-icon-btn,
+  .metric-fill {
     transition: none !important;
   }
 }
 
-/* Softer borders: removes black/dark module edges */
+/* Softer borders */
 .section-card,
 .history-item,
 .similar-card,
@@ -1418,16 +1460,29 @@ h5 {
   border-color: rgba(249, 115, 22, 0.32) !important;
 }
 
-/* Smoother waterfall cascade */
+/* ── Cascade entrance animation ───────────────────────────────────────── */
 @keyframes cascadeIn {
   from {
     opacity: 0;
     transform: translate3d(0, 12px, 0);
   }
-
   to {
     opacity: 1;
     transform: translate3d(0, 0, 0);
+  }
+}
+
+/* ── Module exit animation ────────────────────────────────────────────── */
+/*    Starts from opacity:1 (the animation-fill-mode: forwards of cascadeIn
+      locks the element at visible before the exit begins).                 */
+@keyframes moduleExitLeft {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(-20px, 0, 0) scale(0.98);
   }
 }
 
@@ -1446,6 +1501,7 @@ h5 {
 .cascade-delay-7 { animation-delay: 0.59s !important; }
 .cascade-delay-8 { animation-delay: 0.68s !important; }
 
+/* ── Compare product cards ─────────────────────────────────────────────── */
 .compare-product-card {
   border-radius: 0 !important;
   border: none !important;
@@ -1566,7 +1622,47 @@ h5 {
   border: 1px solid rgba(249, 115, 22, 0.36);
 }
 
-/* Stronger, separated comparison cards */
+.compare-summary-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.compare-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #f6f5f4;
+  border: 1px solid rgba(220, 213, 207, 0.6);
+  font-size: 11px;
+  font-weight: 650;
+  color: #6b625c;
+  letter-spacing: 0.01em;
+  transition: all 0.18s ease;
+}
+
+.compare-chip.right {
+  background: #feebde;
+  border-color: rgba(249, 115, 22, 0.18);
+  color: #303030;
+}
+
+.compare-chip.left {
+  background: #d8ebff;
+  border-color: rgba(148, 163, 184, 0.25);
+  color: #303030;
+}
+
+.compare-chip.tie {
+  opacity: 0.65;
+}
+
+.compare-chip:hover {
+  background: #f3f2f1;
+}
+
 .compare-products-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1628,49 +1724,7 @@ h5 {
   color: #171717;
 }
 
-/* Summary pills container */
-.compare-summary-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.compare-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: #f6f5f4;
-  border: 1px solid rgba(220, 213, 207, 0.6);
-  font-size: 11px;
-  font-weight: 650;
-  color: #6b625c;
-  letter-spacing: 0.01em;
-  transition: all 0.18s ease;
-}
-
-.compare-chip.right {
-  background: #feebde;
-  border-color: rgba(249, 115, 22, 0.18);
-  color: #303030;
-}
-
-.compare-chip.left {
-  background: #d8ebff;
-  border-color: rgba(148, 163, 184, 0.25);
-  color: #303030;
-}
-
-.compare-chip.tie {
-  opacity: 0.65;
-}
-
-.compare-chip:hover {
-  background: #f3f2f1;
-}
-
-/* Smooth scan history delete animation */
+/* ── Scan history item delete animation ───────────────────────────────── */
 .history-item {
   transform-origin: center;
 }
@@ -1687,12 +1741,10 @@ h5 {
     max-height: 160px;
     margin-bottom: 0;
   }
-
   65% {
     opacity: 0;
     transform: translateX(10px) scale(0.985);
   }
-
   100% {
     opacity: 0;
     transform: translateX(14px) scale(0.97);
@@ -1706,30 +1758,4 @@ h5 {
 
 .scan-history-list {
   overflow: hidden;
-}
-
-/* Cascading exit when deleting current scan / clearing all */
-.results-exit-waterfall .cascade-item {
-  animation: moduleExitLeft 0.38s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
-}
-
-.results-exit-waterfall .cascade-delay-1 { animation-delay: 0.02s !important; }
-.results-exit-waterfall .cascade-delay-2 { animation-delay: 0.06s !important; }
-.results-exit-waterfall .cascade-delay-3 { animation-delay: 0.10s !important; }
-.results-exit-waterfall .cascade-delay-4 { animation-delay: 0.14s !important; }
-.results-exit-waterfall .cascade-delay-5 { animation-delay: 0.18s !important; }
-.results-exit-waterfall .cascade-delay-6 { animation-delay: 0.22s !important; }
-.results-exit-waterfall .cascade-delay-7 { animation-delay: 0.26s !important; }
-.results-exit-waterfall .cascade-delay-8 { animation-delay: 0.30s !important; }
-
-@keyframes moduleExitLeft {
-  0% {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-
-  100% {
-    opacity: 0;
-    transform: translate3d(-18px, 0, 0) scale(0.985);
-  }
 }
