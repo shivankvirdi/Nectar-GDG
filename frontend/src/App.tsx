@@ -774,10 +774,27 @@ export default function App() {
               <div className="history-item-actions">
                 <button
                   type="button"
-                  className={`why-score-btn history-compare-btn ${isSelected ? 'secondary-btn--active' : ''}`}
+                  className={`why-score-btn history-compare-btn ${isSelected ? 'secondary-btn--active history-compare-btn--selected' : ''}`}
                   onClick={() => toggleCompareSelection(item.id)}
+                  aria-pressed={isSelected}
+                  aria-label={isSelected ? 'Selected for Compare' : 'Select to Compare'}
                 >
-                  {isSelected ? '✓ Selected' : 'Select to Compare'}
+                  <span
+                    className={`history-compare-btn-indicator ${isSelected ? 'history-compare-btn-indicator--selected' : ''}`}
+                    aria-hidden="true"
+                  />
+                  <span className="history-compare-btn-copy" aria-hidden="true">
+                    <span
+                      className={`history-compare-btn-text ${isSelected ? 'history-compare-btn-text--hidden' : 'history-compare-btn-text--visible'}`}
+                    >
+                      Select to Compare
+                    </span>
+                    <span
+                      className={`history-compare-btn-text history-compare-btn-text--selected ${isSelected ? 'history-compare-btn-text--visible' : 'history-compare-btn-text--hidden'}`}
+                    >
+                      Selected for Compare
+                    </span>
+                  </span>
                 </button>
                 <button
                   type="button"
