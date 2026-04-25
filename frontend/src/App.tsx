@@ -373,15 +373,20 @@ function SectionCard({
   const [open, setOpen] = useState(defaultOpen)
 
   return (
-    <section className="section-card">
+    <section className={`section-card ${open || !collapsible ? 'section-card--open' : 'section-card--closed'}`}>
       <div className="section-card-header">
         <h3>{title}</h3>
+
         {collapsible && (
-          <div className="section-card-actions">
-            <button type="button" className="collapse-btn" onClick={() => setOpen((prev) => !prev)}>
-              {open ? 'Hide' : 'Show'}
-            </button>
-          </div>
+          <button
+            type="button"
+            className="collapse-icon-btn"
+            onClick={() => setOpen((prev) => !prev)}
+            aria-label={open ? `Collapse ${title}` : `Expand ${title}`}
+            title={open ? 'Collapse' : 'Expand'}
+          >
+            <span className={`collapse-chevron ${open ? 'collapse-chevron--open' : ''}`} />
+          </button>
         )}
       </div>
 
@@ -511,12 +516,15 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [hasScanned, setHasScanned] = useState<boolean>(DEV_PREVIEW)
+  const [deletingScanIds, setDeletingScanIds] = useState<string[]>([])
+  const [isClearingHistory, setIsClearingHistory] = useState(false)
 
   const [currentSavedScan, setCurrentSavedScan] = useState<ScanRecord | null>(null)
   const [previousSavedScan, setPreviousSavedScan] = useState<ScanRecord | null>(null)
   const [scanHistory, setScanHistory] = useState<ScanRecord[]>([])
   const [selectedCompareIds, setSelectedCompareIds] = useState<string[]>([])
   const [compareRecords, setCompareRecords] = useState<[ScanRecord, ScanRecord] | null>(null)
+  const [isClearingCurrentView, setIsClearingCurrentView] = useState(false)
 
   const toggleCompareSelection = (id: string) => {
     setSelectedCompareIds((prev) => {
@@ -684,56 +692,85 @@ export default function App() {
   }
 
   const handleDeleteScan = async (id: string) => {
-    const itemToDelete = scanHistory.find((item) => item.id === id)
-    const nextHistory = scanHistory.filter((item) => item.id !== id)
+    setDeletingScanIds((prev) => [...prev, id])
 
-    await storageSet({
-      [SCAN_HISTORY_KEY]: nextHistory,
-    })
+    setTimeout(async () => {
+      const itemToDelete = scanHistory.find((item) => item.id === id)
+      const nextHistory = scanHistory.filter((item) => item.id !== id)
 
-    const currentScan = await loadCurrentSavedScan()
-    const previousScan = await loadPreviousSavedScan()
-    const cleanupKeys: string[] = []
+      await storageSet({
+        [SCAN_HISTORY_KEY]: nextHistory,
+      })
 
-    if (currentScan?.id === id) cleanupKeys.push(CURRENT_SCAN_KEY)
-    if (previousScan?.id === id) cleanupKeys.push(PREVIOUS_SCAN_KEY)
-    if (cleanupKeys.length) await storageRemove(cleanupKeys)
+      const currentScan = await loadCurrentSavedScan()
+      const previousScan = await loadPreviousSavedScan()
+      const cleanupKeys: string[] = []
 
-    setScanHistory(nextHistory)
-    setSelectedCompareIds((prev) => prev.filter((itemId) => itemId !== id))
+      if (currentScan?.id === id) cleanupKeys.push(CURRENT_SCAN_KEY)
+      if (previousScan?.id === id) cleanupKeys.push(PREVIOUS_SCAN_KEY)
+      if (cleanupKeys.length) await storageRemove(cleanupKeys)
 
-    if (currentSavedScan?.id === id) setCurrentSavedScan(null)
-    if (previousSavedScan?.id === id) setPreviousSavedScan(null)
+      setScanHistory(nextHistory)
+      setSelectedCompareIds((prev) => prev.filter((itemId) => itemId !== id))
 
-    if (itemToDelete?.analysis === analysis) {
-      setAnalysis(null)
-      setHasScanned(false)
-    }
+      if (currentSavedScan?.id === id) setCurrentSavedScan(null)
+      if (previousSavedScan?.id === id) setPreviousSavedScan(null)
 
-    setBackendStatus('Removed scan from history')
-    setError('')
+      if (itemToDelete?.analysis === analysis) {
+        setIsClearingCurrentView(true)
+
+        setTimeout(() => {
+          setAnalysis(null)
+          setHasScanned(false)
+          setIsClearingCurrentView(false)
+        }, 420)
+      }
+
+      setDeletingScanIds((prev) => prev.filter((itemId) => itemId !== id))
+      setBackendStatus('Removed scan from history')
+      setError('')
+    }, 240)
   }
 
   const handleClearScanHistory = async () => {
-    await storageSet({
-      [SCAN_HISTORY_KEY]: [],
-    })
-    await storageRemove([CURRENT_SCAN_KEY, PREVIOUS_SCAN_KEY])
+    setIsClearingHistory(true)
+    setDeletingScanIds(scanHistory.map((item) => item.id))
 
-    setScanHistory([])
-    setSelectedCompareIds([])
-    setCompareRecords(null)
-    setCurrentSavedScan(null)
-    setPreviousSavedScan(null)
-    setAnalysis(null)
-    setHasScanned(false)
-    setBackendStatus('Scan history cleared')
-    setError('')
-    setView('home')
+    setTimeout(async () => {
+      await storageSet({
+        [SCAN_HISTORY_KEY]: [],
+      })
+      await storageRemove([CURRENT_SCAN_KEY, PREVIOUS_SCAN_KEY])
+
+      setScanHistory([])
+      setSelectedCompareIds([])
+      setCompareRecords(null)
+      setCurrentSavedScan(null)
+      setPreviousSavedScan(null)
+
+      if (analysis) {
+        setIsClearingCurrentView(true)
+
+        setTimeout(() => {
+          setAnalysis(null)
+          setHasScanned(false)
+          setIsClearingCurrentView(false)
+        }, 420)
+      } else {
+        setAnalysis(null)
+        setHasScanned(false)
+      }
+
+      setBackendStatus('Scan history cleared')
+      setError('')
+      setView('home')
+      setDeletingScanIds([])
+      setIsClearingHistory(false)
+    }, 260)
   }
 
   const scanHistorySection = scanHistory.length > 0 && (
-    <SectionCard title="Scan History" collapsible defaultOpen={!hasScanned}>
+    <SectionCard title="Scan History" collapsible defaultOpen={false}>
       <div className="scan-history-toolbar">
         <p className="scan-history-count">
           {scanHistory.length} saved {scanHistory.length === 1 ? 'scan' : 'scans'}
@@ -754,7 +791,7 @@ export default function App() {
           return (
             <div
               key={item.id}
-              className={`history-item history-item--selectable ${isSelected ? 'history-item--selected' : ''}`}
+              className={`history-item history-item--selectable ${isSelected ? 'history-item--selected' : ''} ${deletingScanIds.includes(item.id) ? 'history-item--deleting' : ''}`}
             >
               <button
                 type="button"
@@ -886,18 +923,21 @@ export default function App() {
                 <span className="compare-summary-badge">{summaryLabel}</span>
               </div>
 
-              <div className="compare-summary-chips">
-                <span className="compare-chip">
-                  Best Value: {priceWinner === 'tie' ? 'Tie' : priceWinner === 'left' ? 'Left' : 'Right'}
+              <div className="compare-summary-pills">
+                <span className={`compare-chip ${priceWinner}`}>
+                  Best Value · {priceWinner === 'tie' ? 'Tie' : priceWinner === 'left' ? 'Left' : 'Right'}
                 </span>
-                <span className="compare-chip">
-                  Higher Rated: {ratingWinner === 'tie' ? 'Tie' : ratingWinner === 'left' ? 'Left' : 'Right'}
+
+                <span className={`compare-chip ${ratingWinner}`}>
+                  Higher Rated · {ratingWinner === 'tie' ? 'Tie' : ratingWinner === 'left' ? 'Left' : 'Right'}
                 </span>
-                <span className="compare-chip">
-                  More Trusted: {integrityWinner === 'tie' ? 'Tie' : integrityWinner === 'left' ? 'Left' : 'Right'}
+
+                <span className={`compare-chip ${integrityWinner}`}>
+                  More Trusted · {integrityWinner === 'tie' ? 'Tie' : integrityWinner === 'left' ? 'Left' : 'Right'}
                 </span>
-                <span className="compare-chip">
-                  Better Brand: {brandWinner === 'tie' ? 'Tie' : brandWinner === 'left' ? 'Left' : 'Right'}
+
+                <span className={`compare-chip ${brandWinner}`}>
+                  Better Brand · {brandWinner === 'tie' ? 'Tie' : brandWinner === 'left' ? 'Left' : 'Right'}
                 </span>
               </div>
             </section></div>
