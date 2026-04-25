@@ -1,402 +1,397 @@
-# vision_model.py
+# brand_reputation.py
+
+import os
 import re
-from urllib.parse import unquote, urlparse
-from .ai_analysis import get_ai_verdict
+import time
+import requests
 
-from .brand_reputation import get_brand_reputation
-from .canopy_client import get_full_product_profile, search_similar_products
-from .review_integrity import analyze_review_integrity
+from .nlp_utils import extract_keywords, sia, STOP_WORDS
 
-# ─── Product keyword list ───────────────────────────────────────────
-# Rules:
-#  1. Longest / most specific phrases must come BEFORE shorter ones so the
-#     regex finds "wireless earbuds" before "earbuds", "gaming console" before
-#     "console", etc. The list is re-sorted by length at runtime so ordering
-#     here doesn't matter — just be thorough.
-#  2. Use the exact words a shopper or Amazon URL would contain.
+GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY")
 
-PRODUCT_KEYWORDS = [
-    # ── Audio ──────────────────────────────────────────────────────────────
-    "wireless earbuds",
-    "wired earbuds",
-    "noise cancelling headphones",
-    "over ear headphones",
-    "on ear headphones",
-    "in ear monitors",
-    "headphones",
-    "earbuds",
-    "soundbar",
-    "subwoofer",
-    "home theater",
-    "bluetooth speaker",
-    "smart speaker",
-    "speaker",
-    "microphone",
-    "podcast microphone",
-    "condenser microphone",
-    "usb microphone",
-    "record player",
-    "turntable",
-
-    # ── Displays ───────────────────────────────────────────────────────────
-    "smart tv",
-    "television",
-    "4k monitor",
-    "gaming monitor",
-    "ultrawide monitor",
-    "monitor",
-    "projector",
-    "portable projector",
-
-    # ── Computers & peripherals ────────────────────────────────────────────
-    "gaming laptop",
-    "laptop",
-    "chromebook",
-    "mechanical keyboard",
-    "gaming keyboard",
-    "keyboard",
-    "gaming mouse",
-    "wireless mouse",
-    "computer mouse",
-    "gaming mousepad",
-    "mouse pad",
-    "usb hub",
-    "docking station",
-    "laptop stand",
-    "monitor arm",
-    "monitor stand",
-    "webcam",
-    "ring light",
-    "graphics card",
-    "cpu cooler",
-    "cpu",
-    "ram",
-    "ssd",
-    "external hard drive",
-    "hard drive",
-    "flash drive",
-    "sd card",
-    "memory card",
-    "router",
-    "wifi extender",
-    "mesh wifi",
-    "printer",
-    "3d printer",
-    "scanner",
-
-    # ── Mobile & tablets ──────────────────────────────────────────────────
-    "smartphone",
-    "tablet",
-    "ipad",
-    "screen protector",
-    "tempered glass",
-    "phone case",
-    "case",
-
-    # ── Charging & power ──────────────────────────────────────────────────
-    "wireless charger",
-    "magsafe charger",
-    "charging cable",
-    "usb c cable",
-    "lightning cable",
-    "charger",
-    "power bank",
-    "solar charger",
-    "cable",
-
-    # ── Cameras & imaging ─────────────────────────────────────────────────
-    "mirrorless camera",
-    "dslr camera",
-    "action camera",
-    "dash cam",
-    "security camera",
-    "doorbell camera",
-    "trail camera",
-    "camera lens",
-    "camera",
-    "drone",
-    "gimbal",
-    "tripod",
-
-    # ── Smart home ────────────────────────────────────────────────────────
-    "smart home hub",
-    "smart bulb",
-    "smart plug",
-    "smart lock",
-    "smart thermostat",
-    "thermostat",
-    "led strip",
-    "led lights",
-    "robot vacuum",
-    "vacuum cleaner",
-    "air purifier",
-    "humidifier",
-    "dehumidifier",
-
-    # ── Gaming ────────────────────────────────────────────────────────────
-    "gaming console",
-    "gaming headset",
-    "gaming chair",
-    "controller",
-    "steering wheel",
-
-    # ── Wearables ─────────────────────────────────────────────────────────
-    "smartwatch",
-    "fitness tracker",
-    "smart glasses",
-    "vr headset",
-    "watch",
-
-    # ── Kitchen appliances ────────────────────────────────────────────────
-    "air fryer",
-    "instant pot",
-    "pressure cooker",
-    "slow cooker",
-    "coffee maker",
-    "espresso machine",
-    "electric kettle",
-    "blender",
-    "food processor",
-    "stand mixer",
-    "toaster oven",
-    "toaster",
-    "rice cooker",
-    "microwave",
-
-    # ── Personal care & health ────────────────────────────────────────────
-    "electric toothbrush",
-    "water flosser",
-    "hair dryer",
-    "hair straightener",
-    "curling iron",
-    "electric razor",
-    "massage gun",
-    "smart scale",
-    "blood pressure monitor",
-    "pulse oximeter",
-
-    # ── Bags & organisation ───────────────────────────────────────────────
-    "backpack",
-    "laptop bag",
-    "laptop sleeve",
-    "cable organizer",
-    "desk organizer",
-]
+_brand_cache: dict[str, tuple[dict, float]] = {}
+CACHE_TTL_SECONDS = 3600  # 1 hour
 
 
-# ─── URL helpers ──────────────────────────────────────────────────────────────
-
-def normalize_url_text(url: str) -> str:
-    parsed   = urlparse(url)
-    raw_text = f"{parsed.netloc} {parsed.path} {parsed.query}"
-    decoded  = unquote(raw_text).lower()
-    return re.sub(r"[-_/+=%]+", " ", decoded)
-
-
-def extract_product_keyword(url: str) -> str:
-    normalized = normalize_url_text(url)
-    for keyword in sorted(PRODUCT_KEYWORDS, key=len, reverse=True):
-        pattern = rf"\b{re.escape(keyword)}\b"
-        if re.search(pattern, normalized):
-            return keyword
-    return "unknown"
+def _cache_get(brand_name: str) -> dict | None:
+    key = brand_name.lower().strip()
+    entry = _brand_cache.get(key)
+    if entry and time.time() - entry[1] < CACHE_TTL_SECONDS:
+        print(f"[Reputation] Cache hit for '{brand_name}' (expires in "
+              f"{int(CACHE_TTL_SECONDS - (time.time() - entry[1]))}s)")
+        return entry[0]
+    return None
 
 
-def extract_asin(url: str) -> str | None:
-    match = re.search(r"/(?:dp|gp/product)/([A-Z0-9]{10})", url, re.IGNORECASE)
-    return match.group(1).upper() if match else None
+def _cache_set(brand_name: str, result: dict) -> None:
+    _brand_cache[brand_name.lower().strip()] = (result, time.time())
 
 
-# ─── Score helpers ────────────────────────────────────────────────────────────
+# Domain-specific word lists
 
-def build_overall_score(
-    product_rating: float | int | None,
-    integrity_score: int,
-    reputation_score: int,
-) -> int:
-    rating_component = round((float(product_rating) / 5) * 100) if product_rating is not None else 0
-    return round((rating_component * 0.4) + (integrity_score * 0.35) + (reputation_score * 0.25))
+BRAND_NOISE_WORDS = {
+    "also", "like", "just", "really", "very", "good", "great", "nice", "love",
+    "product", "item", "thing", "would", "could", "even", "much", "well",
+    "still", "used", "using", "came", "come", "said", "make", "made", "best",
+    "ever", "back", "because", "dont", "didnt", "this", "that", "with", "have",
+    "been", "than", "them", "they", "from", "tried", "whilst", "available",
+    "getting", "going", "think", "know", "feel", "looks", "seems", "look",
+    "give", "need", "want", "does", "work", "works", "worked", "will", "shall",
+    "sure", "your", "their", "about", "there", "here", "when", "then",
+    "these", "those", "some", "more", "less", "over", "same", "such",
+    "time", "first", "last", "next", "take", "many", "away", "down",
+    "only", "into", "well", "other", "people", "after", "before",
+    "protein", "sugar", "taste", "chocolate", "drink", "banana", "cream",
+    "bike", "ride", "rider", "motor", "cycle", "wheel", "gear", "engine",
+    "team", "market", "store", "shop", "brand", "company", "business",
+    "john", "jane", "mike", "dave", "mark", "paul", "james", "david",
+    "chris", "steve", "lind", "harley", "davidson", "ford", "honda",
+    "star", "review", "stars", "rating", "reviewed", "reviewer",
+    "bought", "purchase", "purchased", "buying", "ordered", "order",
+    "amazon", "website", "online", "email", "phone", "called",
+    "said", "told", "asked", "answered", "replied", "reply",
+    "will", "want", "cant", "dont", "didnt", "wasnt", "isnt",
+    "ever", "never", "always", "usually", "often", "sometimes",
+}
+
+BRAND_BOOST = {
+    "shipping", "delivery", "delivered", "arrived", "packaging", "packaged",
+    "support", "service", "response", "responsive", "helpful", "unhelpful",
+    "refund", "return", "returned", "exchange", "resolved", "unresolved",
+    "communication", "contacted", "ignored", "delayed", "fast", "slow",
+    "damaged", "broken", "missing", "wrong", "correct", "accurate",
+    "trustworthy", "reliable", "unreliable", "scam", "legitimate", "fake",
+    "customer", "experience", "received", "waiting", "quality",
+}
+
+BRAND_BIGRAMS = {
+    "customer service", "customer support", "customer care",
+    "fast delivery",    "fast shipping",    "slow delivery",   "delayed delivery",
+    "never arrived",    "arrived damaged",  "wrong item",      "missing item",
+    "easy return",      "return process",   "refused refund",  "full refund",
+    "highly recommend", "would recommend",  "not recommend",
+    "great experience", "terrible experience", "awful experience",
+    "good communication", "no response",    "quick response",
+    "well packaged",    "poorly packaged",  "damaged packaging",
+    "money back",       "waste money",      "good value",      "great value",
+    "never again",      "will return",      "repeat customer",
+    "exceeded expectations", "below expectations",
+    "not worth",        "not good",         "not great",
+}
 
 
-def detect_accessory_type(title: str, fallback_keyword: str) -> str:
-    text = (title or "").lower()
-    if "screen protector" in text or "tempered glass" in text: return "screen protector"
-    if "phone case" in text or re.search(r"\bcase\b", text):   return "phone case"
-    if "wireless charger" in text:                              return "wireless charger"
-    if "charger" in text:                                       return "charger"
-    if "cable" in text:                                         return "charging cable"
-    if "power bank" in text:                                    return "power bank"
-    return fallback_keyword if fallback_keyword != "unknown" else ""
+def extract_common_keywords(reviews: list, top_n: int = 10) -> list:
+    """Thin wrapper so callers keep the same API as before."""
+    return extract_keywords(
+        reviews,
+        field="text",
+        noise_words=BRAND_NOISE_WORDS,
+        boost_words=BRAND_BOOST,
+        curated_bigrams=BRAND_BIGRAMS,
+        min_doc_freq=3,
+        min_word_length=5,
+        use_proper_noun_filter=True, 
+        top_n=top_n,
+    )
 
 
-def extract_device_name(title: str) -> str:
-    text     = (title or "").strip()
-    patterns = [
-        r"(iPhone\s+\d+(?:\s*(?:Pro Max|Pro|Plus|Mini))?)",
-        r"(Samsung\s+Galaxy\s+[A-Z0-9+\- ]+)",
-        r"(Galaxy\s+S\d+(?:\s*(?:Plus|Ultra|FE))?)",
-        r"(Galaxy\s+Z\s+(?:Fold|Flip)\s*\d*)",
-        r"(iPad\s+[A-Za-z0-9\s]+)",
-        r"(MacBook\s+(?:Air|Pro)\s+\d+(?:-inch)?)",
-        r"(Pixel\s+\d+(?:\s*(?:Pro|a|XL))?)",
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            return match.group(1).strip()
+# Brand name normalisation helpers
+
+def normalize_brand(brand: str) -> str:
+    if not brand:
+        return ""
+    brand = brand.strip()
+    for noise in ("store", "official", "shop"):
+        brand = re.sub(rf"\b{noise}\b", "", brand, flags=re.IGNORECASE)
+    brand = re.sub(r"\bamazon(\.com)?\b", "", brand, flags=re.IGNORECASE)
+    brand = brand.replace("&", " and ")
+    brand = re.sub(r"[^a-zA-Z0-9\s\-']", " ", brand)
+    return re.sub(r"\s+", " ", brand).strip()
+
+
+def guess_domain(brand: str) -> str:
+    clean = re.sub(r"[^a-z0-9]", "", normalize_brand(brand).lower())
+    return f"{clean}.com" if clean else ""
+
+
+def get_brand_candidates(brand: str) -> list[str]:
+    cleaned  = normalize_brand(brand)
+    no_space = re.sub(r"[^a-z0-9]", "", cleaned.lower())
+    domain   = guess_domain(cleaned)
+    seen:    set[str] = set()
+    result:  list[str] = []
+    for c in [cleaned, brand.strip(), no_space, domain]:
+        k = (c or "").strip()
+        if k and k.lower() not in seen:
+            seen.add(k.lower())
+            result.append(k)
+    return result
+
+
+def fuzzy_match(a: str, b: str) -> bool:
+    a2 = re.sub(r"[^a-z0-9]", "", a.lower())
+    b2 = re.sub(r"[^a-z0-9]", "", b.lower())
+    return bool(a2 and b2 and (a2 == b2 or a2 in b2 or b2 in a2))
+
+# Google Places helpers
+
+def _extract_display_name(place: dict) -> str:
+    display_name = place.get("displayName")
+
+    if isinstance(display_name, dict):
+        return (display_name.get("text") or "").strip()
+
+    if isinstance(display_name, str):
+        return display_name.strip()
+
+    return (place.get("name") or "").strip()
+
+
+def _extract_review_text(review: dict) -> str:
+    text = review.get("text")
+
+    if isinstance(text, dict):
+        return (text.get("text") or "").strip()
+
+    if isinstance(text, str):
+        return text.strip()
+
+    original_text = review.get("originalText")
+
+    if isinstance(original_text, dict):
+        return (original_text.get("text") or "").strip()
+
+    if isinstance(original_text, str):
+        return original_text.strip()
+
     return ""
 
 
-def clean_similar_products(similar_products: list, original_asin: str) -> list:
-    cleaned   = []
-    seen_asins: set[str] = set()
-    for item in similar_products:
-        if not isinstance(item, dict):
-            continue
-        asin  = item.get("asin")
-        title = (item.get("title") or "").strip()
-        if not asin or asin == original_asin or asin in seen_asins or not title:
-            continue
-        seen_asins.add(asin)
-        cleaned.append(item)
-    return cleaned
+def find_google_place(brand_name: str) -> dict | None:
+    if not GOOGLE_PLACES_API_KEY:
+        return None
 
-
-def build_similar_search_terms(
-    title: str, brand_name: str, product_keyword: str
-) -> list[str]:
-    title          = (title or "").strip()
-    brand_name     = (brand_name or "").strip()
-    accessory_type = detect_accessory_type(title, product_keyword)
-    device_name    = extract_device_name(title)
-
-    search_terms: list[str] = []
-    if device_name and accessory_type:
-        if accessory_type == "screen protector":
-            search_terms.append(f"{device_name} tempered glass {accessory_type}")
-        search_terms.append(f"{device_name} {accessory_type}")
-    if brand_name and accessory_type:
-        search_terms.append(f"{brand_name} {accessory_type}")
-    if accessory_type:
-        search_terms.append(accessory_type)
-    if title:
-        search_terms.append(title)
-
-    seen:   set[str]  = set()
-    deduped: list[str] = []
-    for term in search_terms:
-        k = term.lower().strip()
-        if k and k not in seen:
-            seen.add(k)
-            deduped.append(term)
-    return deduped
-
-
-# ─── Main analysis entry point ────────────────────────────────────────────────
-
-async def analyze_product_url(url: str) -> dict:
-    asin = extract_asin(url)
-    if not asin:
-        raise ValueError("Could not find an Amazon ASIN in the provided URL.")
-
-    product_keyword = extract_product_keyword(url)
-    profile         = get_full_product_profile(asin)
-
-    product = profile.get("product", {})
-    brand   = profile.get("brand", "") or product.get("brand", "")
-    reviews = profile.get("reviews") or []
-
-    review_integrity = analyze_review_integrity(reviews)
-
-    brand_reputation = await get_brand_reputation(brand, reviews) if brand else {
-        "brand":                "",
-        "reputation_score_pct": None,
-        "overall_label":        "Brand not found.",
-        "insights":             [],
-        "reviews_analyzed":     0,
-        "commonKeywords":       [],
+    url = "https://places.googleapis.com/v1/places:searchText"
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
+        "X-Goog-FieldMask": "places.id,places.displayName,places.rating,places.userRatingCount",
     }
 
-    title      = (product.get("title") or "").strip()
-    brand_name = (brand or "").strip()
+    for candidate in get_brand_candidates(brand_name):
+        body = {
+            "textQuery": candidate,
+            "pageSize": 1,
+        }
 
-    similar_products: list = []
-    for term in build_similar_search_terms(title, brand_name, product_keyword):
-        results = search_similar_products(term)
-        if results:
-            similar_products = results
-            break
-    similar_products = clean_similar_products(similar_products, asin)
+        try:
+            resp = requests.post(url, json=body, headers=headers, timeout=15)
 
-    rating           = product.get("rating")
-    integrity_score  = review_integrity.get("integrity_score_pct", 50)
-    reputation_score = brand_reputation.get("reputation_score_pct") or 50
-    overall_score    = build_overall_score(rating, integrity_score, reputation_score)
+            if resp.status_code != 200:
+                print(f"[Reputation] Google Text Search error for '{candidate}': {resp.status_code} {resp.text}")
+                continue
 
-    ai_analysis = get_ai_verdict(
-        title=title,
-        reviews=reviews,
-        overall_score=overall_score,
-        integrity_score=integrity_score,
-        reputation_score=reputation_score,
-    )
+            places_found = resp.json().get("places", [])
+
+            if places_found:
+                best = places_found[0]
+                print(f"[Reputation] Google matched '{_extract_display_name(best)}' for '{candidate}'")
+                return best
+        except Exception as e:
+            print(f"[Reputation] Google Text Search error for '{candidate}': {e}")
+
+    return None
+
+
+def get_google_place_details(place_id: str) -> dict:
+    if not GOOGLE_PLACES_API_KEY or not place_id:
+        return {}
+
+    url = f"https://places.googleapis.com/v1/places/{place_id}"
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
+        "X-Goog-FieldMask": "id,displayName,rating,userRatingCount,reviews",
+    }
+
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+
+        if resp.status_code != 200:
+            print(f"[Reputation] Google Place Details error: {resp.status_code} {resp.text}")
+            return {}
+
+        return resp.json()
+    except Exception as e:
+        print(f"[Reputation] Google Place Details error: {e}")
+        return {}
+
+
+def normalize_google_reviews(place_details: dict) -> list[dict]:
+    result = []
+
+    for review in place_details.get("reviews", []) or []:
+        text = _extract_review_text(review)
+
+        if text:
+            result.append({
+                "text": text,
+                "title": "",
+                "rating": review.get("rating", 3),
+            })
+
+    return result
+
+
+def normalize_amazon_reviews(amazon_reviews: list | None) -> list[dict]:
+    if not amazon_reviews:
+        return []
+    result = []
+    for r in amazon_reviews:
+        if not isinstance(r, dict):
+            continue
+        text = (r.get("body") or r.get("text") or r.get("content") or "").strip()
+        if text:
+            result.append({
+                "text":   text,
+                "title":  (r.get("title") or r.get("headline") or "").strip(),
+                "rating": r.get("rating", 3),
+            })
+    return result
+
+
+# Insight + scoring 
+
+def build_reputation_insights(
+    reviews: list,
+    brand_name: str,
+    source_name: str = "brand_reviews",
+) -> dict:
+    if not reviews:
+        return {
+            "brand": brand_name,
+            "reputation_score_pct": None,
+            "overall_label": "Insufficient brand review data found.",
+            "avg_compound": None,
+            "positive_pct": None,
+            "negative_pct": None,
+            "reviews_analyzed": 0,
+            "insights": [
+                {"topic": "Customer Support",    "status": "Unknown"},
+                {"topic": "Shipping & Delivery", "status": "Unknown"},
+                {"topic": "Build Quality",       "status": "Unknown"},
+            ],
+            "commonKeywords": [],
+            "source": source_name,
+        }
+
+    compound_scores = []
+    pos = neg = neu = 0
+    support_scores  = []
+    shipping_scores = []
+    quality_scores  = []
+
+    for review in reviews:
+        text       = review["text"]
+        text_lower = text.lower()
+        compound   = sia.polarity_scores(text)["compound"]
+        compound_scores.append(compound)
+
+        if compound >= 0.05:    pos += 1
+        elif compound <= -0.05: neg += 1
+        else:                   neu += 1
+
+        if any(kw in text_lower for kw in ["support", "service", "help", "response", "refund", "return", "agent"]):
+            support_scores.append(compound)
+        if any(kw in text_lower for kw in ["shipping", "delivery", "arrived", "package", "delayed", "late", "fast", "slow"]):
+            shipping_scores.append(compound)
+        if any(kw in text_lower for kw in ["quality", "durable", "broke", "build", "material", "lasted", "cheap", "premium"]):
+            quality_scores.append(compound)
+
+    total        = len(compound_scores)
+    avg_compound = sum(compound_scores) / total if total else 0
+
+    def _status(scores: list) -> str:
+        if not scores: return "Neutral"
+        m = sum(scores) / len(scores)
+        return "Positive" if m >= 0.05 else "Caution" if m <= -0.05 else "Neutral"
+
+    insights = [
+        {"topic": "Customer Support",    "status": _status(support_scores)},
+        {"topic": "Shipping & Delivery", "status": _status(shipping_scores)},
+        {"topic": "Build Quality",       "status": _status(quality_scores)},
+    ]
+
+    avg_rating     = sum(float(r.get("rating", 3) or 3) for r in reviews) / total if total else 3
+    sentiment_pct  = ((avg_compound + 1) / 2) * 100
+    rating_pct     = (avg_rating / 5) * 100
+    rep_score      = round((sentiment_pct * 0.45) + (rating_pct * 0.55)) if total else None
+
+    if   rep_score >= 80: label = "Strong overall brand reputation."
+    elif rep_score >= 65: label = "Mostly positive brand reputation with some concerns."
+    elif rep_score >= 50: label = "Mixed brand reputation."
+    else:                 label = "Weak brand reputation based on available reviews."
 
     return {
-        "asin":           asin,
-        "productKeyword": product_keyword,
-        "title":          product.get("title"),
-        "brand":          brand,
-        "price":          (product.get("price") or {}).get("display"),
-        "rating":         rating,
-        "reviewCount":    product.get("ratingsTotal"),
-        "image":          product.get("mainImageUrl"),
-        "amazonUrl":      f"https://www.amazon.com/dp/{asin}",
-
-        "overallScore": overall_score,
-
-        "reviewIntegrity": {
-            "score":                     integrity_score,
-            "label":                     review_integrity.get("integrity_label"),
-            "verifiedPurchaseRatio":     review_integrity.get("verified_purchase_ratio"),
-            "sentimentConsistencyRatio": review_integrity.get("sentiment_consistency_ratio"),
-            "flags":                     review_integrity.get("flags", {}),
-            "commonKeywords":            review_integrity.get("commonKeywords", []),
-        },
-
-        "brandReputation": {
-            "score":           reputation_score,
-            "label":           brand_reputation.get("overall_label"),
-            "insights":        brand_reputation.get("insights", []),
-            "reviewsAnalyzed": brand_reputation.get("reviews_analyzed", 0),
-            "commonKeywords":  brand_reputation.get("commonKeywords", []),
-            "source":          brand_reputation.get("source"),
-        },
-
-        "aiAnalysis": {
-            "pros":           ai_analysis.get("pros", []),
-            "cons":           ai_analysis.get("cons", []),
-            "verdict":        ai_analysis.get("verdict", ""),
-            "recommendation": ai_analysis.get("recommendation", "COMPARE"),
-        },
-
-        "similarProducts": [
-            {
-                "title":       item.get("title"),
-                "asin":        item.get("asin"),
-                "brand":       item.get("brand"),
-                "rating":      item.get("rating"),
-                "reviewCount": item.get("ratingsTotal"),
-                "price":       (item.get("price") or {}).get("display"),
-                "isPrime":     item.get("isPrime"),
-                "image":       item.get("mainImageUrl"),
-                "amazonUrl":   f"https://www.amazon.com/dp/{item.get('asin')}" if item.get("asin") else None,
-            }
-            for item in similar_products
-            if isinstance(item, dict) and item.get("asin")
-        ][:5],
-
-        "raw": {
-            "product": product,
-            "reviews": reviews,
-        },
+        "brand":                brand_name,
+        "reputation_score_pct": rep_score,
+        "overall_label":        label,
+        "avg_compound":         round(avg_compound, 3),
+        "positive_pct":         round((pos / total) * 100) if total else 0,
+        "negative_pct":         round((neg / total) * 100) if total else 0,
+        "reviews_analyzed":     total,
+        "insights":             insights,
+        "commonKeywords":       extract_common_keywords(reviews),
+        "source":               source_name,
     }
+
+
+async def get_brand_reputation(
+    brand_name: str,
+    amazon_reviews: list | None = None,
+) -> dict:
+    print(f"\n[Reputation] Analyzing brand: '{brand_name}'")
+
+    cached = _cache_get(brand_name)
+    if cached is not None:
+        return cached
+
+    google_reviews: list[dict] = []
+    place = find_google_place(brand_name) if GOOGLE_PLACES_API_KEY else None
+    if place:
+        details = get_google_place_details(place.get("id", ""))
+        google_reviews = normalize_google_reviews(details)
+        print(f"[Reputation] Google reviews found: {len(google_reviews)}")
+    else:
+        print("[Reputation] No Google place match or API key missing")
+
+    amazon_normalized = normalize_amazon_reviews(amazon_reviews)
+    print(f"[Reputation] Amazon fallback reviews: {len(amazon_normalized)}")
+
+    if len(google_reviews) >= 3:
+        result = build_reputation_insights(google_reviews, brand_name, "google_places")
+    elif amazon_normalized:
+        result = build_reputation_insights(amazon_normalized, brand_name, "amazon_reviews_fallback")
+    elif google_reviews:
+        result = build_reputation_insights(google_reviews, brand_name, "google_places_limited")
+    else:
+        result = {
+            "brand": brand_name,
+            "reputation_score_pct": None,
+            "overall_label": "Brand review data unavailable.",
+            "avg_compound": None,
+            "positive_pct": None,
+            "negative_pct": None,
+            "reviews_analyzed": 0,
+            "insights": [
+                {"topic": "Customer Support",    "status": "Unknown"},
+                {"topic": "Shipping & Delivery", "status": "Unknown"},
+                {"topic": "Build Quality",       "status": "Unknown"},
+            ],
+            "commonKeywords": [],
+            "source": "no_brand_review_source_available",
+        }
+
+    # Store in cache before returning
+    _cache_set(brand_name, result)
+    return result

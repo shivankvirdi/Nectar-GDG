@@ -183,52 +183,6 @@ PRODUCT_KEYWORDS = [
     "desk organizer",
 ]
 
-PRODUCT_KEYWORD_ALIASES = {
-    "airpods": "earbuds",
-    "air pods": "earbuds",
-    "ear pods": "earbuds",
-}
-
-ACCESSORY_KEYWORDS = {
-    "screen protector",
-    "phone case",
-    "wireless charger",
-    "charger",
-    "charging cable",
-    "power bank",
-}
-
-PRODUCT_MATCH_ALIASES = {
-    "earbuds": [
-        "airpods",
-        "air pods",
-        "ear pods",
-        "earbuds",
-        "ear buds",
-        "buds",
-        "in ear",
-    ],
-    "wireless earbuds": [
-        "airpods",
-        "air pods",
-        "wireless earbuds",
-        "earbuds",
-        "buds",
-    ],
-    "phone case": [
-        "phone case",
-        "iphone case",
-        "galaxy case",
-        "pixel case",
-        "protective case",
-    ],
-    "screen protector": [
-        "screen protector",
-        "tempered glass",
-        "privacy screen",
-    ],
-}
-
 
 # ─── URL helpers ──────────────────────────────────────────────────────────────
 
@@ -239,30 +193,13 @@ def normalize_url_text(url: str) -> str:
     return re.sub(r"[-_/+=%]+", " ", decoded)
 
 
-def normalize_product_text(text: str) -> str:
-    return re.sub(r"[-_/+=%]+", " ", (text or "").lower())
-
-
-def extract_product_keyword_from_text(text: str) -> str:
-    normalized = normalize_product_text(text)
-
-    candidate_keywords = list(PRODUCT_KEYWORDS) + list(PRODUCT_KEYWORD_ALIASES.keys())
-    for keyword in sorted(candidate_keywords, key=len, reverse=True):
+def extract_product_keyword(url: str) -> str:
+    normalized = normalize_url_text(url)
+    for keyword in sorted(PRODUCT_KEYWORDS, key=len, reverse=True):
         pattern = rf"\b{re.escape(keyword)}\b"
         if re.search(pattern, normalized):
-            return PRODUCT_KEYWORD_ALIASES.get(keyword, keyword)
+            return keyword
     return "unknown"
-
-
-def extract_product_keyword(url: str) -> str:
-    return extract_product_keyword_from_text(normalize_url_text(url))
-
-
-def resolve_product_keyword(url: str, title: str) -> str:
-    title_keyword = extract_product_keyword_from_text(title)
-    if title_keyword != "unknown":
-        return title_keyword
-    return extract_product_keyword(url)
 
 
 def extract_asin(url: str) -> str | None:
@@ -283,44 +220,13 @@ def build_overall_score(
 
 def detect_accessory_type(title: str, fallback_keyword: str) -> str:
     text = (title or "").lower()
-    if "screen protector" in text or "tempered glass" in text:
-        return "screen protector"
-    if "wireless charger" in text:
-        return "wireless charger"
-    if "power bank" in text:
-        return "power bank"
-    if "charging cable" in text or "usb c cable" in text or "lightning cable" in text:
-        return "charging cable"
-    if "phone case" in text:
-        return "phone case"
-    if (
-        re.search(r"\bcase\b", text)
-        and re.search(r"\b(iphone|galaxy|pixel|phone|smartphone)\b", text)
-        and "charging case" not in text
-    ):
-        return "phone case"
-    if "charger" in text:
-        return "charger"
-    if "cable" in text and "charging case" not in text:
-        return "charging cable"
+    if "screen protector" in text or "tempered glass" in text: return "screen protector"
+    if "phone case" in text or re.search(r"\bcase\b", text):   return "phone case"
+    if "wireless charger" in text:                              return "wireless charger"
+    if "charger" in text:                                       return "charger"
+    if "cable" in text:                                         return "charging cable"
+    if "power bank" in text:                                    return "power bank"
     return fallback_keyword if fallback_keyword != "unknown" else ""
-
-
-def title_matches_product_keyword(title: str, product_keyword: str) -> bool:
-    normalized_title = normalize_product_text(title)
-    normalized_keyword = normalize_product_text(product_keyword)
-
-    if not normalized_title or not normalized_keyword or normalized_keyword == "unknown":
-        return True
-
-    if re.search(rf"\b{re.escape(normalized_keyword)}\b", normalized_title):
-        return True
-
-    for alias in PRODUCT_MATCH_ALIASES.get(product_keyword, []):
-        if re.search(rf"\b{re.escape(normalize_product_text(alias))}\b", normalized_title):
-            return True
-
-    return False
 
 
 def extract_device_name(title: str) -> str:
@@ -361,29 +267,20 @@ def build_similar_search_terms(
 ) -> list[str]:
     title          = (title or "").strip()
     brand_name     = (brand_name or "").strip()
-    primary_keyword = extract_product_keyword_from_text(title)
-    if primary_keyword == "unknown":
-        primary_keyword = product_keyword
-
-    accessory_type = detect_accessory_type(title, primary_keyword)
+    accessory_type = detect_accessory_type(title, product_keyword)
     device_name    = extract_device_name(title)
-    is_accessory_query = accessory_type in ACCESSORY_KEYWORDS and primary_keyword in ACCESSORY_KEYWORDS
 
     search_terms: list[str] = []
-    if is_accessory_query and device_name and accessory_type:
+    if device_name and accessory_type:
         if accessory_type == "screen protector":
             search_terms.append(f"{device_name} tempered glass {accessory_type}")
         search_terms.append(f"{device_name} {accessory_type}")
+    if brand_name and accessory_type:
+        search_terms.append(f"{brand_name} {accessory_type}")
+    if accessory_type:
+        search_terms.append(accessory_type)
     if title:
         search_terms.append(title)
-    if brand_name and primary_keyword:
-        search_terms.append(f"{brand_name} {primary_keyword}")
-    if primary_keyword:
-        search_terms.append(primary_keyword)
-    if is_accessory_query and brand_name and accessory_type:
-        search_terms.append(f"{brand_name} {accessory_type}")
-    if is_accessory_query and accessory_type:
-        search_terms.append(accessory_type)
 
     seen:   set[str]  = set()
     deduped: list[str] = []
@@ -402,6 +299,7 @@ async def analyze_product_url(url: str) -> dict:
     if not asin:
         raise ValueError("Could not find an Amazon ASIN in the provided URL.")
 
+    product_keyword = extract_product_keyword(url)
     profile         = get_full_product_profile(asin)
 
     product = profile.get("product", {})
@@ -421,22 +319,11 @@ async def analyze_product_url(url: str) -> dict:
 
     title      = (product.get("title") or "").strip()
     brand_name = (brand or "").strip()
-    product_keyword = resolve_product_keyword(url, title)
 
     similar_products: list = []
     for term in build_similar_search_terms(title, brand_name, product_keyword):
         results = search_similar_products(term)
-        if not results:
-            continue
-
-        matching_results = [
-            item for item in results
-            if title_matches_product_keyword(item.get("title", ""), product_keyword)
-        ]
-        if matching_results:
-            similar_products = matching_results
-            break
-        if product_keyword == "unknown":
+        if results:
             similar_products = results
             break
     similar_products = clean_similar_products(similar_products, asin)
