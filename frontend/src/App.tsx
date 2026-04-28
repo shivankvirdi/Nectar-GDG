@@ -509,6 +509,134 @@ function VerdictCard({ ai }: { ai: NonNullable<Analysis['aiAnalysis']> }) {
   )
 }
 
+export function SimilarProductsScroller({
+  analysis,
+  products,
+}: {
+  analysis: Analysis
+  products: SimilarProduct[]
+}) {
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const [canScrollLeft, setCanScrollLeft] = useState(false)
+  const [canScrollRight, setCanScrollRight] = useState(false)
+
+  const updateScrollButtons = () => {
+    const el = scrollRef.current
+    if (!el) return
+
+    const maxScroll = el.scrollWidth - el.clientWidth
+    setCanScrollLeft(el.scrollLeft > 2)
+    setCanScrollRight(el.scrollLeft < maxScroll - 2)
+  }
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+
+    updateScrollButtons()
+    el.addEventListener('scroll', updateScrollButtons, { passive: true })
+    window.addEventListener('resize', updateScrollButtons)
+
+    const resizeObserver = new ResizeObserver(updateScrollButtons)
+    resizeObserver.observe(el)
+
+    return () => {
+      el.removeEventListener('scroll', updateScrollButtons)
+      window.removeEventListener('resize', updateScrollButtons)
+      resizeObserver.disconnect()
+    }
+  }, [products.length])
+
+  const scrollOneProduct = (direction: 'left' | 'right') => {
+    const el = scrollRef.current
+    if (!el) return
+
+    const cards = Array.from(el.querySelectorAll<HTMLElement>('.similar-card'))
+    const firstCard = cards[0]
+    if (!firstCard) return
+
+    const secondCard = cards[1]
+    const cardStep = secondCard
+      ? secondCard.getBoundingClientRect().left - firstCard.getBoundingClientRect().left
+      : firstCard.offsetWidth
+
+    el.scrollBy({
+      left: direction === 'right' ? cardStep : -cardStep,
+      behavior: 'smooth',
+    })
+  }
+
+  const bestAlternativeIndex = getBestAlternativeIndex(analysis, products)
+
+  return (
+    <div className="similar-scroll-shell">
+      {canScrollLeft && (
+        <button
+          type="button"
+          className="similar-scroll-arrow similar-scroll-arrow--left"
+          aria-label="Scroll similar products left"
+          onClick={() => scrollOneProduct('left')}
+        >
+          <span />
+        </button>
+      )}
+      <div
+        className={`similar-scroll ${canScrollLeft && canScrollRight ? 'similar-scroll--fade-both' : canScrollRight ? 'similar-scroll--fade-right' : canScrollLeft ? 'similar-scroll--fade-left' : ''}`}
+        ref={scrollRef}
+      >
+        {products.map((product, i) => {
+          const comparison = compareProductAgainstCurrent(analysis, product)
+          const isBestAlternative = i === bestAlternativeIndex
+          return (
+            <a
+              key={product.asin ?? i}
+              href={product.amazonUrl}
+              target="_blank"
+              rel="noreferrer"
+              className={`similar-card ${isBestAlternative ? 'similar-card--best' : ''}`}
+            >
+              <div className="similar-card-top">
+                <div className="similar-card-badges">
+                  {isBestAlternative && <span className="best-alt-badge">BEST ALT</span>}
+                  <span className={getTagClassName(comparison.tag)}>{comparison.tag}</span>
+                </div>
+                {product.isPrime && <span className="prime-badge">Prime</span>}
+              </div>
+              {product.image
+                ? <img src={product.image} alt={product.title ?? 'Product'} className="similar-card-image" />
+                : <ProductImagePlaceholder />}
+              <p className="similar-card-title">{product.title ?? 'Untitled Product'}</p>
+              <p className="similar-card-brand">{product.brand ?? 'Unknown brand'}</p>
+              <div className="similar-card-price-row">
+                <p className="similar-card-price">{product.price ?? 'No price'}</p>
+                {comparison.priceDiff !== null && (
+                  <span className={`price-diff ${comparison.priceDiff <= 0 ? 'price-diff--down' : 'price-diff--up'}`}>
+                    {formatPriceDifference(comparison.priceDiff)}
+                  </span>
+                )}
+              </div>
+              <p className="similar-card-rating">
+                ⭐ {product.rating ?? 'N/A'}
+                {product.reviewCount ? ` · ${product.reviewCount.toLocaleString()} reviews` : ''}
+              </p>
+            </a>
+          )
+        })}
+      </div>
+      {canScrollRight && (
+        <button
+          type="button"
+          className="similar-scroll-arrow similar-scroll-arrow--right"
+          aria-label="Scroll similar products right"
+          onClick={() => scrollOneProduct('right')}
+        >
+          <span />
+        </button>
+      )}
+    </div>
+  )
+}
+
 export default function App() {
   const [currentUrl, setCurrentUrl] = useState('Loading...')
   const [backendStatus, setBackendStatus] = useState('Ready to scan')
@@ -1272,7 +1400,22 @@ export default function App() {
                   className="section-card--similar"
                 >
                   {(analysis.similarProducts?.length ?? 0) > 0 ? (
-                    <div className="similar-scroll">
+                    <>
+                      <SimilarProductsScroller analysis={analysis} products={analysis.similarProducts ?? []} />
+                      {/*
+                    <div className="similar-scroll-shell">
+                      {canScrollSimilarLeft && (
+                        <button
+                          type="button"
+                          className="similar-scroll-arrow similar-scroll-arrow--left"
+                          aria-label="Scroll similar products left"
+                          onClick={() => scrollSimilarProducts('left')}
+                        >
+                          <span />
+                        </button>
+                      )}
+                      {/*
+                      <div className="similar-scroll" ref={similarScrollRef}>
                       {(() => {
                         const bestAlternativeIndex = getBestAlternativeIndex(analysis, analysis.similarProducts)
                         return analysis.similarProducts?.map((product, i) => {
@@ -1314,7 +1457,20 @@ export default function App() {
                           )
                         })
                       })()}
+                      </div>
+                      {canScrollSimilarRight && (
+                        <button
+                          type="button"
+                          className="similar-scroll-arrow similar-scroll-arrow--right"
+                          aria-label="Scroll similar products right"
+                          onClick={() => scrollSimilarProducts('right')}
+                        >
+                          <span />
+                        </button>
+                      )}
                     </div>
+                      */}
+                    </>
                   ) : (
                     <p className="body-text muted empty-state empty-state--compact">
                       No alternatives found

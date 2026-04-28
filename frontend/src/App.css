@@ -757,6 +757,12 @@ h6,
 }
 
 /* ── Similar products scroll ───────────────────────────────────────────── */
+.similar-scroll-shell {
+  position: relative;
+  margin: 0 -1px;
+  padding: 0 2px;
+}
+
 .similar-scroll {
   display: flex;
   gap: 12px;
@@ -770,9 +776,116 @@ h6,
   overscroll-behavior: contain;
 }
 
+.similar-scroll-arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 5;
+  width: 26px;
+  height: 38px;
+  border: 1px solid rgba(17, 24, 39, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: rgba(95, 85, 77, 0.16);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.18;
+  box-shadow: none !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transform: translateY(-50%) scale(0.92);
+  transition:
+    background 0.2s var(--motion-smooth),
+    border-color 0.2s var(--motion-smooth),
+    color 0.18s ease,
+    opacity 0.18s ease,
+    transform 0.24s var(--motion-control);
+}
+
+.similar-scroll-arrow--left {
+  left: 8px;
+}
+
+.similar-scroll-arrow--right {
+  right: 8px;
+}
+
+.similar-scroll-arrow span {
+  width: 10px;
+  height: 10px;
+  border-top: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+  display: block;
+}
+
+.similar-scroll-arrow--left span {
+  transform: translateX(2px) rotate(-135deg);
+}
+
+.similar-scroll-arrow--right span {
+  transform: translateX(-2px) rotate(45deg);
+}
+
+.similar-scroll-shell .similar-scroll-arrow:hover {
+  opacity: 1;
+  background: rgba(255, 246, 239, 0.94);
+  border-color: rgba(249, 115, 22, 0.36);
+  color: var(--brand-deep);
+  box-shadow: none !important;
+  transform: translateY(-50%) scale(1.08);
+}
+
+.similar-scroll-shell:hover .similar-scroll-arrow,
+.similar-scroll-arrow:focus-visible {
+  opacity: 0.9;
+  background: rgba(255, 255, 255, 0.76);
+  border-color: rgba(17, 24, 39, 0.24);
+  color: rgba(17, 24, 39, 0.72);
+  box-shadow: none !important;
+  transform: translateY(-50%) scale(0.98);
+}
+
+.similar-scroll-shell:hover .similar-scroll-arrow:hover {
+  opacity: 1;
+  background: rgba(255, 246, 239, 0.94);
+  border-color: rgba(249, 115, 22, 0.36);
+  color: var(--brand-deep);
+  box-shadow: none !important;
+  transform: translateY(-50%) scale(1.08);
+}
+
+.similar-scroll-arrow:active {
+  opacity: 0.84;
+  box-shadow: none !important;
+  transform: translateY(-50%) scale(0.98);
+}
+
+.similar-scroll-arrow:focus-visible {
+  border-color: rgba(249, 115, 22, 0.36);
+  background: rgba(255, 246, 239, 0.94);
+  color: var(--brand-deep);
+  box-shadow: none !important;
+  transform: translateY(-50%) scale(1.08);
+}
+
+.similar-scroll--fade-right {
+  mask-image: linear-gradient(to right, black 85%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
+}
+.similar-scroll--fade-left {
+  mask-image: linear-gradient(to left, black 85%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to left, black 85%, transparent 100%);
+}
+.similar-scroll--fade-both {
+  mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%);
+}
+
 .similar-card {
-  min-width: 168px;
-  max-width: 168px;
+  min-width: 200px;
+  max-width: 200px;
   flex-shrink: 0;
   scroll-snap-align: start;
   background: var(--surface);
@@ -1813,6 +1926,7 @@ h6,
   .section-card,
   .history-item,
   .similar-card,
+  .similar-scroll-arrow,
   .scan-btn,
   .scan-cancel-btn,
   .why-score-btn,
