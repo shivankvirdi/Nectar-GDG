@@ -570,6 +570,8 @@ export function SimilarProductsScroller({
 
   return (
     <div className="similar-scroll-shell">
+      <div className={`similar-fade-left ${canScrollLeft ? 'similar-fade-left--visible' : ''}`} />
+      <div className={`similar-fade-right ${canScrollRight ? 'similar-fade-right--visible' : ''}`} />
       {canScrollLeft && (
         <button
           type="button"
@@ -580,10 +582,7 @@ export function SimilarProductsScroller({
           <span />
         </button>
       )}
-      <div
-        className={`similar-scroll ${canScrollLeft && canScrollRight ? 'similar-scroll--fade-both' : canScrollRight ? 'similar-scroll--fade-right' : canScrollLeft ? 'similar-scroll--fade-left' : ''}`}
-        ref={scrollRef}
-      >
+      <div className="similar-scroll" ref={scrollRef}>
         {products.map((product, i) => {
           const comparison = compareProductAgainstCurrent(analysis, product)
           const isBestAlternative = i === bestAlternativeIndex

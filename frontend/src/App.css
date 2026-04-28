@@ -870,22 +870,37 @@ h6,
   transform: translateY(-50%) scale(1.08);
 }
 
-.similar-scroll--fade-right {
-  mask-image: linear-gradient(to right, black 85%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
+.similar-fade-left,
+.similar-fade-right {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 0.4s ease;
 }
-.similar-scroll--fade-left {
-  mask-image: linear-gradient(to left, black 85%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to left, black 85%, transparent 100%);
+
+.similar-fade-left {
+  left: 0;
+  width: 20px;
+  background: linear-gradient(to right, #ffffff, transparent);
 }
-.similar-scroll--fade-both {
-  mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%);
+
+.similar-fade-right {
+  right: 0;
+  width: 60px;
+  background: linear-gradient(to left, #ffffff, transparent);
+}
+
+.similar-fade-left--visible,
+.similar-fade-right--visible {
+  opacity: 1;
 }
 
 .similar-card {
-  min-width: 200px;
-  max-width: 200px;
+  min-width: 190px;
+  max-width: 190px;
   flex-shrink: 0;
   scroll-snap-align: start;
   background: var(--surface);
