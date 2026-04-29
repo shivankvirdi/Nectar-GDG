@@ -17,17 +17,25 @@ type Keyword = { word: string; count: number; sentiment: 'positive' | 'negative'
 type SimilarProduct = {
   title?: string
   asin?: string
+  listingId?: string
+  marketplace?: string
   brand?: string
   rating?: string | number
   reviewCount?: number
   price?: string | number | null
   isPrime?: boolean
   image?: string
+  listingUrl?: string
+  productUrl?: string
   amazonUrl?: string
 }
 
 type Analysis = {
   asin?: string
+  listingId?: string
+  marketplace?: string
+  listingUrl?: string
+  productUrl?: string
   productKeyword?: string
   title?: string
   brand?: string | null
@@ -158,6 +166,10 @@ function getRecommendationClass(recommendation?: Recommendation) {
 function getSimilarProductsTitle(productKeyword?: string | null) {
   if (!productKeyword || productKeyword === 'unknown') return 'Similar Products'
   return `Similar Products`
+}
+
+function getCommerceUrl(item?: Pick<Analysis, 'listingUrl' | 'productUrl'> & { amazonUrl?: string }) {
+  return item?.listingUrl || item?.productUrl || item?.amazonUrl || '#'
 }
 
 function formatFlagLabel(flag: string) {
@@ -588,8 +600,8 @@ export function SimilarProductsScroller({
           const isBestAlternative = i === bestAlternativeIndex
           return (
             <a
-              key={product.asin ?? i}
-              href={product.amazonUrl}
+              key={product.listingId ?? product.asin ?? i}
+              href={getCommerceUrl(product)}
               target="_blank"
               rel="noreferrer"
               className={`similar-card ${isBestAlternative ? 'similar-card--best' : ''}`}
@@ -1422,8 +1434,8 @@ export default function App() {
                           const isBestAlternative = i === bestAlternativeIndex
                           return (
                             <a
-                              key={product.asin ?? i}
-                              href={product.amazonUrl}
+                              key={product.listingId ?? product.asin ?? i}
+                              href={getCommerceUrl(product)}
                               target="_blank"
                               rel="noreferrer"
                               className={`similar-card ${isBestAlternative ? 'similar-card--best' : ''}`}

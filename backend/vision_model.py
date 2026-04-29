@@ -2,11 +2,11 @@
 import asyncio
 import re
 from typing import Callable
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import unquote, urlparse
 from .ai_analysis import get_ai_verdict
 
 from .brand_reputation import get_brand_reputation
-from .canopy_client import get_full_product_profile, search_similar_products
+from .marketplaces import get_adapter_for_url
 from .review_integrity import analyze_review_integrity
 
 
@@ -219,57 +219,6 @@ def extract_product_keyword_from_text(text: str) -> str:
 
 def extract_product_keyword(url: str) -> str:
     return extract_product_keyword_from_text(normalize_url_text(url))
-
-
-ASIN_PATH_PATTERNS = (
-    r"/(?:dp|gp/product|gp/aw/d|gp/aw/dp|gp/-/product|gp/offer-listing|product-reviews|review/product)/([A-Z0-9]{10})(?:[/?]|$)",
-    r"/(?:o|exec/obidos)/(?:ASIN|tg/detail/-)/([A-Z0-9]{10})(?:[/?]|$)",
-)
-
-ASIN_QUERY_KEYS = ("asin", "ASIN", "pd_rd_i", "creativeASIN")
-
-
-def _extract_asin_from_text(text: str) -> str | None:
-    for pattern in ASIN_PATH_PATTERNS:
-        match = re.search(pattern, text or "", re.IGNORECASE)
-        if match:
-            return match.group(1).upper()
-    return None
-
-
-def extract_asin(url: str) -> str | None:
-    parsed = urlparse(url)
-    decoded_url = unquote(url or "")
-    decoded_path = unquote(parsed.path or "")
-
-    for candidate in (url, decoded_url, parsed.path, decoded_path):
-        asin = _extract_asin_from_text(candidate)
-        if asin:
-            return asin
-
-    query_params = parse_qs(parsed.query or "")
-    for key in ASIN_QUERY_KEYS:
-        for value in query_params.get(key, []):
-            if re.fullmatch(r"[A-Z0-9]{10}", value or "", re.IGNORECASE):
-                return value.upper()
-            asin = _extract_asin_from_text(unquote(value or ""))
-            if asin:
-                return asin
-
-    for value_list in query_params.values():
-        for value in value_list:
-            decoded_value = unquote(value or "")
-            asin = _extract_asin_from_text(decoded_value)
-            if asin:
-                return asin
-            if re.fullmatch(r"[A-Z0-9]{10}", decoded_value, re.IGNORECASE):
-                return decoded_value.upper()
-
-    for segment in re.split(r"[/?]", decoded_path):
-        if re.fullmatch(r"[A-Z0-9]{10}", segment or "", re.IGNORECASE):
-            return segment.upper()
-
-    return None
 
 
 # ─── Score helpers ────────────────────────────────────────────────────────────
@@ -543,12 +492,13 @@ async def analyze_product_url(
 ) -> dict:
     _raise_if_cancelled(is_cancelled)
 
-    asin = extract_asin(url)
-    if not asin:
-        raise ValueError("Could not find an Amazon ASIN in the provided URL.")
+    marketplace = get_adapter_for_url(url)
+    listing_id = marketplace.extract_listing_id(url)
+    if not listing_id:
+        raise ValueError(f"Could not find a {marketplace.name} listing ID in the provided URL.")
 
     product_keyword = extract_product_keyword(url)
-    profile         = await asyncio.to_thread(get_full_product_profile, asin)
+    profile         = await asyncio.to_thread(marketplace.fetch_product_profile, listing_id)
     _raise_if_cancelled(is_cancelled)
 
     product = profile.get("product", {})
@@ -577,9 +527,9 @@ async def analyze_product_url(
     similar_products: list = []
     for term in build_similar_search_terms(title, brand_name, resolved_product_keyword):
         _raise_if_cancelled(is_cancelled)
-        search_results = await asyncio.to_thread(search_similar_products, term)
+        search_results = await asyncio.to_thread(marketplace.search_similar_products, term)
         _raise_if_cancelled(is_cancelled)
-        results = clean_similar_products(search_results, asin, title)
+        results = clean_similar_products(search_results, listing_id, title)
         if results:
             similar_products = results
             break
@@ -601,7 +551,10 @@ async def analyze_product_url(
     _raise_if_cancelled(is_cancelled)
 
     return {
-        "asin":           asin,
+        "asin":           listing_id,
+        "marketplace":    marketplace.name,
+        "listingId":      listing_id,
+        "listingUrl":     marketplace.product_url(listing_id),
         "productKeyword": resolved_product_keyword,
         "title":          product.get("title"),
         "brand":          brand,
@@ -609,7 +562,7 @@ async def analyze_product_url(
         "rating":         rating,
         "reviewCount":    product.get("ratingsTotal"),
         "image":          product.get("mainImageUrl"),
-        "amazonUrl":      f"https://www.amazon.com/dp/{asin}",
+        "amazonUrl":      marketplace.product_url(listing_id),
 
         "overallScore": overall_score,
 
@@ -642,13 +595,15 @@ async def analyze_product_url(
             {
                 "title":       item.get("title"),
                 "asin":        item.get("asin"),
+                "listingId":   item.get("asin"),
                 "brand":       item.get("brand"),
                 "rating":      item.get("rating"),
                 "reviewCount": item.get("ratingsTotal"),
                 "price":       (item.get("price") or {}).get("display"),
                 "isPrime":     item.get("isPrime"),
                 "image":       item.get("mainImageUrl"),
-                "amazonUrl":   f"https://www.amazon.com/dp/{item.get('asin')}" if item.get("asin") else None,
+                "listingUrl":  marketplace.product_url(item.get("asin")) if item.get("asin") else None,
+                "amazonUrl":   marketplace.product_url(item.get("asin")) if item.get("asin") else None,
             }
             for item in similar_products
             if isinstance(item, dict) and item.get("asin")
