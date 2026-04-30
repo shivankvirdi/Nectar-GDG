@@ -27,7 +27,7 @@ pip install -r requirements.txt
 ## Create .env in ROOT directory and add keys
 https://www.canopyapi.co/  
 https://aistudio.google.com/app/api-keys  
-https://console.cloud.google.com/marketplace/product/google/places-backend.googleapis.com
+https://console.cloud.google.com/marketplace/product/google/places.googleapis.com
 ```
 CANOPY_API_KEY="your_api_key_here"
 GEMINI_API_KEY="your_api_key_here"
