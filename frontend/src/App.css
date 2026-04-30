@@ -275,6 +275,10 @@ h6,
   border-color: rgba(243, 223, 207, 0.82) !important;
 }
 
+.section-card--score:hover {
+  background: linear-gradient(180deg, #fffaf6 0%, #ffffff 100%);
+}
+
 .section-card--score .metric {
   gap: 8px;
 }
