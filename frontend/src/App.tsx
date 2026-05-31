@@ -1,6 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import PremiumScreen from './PremiumScreen'
+import logoSrc from '/icons/logo.png'
+
+declare global {
+  interface Window {
+    electronAPI?: {
+      getActiveTabUrl: () => Promise<string | null>
+      resizeWindow: (opts: { width?: number; height: number }) => Promise<void>
+    }
+  }
+}
 
 const DEV_PREVIEW = import.meta.env.DEV && false
 const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
@@ -196,21 +206,39 @@ function getBestAlternativeIndex(current: Analysis | null, products?: SimilarPro
 
 function storageGet<T>(key: string): Promise<T | null> {
   return new Promise((resolve) => {
-    chrome.storage.local.get([key], (result) => {
-      resolve((result?.[key] as T) ?? null)
-    })
+    try {
+      const item = localStorage.getItem(key)
+      resolve(item ? JSON.parse(item) : null)
+    } catch (e) {
+      console.error(e)
+      resolve(null)
+    }
   })
 }
 
 function storageSet(values: Record<string, unknown>): Promise<void> {
   return new Promise((resolve) => {
-    chrome.storage.local.set(values, () => resolve())
+    try {
+      Object.entries(values).forEach(([key, val]) => {
+        localStorage.setItem(key, JSON.stringify(val))
+      })
+    } catch (e) {
+      console.error(e)
+    }
+    resolve()
   })
 }
 
 function storageRemove(keys: string[]): Promise<void> {
   return new Promise((resolve) => {
-    chrome.storage.local.remove(keys, () => resolve())
+    try {
+      keys.forEach((key) => {
+        localStorage.removeItem(key)
+      })
+    } catch (e) {
+      console.error(e)
+    }
+    resolve()
   })
 }
 
@@ -728,10 +756,43 @@ export default function App() {
     return 'compare-value compare-value--muted'
   }
 
+  const [scanUrl, setScanUrl] = useState('')
+  const [isAutoDetected, setIsAutoDetected] = useState(false)
+
+  const fetchActiveUrl = async () => {
+    try {
+      if (window.electronAPI && typeof window.electronAPI.getActiveTabUrl === 'function') {
+        const detectedUrl = await window.electronAPI.getActiveTabUrl()
+        if (detectedUrl) {
+          setCurrentUrl(detectedUrl)
+          setScanUrl(detectedUrl)
+          setIsAutoDetected(true)
+          const isAmazon = /amazon\.(com|co\.|ca|com\.au|de|fr|es|it|nl|pl|se|sg|ae)/i.test(detectedUrl)
+          if (isAmazon) {
+            setBackendStatus('Amazon product page auto-detected')
+            setError('')
+          } else {
+            setBackendStatus('Active tab detected. Edit or enter a product URL.')
+          }
+        } else {
+          setCurrentUrl('No active tab detected')
+          setIsAutoDetected(false)
+          setBackendStatus('No active browser tab found. Enter URL manually.')
+        }
+      } else {
+        setCurrentUrl('No active tab detected')
+        setIsAutoDetected(false)
+        setBackendStatus('Running outside Electron. Enter URL manually.')
+      }
+    } catch (err) {
+      console.error('Error fetching active URL:', err)
+      setCurrentUrl('No active tab detected')
+      setIsAutoDetected(false)
+    }
+  }
+
   useEffect(() => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      setCurrentUrl(tabs[0]?.url ?? 'No active tab found')
-    })
+    fetchActiveUrl()
     loadCurrentSavedScan().then((saved) => { setCurrentSavedScan(saved) })
     loadPreviousSavedScan().then((saved) => { setPreviousSavedScan(saved) })
     loadScanHistory().then((history) => { setScanHistory(history) })
@@ -782,129 +843,127 @@ export default function App() {
   }
 
   const handleScan = async () => {
-    chrome.tabs.query({ active: true, currentWindow: true }, async (tabs) => {
-      const url = tabs[0]?.url ?? ''
-      setCurrentUrl(url || 'No active tab found')
+    const url = scanUrl.trim()
+    setCurrentUrl(url || 'No active tab found')
 
-      const isAmazon = /amazon\.(com|co\.|ca|com\.au|de|fr|es|it|nl|pl|se|sg|ae)/i.test(url)
+    const isAmazon = /amazon\.(com|co\.|ca|com\.au|de|fr|es|it|nl|pl|se|sg|ae)/i.test(url)
 
-      if (!isAmazon) {
-        const msg = url
-          ? 'Navigate to an Amazon product page, then click Scan.'
-          : 'No active tab found. Open an Amazon product page first.'
-        setError(msg)
-        setBackendStatus(msg)
+    if (!isAmazon) {
+      const msg = url
+        ? 'Navigate to an Amazon product page, or enter a valid Amazon URL.'
+        : 'Enter an Amazon product page URL first.'
+      setError(msg)
+      setBackendStatus(msg)
+      return
+    }
+
+    if (!url) {
+      const msg = 'No URL available to send.'
+      setError(msg)
+      setBackendStatus(msg)
+      return
+    }
+
+    try {
+      scanWasCancelledRef.current = false
+
+      setLoading(true)
+      setCancelAvailable(true)
+      setError('')
+      setAnalysis(null)
+      setBackendStatus('Scan will begin in 3 seconds…')
+
+      await new Promise<void>((resolve) => {
+        scanDelayResolveRef.current = resolve
+        cancelTimerRef.current = window.setTimeout(closeCancelWindow, SCAN_CANCEL_WINDOW_MS)
+      })
+
+      if (scanWasCancelledRef.current) {
         return
       }
 
-      if (!url) {
-        const msg = 'No URL available to send.'
-        setError(msg)
-        setBackendStatus(msg)
+      const scanId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const controller = new AbortController()
+      scanIdRef.current = scanId
+      scanAbortRef.current = controller
+      setBackendStatus('Running product analyses…')
+
+      const response = await fetch(`${API_BASE}/current-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, scanId }),
+        signal: controller.signal,
+      })
+
+      const data = await response.json()
+
+      if (response.status === 499 || data?.cancelled) {
+        setBackendStatus('Scan has been cancelled successfully')
+        setError('')
         return
       }
 
-      try {
-        scanWasCancelledRef.current = false
-
-        setLoading(true)
-        setCancelAvailable(true)
-        setError('')
-        setAnalysis(null)
-        setBackendStatus('Scan will begin in 3 seconds…')
-
-        await new Promise<void>((resolve) => {
-          scanDelayResolveRef.current = resolve
-          cancelTimerRef.current = window.setTimeout(closeCancelWindow, SCAN_CANCEL_WINDOW_MS)
-        })
-
-        if (scanWasCancelledRef.current) {
-          return
-        }
-
-        const scanId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-        const controller = new AbortController()
-        scanIdRef.current = scanId
-        scanAbortRef.current = controller
-        setBackendStatus('Running product analyses…')
-
-        const response = await fetch(`${API_BASE}/current-url`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url, scanId }),
-          signal: controller.signal,
-        })
-
-        const data = await response.json()
-
-        if (response.status === 499 || data?.cancelled) {
-          setBackendStatus('Scan has been cancelled successfully')
-          setError('')
-          return
-        }
-
-        if (!response.ok) {
-          const msg = typeof data.detail === 'string' ? data.detail : 'Request failed.'
-          setBackendStatus(msg)
-          setError(msg)
-          return
-        }
-
-        const nextAnalysis = data.analysis ?? null
-
-        if (!nextAnalysis) {
-          const msg = 'Scan completed, but no analysis was returned.'
-          setBackendStatus(msg)
-          setError(msg)
-          return
-        }
-
-        setAnalysis(nextAnalysis)
-        setBackendStatus('Analysis complete')
-        setHasScanned(true)
-        setError('')
-        setView('home')
-
-        const oldCurrent = await loadCurrentSavedScan()
-
-        const record: ScanRecord = {
-          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          scannedAt: new Date().toISOString(),
-          url,
-          analysis: nextAnalysis,
-        }
-
-        await storageSet({
-          [CURRENT_SCAN_KEY]: record,
-          [PREVIOUS_SCAN_KEY]: oldCurrent,
-        })
-
-        setCurrentSavedScan(record)
-        setPreviousSavedScan(oldCurrent ?? null)
-
-        const existingHistory = (await loadScanHistory()) ?? []
-        const nextHistory = [record, ...existingHistory].slice(0, MAX_SCAN_HISTORY)
-
-        await storageSet({ [SCAN_HISTORY_KEY]: nextHistory })
-        setScanHistory(nextHistory)
-      } catch (err) {
-        if (scanWasCancelledRef.current || (err instanceof DOMException && err.name === 'AbortError')) {
-          setBackendStatus('Scan has been cancelled successfully')
-          setError('')
-          return
-        }
-
-        const msg = 'Scan failed. Please open an Amazon product or start server.'
+      if (!response.ok) {
+        const msg = typeof data.detail === 'string' ? data.detail : 'Request failed.'
         setBackendStatus(msg)
         setError(msg)
-      } finally {
-        closeCancelWindow()
-        scanAbortRef.current = null
-        scanIdRef.current = null
-        scanWasCancelledRef.current = false
-        setLoading(false)
+        return
       }
-    })
+
+      const nextAnalysis = data.analysis ?? null
+
+      if (!nextAnalysis) {
+        const msg = 'Scan completed, but no analysis was returned.'
+        setBackendStatus(msg)
+        setError(msg)
+        return
+      }
+
+      setAnalysis(nextAnalysis)
+      setBackendStatus('Analysis complete')
+      setHasScanned(true)
+      setError('')
+      setView('home')
+
+      const oldCurrent = await loadCurrentSavedScan()
+
+      const record: ScanRecord = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        scannedAt: new Date().toISOString(),
+        url,
+        analysis: nextAnalysis,
+      }
+
+      await storageSet({
+        [CURRENT_SCAN_KEY]: record,
+        [PREVIOUS_SCAN_KEY]: oldCurrent,
+      })
+
+      setCurrentSavedScan(record)
+      setPreviousSavedScan(oldCurrent ?? null)
+
+      const existingHistory = (await loadScanHistory()) ?? []
+      const nextHistory = [record, ...existingHistory].slice(0, MAX_SCAN_HISTORY)
+
+      await storageSet({ [SCAN_HISTORY_KEY]: nextHistory })
+      setScanHistory(nextHistory)
+    } catch (err) {
+      if (scanWasCancelledRef.current || (err instanceof DOMException && err.name === 'AbortError')) {
+        setBackendStatus('Scan has been cancelled successfully')
+        setError('')
+        return
+      }
+
+      const msg = 'Scan failed. Please open an Amazon product or start server.'
+      setBackendStatus(msg)
+      setError(msg)
+    } finally {
+      closeCancelWindow()
+      scanAbortRef.current = null
+      scanIdRef.current = null
+      scanWasCancelledRef.current = false
+      setLoading(false)
+    }
   }
 
   // FIX: Trigger animated exit waterfall, then clear state after animation completes
@@ -1135,7 +1194,7 @@ export default function App() {
         <div className="popup-shell">
           <header className="top-header">
             <div className="brand-row">
-              <img src="/icons/logo.png" alt="Nectar logo" className="brand-logo" />
+              <img src={logoSrc} alt="Nectar logo" className="brand-logo" />
               <div className="brand-block">
                 <h1>Nectar</h1>
                 <p>PRODUCT COMPARISON</p>
@@ -1278,7 +1337,7 @@ export default function App() {
       <div className="popup-shell">
         <header className="top-header">
           <div className="brand-row">
-            <img src="/icons/logo.png" alt="Nectar logo" className="brand-logo" />
+            <img src={logoSrc} alt="Nectar logo" className="brand-logo" />
             <div className="brand-block">
               <h1>Nectar</h1>
               <p>AMAZON PRODUCT ANALYZER</p>
@@ -1290,6 +1349,32 @@ export default function App() {
         <div className="content" key="home-view">
           <div className="cascade-item cascade-delay-1">
             <SectionCard title="Product Analysis" className="section-card--hero">
+              <div className="url-input-container">
+                <div className="url-status-bar">
+                  <span className={`status-dot ${isAutoDetected ? 'status-dot--active' : ''}`}></span>
+                  <span className="status-label">
+                    {isAutoDetected ? 'Active Browser Tab' : 'Manual Entry'}
+                  </span>
+                  <button
+                    type="button"
+                    className="url-refresh-btn"
+                    onClick={fetchActiveUrl}
+                    title="Detect active URL from browser"
+                  >
+                    ↻ Sync Browser
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  className="premium-url-input"
+                  placeholder="Paste Amazon product URL here..."
+                  value={scanUrl}
+                  onChange={(e) => {
+                    setScanUrl(e.target.value)
+                    setIsAutoDetected(false)
+                  }}
+                />
+              </div>
               <p className={`body-text hero-status ${error ? 'status-error' : 'status-ok'}`}>
                 {error || backendStatus}
               </p>

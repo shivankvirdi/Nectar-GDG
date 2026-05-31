@@ -1,3 +1,5 @@
+import logoSrc from '/icons/logo.png'
+
 interface Props {
   onBack: () => void
 }
@@ -63,7 +65,7 @@ export default function PremiumScreen({ onBack }: Props) {
     <>
       <header className="top-header">
         <div className="brand-row">
-          <img src="/icons/logo.png" alt="Nectar logo" className="brand-logo" />
+          <img src={logoSrc} alt="Nectar logo" className="brand-logo" />
           <div className="brand-block">
             <h1>Nectar</h1>
             <p>AMAZON PRODUCT ANALYZER</p>

@@ -25,7 +25,9 @@ dist-ssr
 .env
 .venv/
 venv/
+.claude
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.aider*
