@@ -1,4 +1,5 @@
 import logoSrc from '/icons/logo.png'
+import { useState } from 'react'
 
 interface Props {
   onBack: () => void
@@ -61,20 +62,35 @@ const plans = [
 ]
 
 export default function PremiumScreen({ onBack }: Props) {
+  const [windowControlsVisible, setWindowControlsVisible] = useState(false)
+
   return (
     <>
-      <header className="top-header">
+      <header className="top-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }} onMouseEnter={() => setWindowControlsVisible(true)} onMouseLeave={() => setWindowControlsVisible(false)}>
         <div className="brand-row">
           <img src={logoSrc} alt="Nectar logo" className="brand-logo" />
           <div className="brand-block">
             <h1>Nectar</h1>
-            <p>AMAZON PRODUCT ANALYZER</p>
+            <p>SMART PRODUCT ANALYZER</p>
           </div>
         </div>
 
         <button className="premium-btn" onClick={onBack}>
           ← Back
         </button>
+
+        <div className={`window-controls ${windowControlsVisible ? 'visible' : ''}`}>
+          <button
+            className="window-control window-control-minimize"
+            onClick={() => window.electronAPI?.minimizeWindow?.()}
+            title="Minimize"
+          />
+          <button
+            className="window-control window-control-close"
+            onClick={() => window.electronAPI?.closeWindow?.()}
+            title="Close"
+          />
+        </div>
       </header>
 
       <div className="content" key="premium-content">

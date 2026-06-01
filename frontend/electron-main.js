@@ -74,6 +74,14 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
+ipcMain.handle('close-window', () => {
+  if (mainWindow) mainWindow.close()
+})
+
+ipcMain.handle('minimize-window', () => {
+  if (mainWindow) mainWindow.minimize()
+})
+
 // ── IPC: Resize overlay ───────────────────────────────────────────────────
 ipcMain.handle('resize-window', async (_event, { height, width }) => {
   if (!mainWindow) return

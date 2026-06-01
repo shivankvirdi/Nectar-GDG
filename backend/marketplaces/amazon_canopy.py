@@ -1,9 +1,12 @@
-import os
+﻿import os
 import re
+import time
 from html import unescape
 from urllib.parse import parse_qs, unquote, urlparse
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from dotenv import load_dotenv
 
 from ..budget_config import BUDGET_MIN, BUDGET_MAX
@@ -22,12 +25,39 @@ HEADERS = {
     "API-KEY": API_KEY,
 }
 
+# Timeout config — connect fast, give the read plenty of room
+CONNECT_TIMEOUT = 10   # seconds to establish TCP connection
+READ_TIMEOUT    = 45   # seconds to wait for the server to send data
+MAX_RETRIES     = 3    # number of automatic retries on transient failures
+RETRY_BACKOFF   = 1.5  # exponential back-off factor (1.5s, 3s, 4.5s …)
+
 ASIN_PATH_PATTERNS = (
     r"/(?:dp|gp/product|gp/aw/d|gp/aw/dp|gp/-/product|gp/offer-listing|product-reviews|review/product)/([A-Z0-9]{10})(?:[/?]|$)",
     r"/(?:o|exec/obidos)/(?:ASIN|tg/detail/-)/([A-Z0-9]{10})(?:[/?]|$)",
 )
 
 ASIN_QUERY_KEYS = ("asin", "ASIN", "pd_rd_i", "creativeASIN")
+
+
+def _make_session() -> requests.Session:
+    """
+    Build a requests.Session with automatic retry on connection/read errors.
+    Retries are applied to the underlying urllib3 pool; they fire BEFORE
+    Python sees an exception, so they handle transient socket issues
+    transparently.
+    """
+    retry_strategy = Retry(
+        total=MAX_RETRIES,
+        backoff_factor=RETRY_BACKOFF,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["POST", "GET"],
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session = requests.Session()
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
 
 
 def _extract_asin_from_text(text: str) -> str | None:
@@ -146,7 +176,23 @@ class AmazonCanopyAdapter(MarketplaceAdapter):
             "query": query,
             "variables": {"input": search_input},
         }
-        response = requests.post(CANOPY_URL, json=payload, headers=HEADERS)
+
+        session = _make_session()
+        try:
+            response = session.post(
+                CANOPY_URL,
+                json=payload,
+                headers=HEADERS,
+                timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
+            )
+        except requests.exceptions.Timeout:
+            print(f"[Canopy] Search timed out for term: '{search_term}'")
+            return []
+        except requests.exceptions.RequestException as exc:
+            print(f"[Canopy] Search request failed: {exc}")
+            return []
+        finally:
+            session.close()
 
         if response.status_code == 200:
             data = response.json()
@@ -194,20 +240,54 @@ class AmazonCanopyAdapter(MarketplaceAdapter):
             "query": query,
             "variables": {"asin": asin},
         }
-        try:
-            response = requests.post(CANOPY_URL, json=payload, headers=HEADERS, timeout=20)
-        except requests.RequestException as exc:
-            print(f"[Canopy] Product fetch failed: {exc}")
-            return {}
 
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("errors"):
-                print(f"[Canopy] Product fetch returned GraphQL errors: {data.get('errors')}")
-            return data.get("data", {}).get("amazonProduct", {})
+        session = _make_session()
+        last_exc: Exception | None = None
 
-        print(f"[Canopy] Product fetch failed: {response.status_code}")
-        print(f"[Canopy] Response: {response.text}")
+        for attempt in range(1, MAX_RETRIES + 2):  # +2: 1-indexed + one extra attempt beyond retry count
+            try:
+                print(f"[Canopy] Product fetch attempt {attempt} for ASIN {asin}")
+                response = session.post(
+                    CANOPY_URL,
+                    json=payload,
+                    headers=HEADERS,
+                    timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get("errors"):
+                        print(f"[Canopy] GraphQL errors: {data.get('errors')}")
+                    result = data.get("data", {}).get("amazonProduct", {})
+                    if result:
+                        return result
+                    # GraphQL returned null for the product — no point retrying
+                    print(f"[Canopy] No product data returned for ASIN {asin}")
+                    return {}
+
+                print(f"[Canopy] HTTP {response.status_code} on attempt {attempt}")
+                last_exc = None  # HTTP error, not an exception
+
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as exc:
+                last_exc = exc
+                print(f"[Canopy] Attempt {attempt} failed ({type(exc).__name__}): {exc}")
+
+            except requests.exceptions.RequestException as exc:
+                last_exc = exc
+                print(f"[Canopy] Attempt {attempt} failed ({type(exc).__name__}): {exc}")
+                break  # Non-retriable error (e.g. invalid URL)
+
+            if attempt <= MAX_RETRIES:
+                wait = RETRY_BACKOFF * attempt
+                print(f"[Canopy] Waiting {wait:.1f}s before retry…")
+                time.sleep(wait)
+
+        if last_exc:
+            print(f"[Canopy] All attempts exhausted. Last error: {last_exc}")
+        else:
+            print(f"[Canopy] All attempts exhausted without a valid response.")
+
+        session.close()
         return {}
 
     def _normalize_reviews(self, product: dict) -> list[dict]:
@@ -237,3 +317,29 @@ class AmazonCanopyAdapter(MarketplaceAdapter):
             })
 
         return cleaned_reviews
+    
+    def test_canopy_connection(self):
+        """Test if Canopy API is reachable and key works"""
+    test_query = """
+    query {
+      __typename
+    }
+    """
+    
+    session = _make_session()
+    try:
+        response = session.post(
+            CANOPY_URL,
+            json={"query": test_query},
+            headers=HEADERS,
+            timeout=(5, 10)
+        )
+        print(f"Canopy test response: {response.status_code}")
+        if response.status_code == 200:
+            print("✅ Canopy API connection successful")
+        else:
+            print(f"❌ Canopy API error: {response.status_code} - {response.text}")
+    except Exception as e:
+        print(f"❌ Cannot reach Canopy API: {e}")
+    finally:
+        session.close()

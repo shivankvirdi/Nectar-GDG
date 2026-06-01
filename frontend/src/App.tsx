@@ -3,23 +3,35 @@ import './App.css'
 import PremiumScreen from './PremiumScreen'
 import logoSrc from '/icons/logo.png'
 
+// ─── Electron API ─────────────────────────────────────────────────────────────
+
 declare global {
   interface Window {
     electronAPI?: {
       getActiveTabUrl: () => Promise<string | null>
       resizeWindow: (opts: { width?: number; height: number }) => Promise<void>
+      minimizeWindow: () => void
+      closeWindow: () => void
     }
   }
 }
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const DEV_PREVIEW = import.meta.env.DEV && false
 const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 
-// Animation timing constants — keep in sync with App.css cascade delays
-const EXIT_ANIMATION_MS = 720  // last staggered item: 0.30s delay + 0.38s anim = 680ms → round up
+const EXIT_ANIMATION_MS = 720
 const DELETE_ENTRY_DELAY_MS = 240
 const CLEAR_ALL_ENTRY_DELAY_MS = 260
 const SCAN_CANCEL_WINDOW_MS = 3000
+
+const CURRENT_SCAN_KEY = 'nectar_current_scan'
+const PREVIOUS_SCAN_KEY = 'nectar_previous_scan'
+const SCAN_HISTORY_KEY = 'nectar_scan_history'
+const MAX_SCAN_HISTORY = 10
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type Insight = { topic: string; status: string }
 type Keyword = { word: string; count: number; sentiment: 'positive' | 'negative' | 'neutral' }
@@ -79,9 +91,7 @@ type Analysis = {
     verdict?: string
     recommendation?: 'BUY' | 'COMPARE' | 'SKIP'
   }
-  raw?: {
-    reviews?: { rating?: number; body?: string }[]
-  }
+  raw?: { reviews?: { rating?: number; body?: string }[] }
 }
 
 type Recommendation = NonNullable<NonNullable<Analysis['aiAnalysis']>['recommendation']>
@@ -93,24 +103,60 @@ type ScanRecord = {
   analysis: Analysis
 }
 
-const CURRENT_SCAN_KEY = 'nectar_current_scan'
-const PREVIOUS_SCAN_KEY = 'nectar_previous_scan'
-const SCAN_HISTORY_KEY = 'nectar_scan_history'
-const MAX_SCAN_HISTORY = 10
+// ─── Storage ──────────────────────────────────────────────────────────────────
 
-function getNumericPrice(price?: string | number | null): number | null {
-  if (price === null || price === undefined) return null
-  if (typeof price === 'number') return Number.isFinite(price) ? price : null
-  const cleaned = String(price).replace(/[^0-9.]/g, '')
-  const parsed = Number(cleaned)
+function storageGet<T>(key: string): Promise<T | null> {
+  try {
+    const item = localStorage.getItem(key)
+    return Promise.resolve(item ? (JSON.parse(item) as T) : null)
+  } catch (e) {
+    console.error(e)
+    return Promise.resolve(null)
+  }
+}
+
+function storageSet(values: Record<string, unknown>): Promise<void> {
+  try {
+    for (const [key, val] of Object.entries(values)) {
+      localStorage.setItem(key, JSON.stringify(val))
+    }
+  } catch (e) {
+    console.error(e)
+  }
+  return Promise.resolve()
+}
+
+function storageRemove(keys: string[]): Promise<void> {
+  try {
+    keys.forEach((key) => localStorage.removeItem(key))
+  } catch (e) {
+    console.error(e)
+  }
+  return Promise.resolve()
+}
+
+const loadCurrentSavedScan = () => storageGet<ScanRecord>(CURRENT_SCAN_KEY)
+const loadPreviousSavedScan = () => storageGet<ScanRecord>(PREVIOUS_SCAN_KEY)
+const loadScanHistory = () => storageGet<ScanRecord[]>(SCAN_HISTORY_KEY).then((r) => r ?? [])
+
+// ─── Pure Utilities ───────────────────────────────────────────────────────────
+
+function isAmazonUrl(url: string): boolean {
+  return /amazon\.(com|co\.|ca|com\.au|de|fr|es|it|nl|pl|se|sg|ae)/i.test(url)
+}
+
+function getNumericValue(value?: string | number | null): number | null {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  const parsed = Number(String(value).replace(/[^0-9.\-]/g, ''))
   return Number.isFinite(parsed) ? parsed : null
 }
 
 function getScoreColor(score?: number): string {
-  if (score === undefined || score === null) return '#171717'
-  if (score >= 75) return '#15803d'   // green
-  if (score >= 50) return '#b45309'   // amber
-  return '#dc2626'                    // red
+  if (score == null) return '#171717'
+  if (score >= 75) return '#15803d'
+  if (score >= 50) return '#b45309'
+  return '#dc2626'
 }
 
 function formatPriceDifference(diff: number): string {
@@ -119,21 +165,35 @@ function formatPriceDifference(diff: number): string {
   return diff > 0 ? `+$${abs}` : `-$${abs}`
 }
 
-function compareProductAgainstCurrent(current: Analysis | null, product?: SimilarProduct) {
-  const currentPrice = getNumericPrice(current?.price)
-  const otherPrice = getNumericPrice(product?.price)
-  const currentRating = Number(current?.rating ?? NaN)
-  const otherRating = Number(product?.rating ?? NaN)
-  const currentReviewCount = Number(current?.reviewCount ?? NaN)
-  const otherReviewCount = Number(product?.reviewCount ?? NaN)
-  const hasCurrentRating = Number.isFinite(currentRating)
-  const hasOtherRating = Number.isFinite(otherRating)
-  const hasCurrentReviewCount = Number.isFinite(currentReviewCount)
-  const hasOtherReviewCount = Number.isFinite(otherReviewCount)
-  const priceDiff =
-    currentPrice !== null && otherPrice !== null ? otherPrice - currentPrice : null
+function formatFlagLabel(flag: string): string {
+  return flag
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+}
 
-  let tag: 'BETTER' | 'SIMILAR' | 'WORSE' = 'SIMILAR'
+function renderMetricValue(value?: string | number | null): string {
+  return value !== null && value !== undefined ? String(value) : 'N/A'
+}
+
+function getAnalysisImage(item?: Analysis | null): string | undefined {
+  return item?.image || item?.imageUrl || item?.mainImageUrl || item?.mainImage || undefined
+}
+
+function getCommerceUrl(item?: Pick<SimilarProduct, 'listingUrl' | 'productUrl' | 'amazonUrl'>): string {
+  return item?.listingUrl || item?.productUrl || item?.amazonUrl || '#'
+}
+
+function compareProductAgainstCurrent(current: Analysis | null, product?: SimilarProduct) {
+  const currentPrice = getNumericValue(current?.price)
+  const otherPrice = getNumericValue(product?.price)
+  const currentRating = getNumericValue(current?.rating)
+  const otherRating = getNumericValue(product?.rating)
+  const currentReviews = getNumericValue(current?.reviewCount)
+  const otherReviews = getNumericValue(product?.reviewCount)
+  const priceDiff = currentPrice !== null && otherPrice !== null ? otherPrice - currentPrice : null
+
   let score = 0
 
   if (priceDiff !== null) {
@@ -143,120 +203,61 @@ function compareProductAgainstCurrent(current: Analysis | null, product?: Simila
     else if (priceDiff > 0) score -= 1
   }
 
-  if (hasCurrentRating && hasOtherRating) {
+  if (currentRating !== null && otherRating !== null) {
     if (otherRating >= currentRating + 0.4) score += 2
     else if (otherRating > currentRating) score += 1
     else if (otherRating <= currentRating - 0.4) score -= 2
     else if (otherRating < currentRating) score -= 1
   }
 
-  if (hasCurrentReviewCount && hasOtherReviewCount) {
-    if (otherReviewCount >= currentReviewCount * 1.2) score += 0.5
-    if (otherReviewCount <= currentReviewCount * 0.6) score -= 0.5
+  if (currentReviews !== null && otherReviews !== null) {
+    if (otherReviews >= currentReviews * 1.2) score += 0.5
+    if (otherReviews <= currentReviews * 0.6) score -= 0.5
   }
 
-  if (score >= 1.5) tag = 'BETTER'
-  else if (score <= -1.5) tag = 'WORSE'
+  const tag: 'BETTER' | 'SIMILAR' | 'WORSE' =
+    score >= 1.5 ? 'BETTER' : score <= -1.5 ? 'WORSE' : 'SIMILAR'
 
   return { tag, priceDiff, score }
 }
 
-function getTagClassName(tag: 'BETTER' | 'SIMILAR' | 'WORSE') {
-  if (tag === 'BETTER') return 'comparison-badge comparison-badge--better'
-  if (tag === 'WORSE') return 'comparison-badge comparison-badge--worse'
-  return 'comparison-badge comparison-badge--similar'
-}
-
-function getRecommendationClass(recommendation?: Recommendation) {
-  if (recommendation === 'BUY') return 'recommendation-chip recommendation-chip--buy'
-  if (recommendation === 'SKIP') return 'recommendation-chip recommendation-chip--skip'
-  return 'recommendation-chip recommendation-chip--compare'
-}
-
-function getSimilarProductsTitle(productKeyword?: string | null) {
-  if (!productKeyword || productKeyword === 'unknown') return 'Similar Products'
-  return `Similar Products`
-}
-
-function getCommerceUrl(item?: Pick<Analysis, 'listingUrl' | 'productUrl'> & { amazonUrl?: string }) {
-  return item?.listingUrl || item?.productUrl || item?.amazonUrl || '#'
-}
-
-function formatFlagLabel(flag: string) {
-  return flag
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/\b\w/g, (char) => char.toUpperCase())
-}
-
-function getBestAlternativeIndex(current: Analysis | null, products?: SimilarProduct[]) {
+function getBestAlternativeIndex(current: Analysis | null, products?: SimilarProduct[]): number {
   if (!products?.length) return -1
   let bestIndex = -1
   let bestScore = Number.NEGATIVE_INFINITY
-  products.forEach((product, index) => {
-    const comparison = compareProductAgainstCurrent(current, product)
-    if (comparison.score > bestScore) {
-      bestScore = comparison.score
-      bestIndex = index
-    }
+  products.forEach((product, i) => {
+    const { score } = compareProductAgainstCurrent(current, product)
+    if (score > bestScore) { bestScore = score; bestIndex = i }
   })
   return bestScore > 0 ? bestIndex : -1
 }
 
-function storageGet<T>(key: string): Promise<T | null> {
-  return new Promise((resolve) => {
-    try {
-      const item = localStorage.getItem(key)
-      resolve(item ? JSON.parse(item) : null)
-    } catch (e) {
-      console.error(e)
-      resolve(null)
-    }
-  })
+function getMetricWinner(
+  left: string | number | null | undefined,
+  right: string | number | null | undefined,
+  direction: 'higher' | 'lower' = 'higher'
+): 'left' | 'right' | 'tie' {
+  const l = getNumericValue(left)
+  const r = getNumericValue(right)
+  if (l === null || r === null || l === r) return 'tie'
+  if (direction === 'higher') return l > r ? 'left' : 'right'
+  return l < r ? 'left' : 'right'
 }
 
-function storageSet(values: Record<string, unknown>): Promise<void> {
-  return new Promise((resolve) => {
-    try {
-      Object.entries(values).forEach(([key, val]) => {
-        localStorage.setItem(key, JSON.stringify(val))
-      })
-    } catch (e) {
-      console.error(e)
-    }
-    resolve()
-  })
+function getTagClassName(tag: 'BETTER' | 'SIMILAR' | 'WORSE'): string {
+  return `comparison-badge comparison-badge--${tag.toLowerCase()}`
 }
 
-function storageRemove(keys: string[]): Promise<void> {
-  return new Promise((resolve) => {
-    try {
-      keys.forEach((key) => {
-        localStorage.removeItem(key)
-      })
-    } catch (e) {
-      console.error(e)
-    }
-    resolve()
-  })
+function getRecommendationClass(rec?: Recommendation): string {
+  return `recommendation-chip recommendation-chip--${(rec ?? 'COMPARE').toLowerCase()}`
 }
 
-function loadCurrentSavedScan(): Promise<ScanRecord | null> {
-  return storageGet<ScanRecord>(CURRENT_SCAN_KEY)
+function getCompareValueClass(winner: 'left' | 'right' | 'tie', side: 'left' | 'right'): string {
+  if (winner === 'tie') return 'compare-value'
+  return winner === side ? 'compare-value compare-value--winner' : 'compare-value compare-value--muted'
 }
 
-function loadPreviousSavedScan(): Promise<ScanRecord | null> {
-  return storageGet<ScanRecord>(PREVIOUS_SCAN_KEY)
-}
-
-function loadScanHistory(): Promise<ScanRecord[]> {
-  return new Promise((resolve) => {
-    chrome.storage.local.get([SCAN_HISTORY_KEY], (result) => {
-      resolve((result?.[SCAN_HISTORY_KEY] as ScanRecord[]) ?? [])
-    })
-  })
-}
+// ─── Mock Data (dev only) ─────────────────────────────────────────────────────
 
 const mockAnalysis: Analysis = {
   title: 'Hydro Flask 32 oz Water Bottle',
@@ -301,6 +302,8 @@ const mockAnalysis: Analysis = {
     recommendation: 'COMPARE',
   },
 }
+
+// ─── Shared UI Components ─────────────────────────────────────────────────────
 
 function SkeletonLine({ width = '100%', height = 14, mb = 8 }: { width?: string; height?: number; mb?: number }) {
   return <div className="skeleton" style={{ width, height, borderRadius: 8, marginBottom: mb }} />
@@ -384,12 +387,7 @@ function SkeletonResults() {
 
 function ProductImagePlaceholder({ className = 'similar-card-image' }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 110 110"
-      className={className}
-      xmlns="http://www.w3.org/2000/svg"
-      style={{ background: '#f8f7f5' }}
-    >
+    <svg viewBox="0 0 110 110" className={className} xmlns="http://www.w3.org/2000/svg" style={{ background: '#f8f7f5' }}>
       <rect width="110" height="110" fill="#f3ede8" rx="12" />
       <rect x="28" y="30" width="54" height="42" rx="5" fill="none" stroke="#d6cbc3" strokeWidth="2.5" />
       <polyline points="28,60 43,44 55,55 67,43 82,60" fill="none" stroke="#d6cbc3" strokeWidth="2.5" strokeLinejoin="round" />
@@ -438,7 +436,6 @@ function SectionCard({
   className?: string
 }) {
   const [open, setOpen] = useState(defaultOpen)
-
   return (
     <section className={`section-card ${className} ${open || !collapsible ? 'section-card--open' : 'section-card--closed'}`}>
       <div className="section-card-header">
@@ -456,21 +453,13 @@ function SectionCard({
         )}
       </div>
       <div className={`section-content ${!collapsible || open ? 'open' : ''}`}>
-        <div className="section-content-inner">
-          {children}
-        </div>
+        <div className="section-content-inner">{children}</div>
       </div>
     </section>
   )
 }
 
-function KeywordPills({
-  keywords,
-  emptyMessage,
-}: {
-  keywords?: Keyword[]
-  emptyMessage: string
-}) {
+function KeywordPills({ keywords, emptyMessage }: { keywords?: Keyword[]; emptyMessage: string }) {
   if (!keywords?.length) return <p className="body-text muted">{emptyMessage}</p>
   return (
     <div className="keyword-pills">
@@ -483,22 +472,16 @@ function KeywordPills({
   )
 }
 
-function ScoreExplainer({
-  metric,
-  analysis,
-}: {
-  metric: 'review_integrity' | 'brand_reputation'
-  analysis: Analysis | null
-}) {
+function ScoreExplainer({ metric, analysis }: { metric: 'review_integrity' | 'brand_reputation'; analysis: Analysis | null }) {
   const [loading, setLoading] = useState(false)
   const [answer, setAnswer] = useState('')
   const [error, setError] = useState('')
 
   const handleExplain = async () => {
     if (!analysis) return
+    setLoading(true)
+    setError('')
     try {
-      setLoading(true)
-      setError('')
       const { raw: _raw, ...safeAnalysis } = analysis
       const response = await fetch(`${API_BASE}/explain-score`, {
         method: 'POST',
@@ -508,9 +491,9 @@ function ScoreExplainer({
       const data = await response.json()
       if (!response.ok) {
         setError(typeof data.detail === 'string' ? data.detail : 'Could not explain this score.')
-        return
+      } else {
+        setAnswer(data.answer ?? 'No explanation returned.')
       }
-      setAnswer(data.answer ?? 'No explanation returned.')
     } catch {
       setError('Could not explain this score right now.')
     } finally {
@@ -523,22 +506,20 @@ function ScoreExplainer({
       <button className="why-score-btn" onClick={handleExplain} disabled={loading || !analysis}>
         {loading ? 'Explaining…' : 'Why this score?'}
       </button>
-      {error ? <p className="body-text status-error explain-text">{error}</p> : null}
-      {answer ? <div className="explain-box"><p className="body-text explain-text">{answer}</p></div> : null}
+      {error && <p className="body-text status-error explain-text">{error}</p>}
+      {answer && <div className="explain-box"><p className="body-text explain-text">{answer}</p></div>}
     </div>
   )
 }
 
 function VerdictCard({ ai }: { ai: NonNullable<Analysis['aiAnalysis']> }) {
   const rec = ai.recommendation ?? 'COMPARE'
-  const panelClass = `verdict-card-panel verdict-card-panel--${rec.toLowerCase()}`
-
   return (
     <section className="section-card verdict-card results-animate">
       <div className="verdict-card-header">
         <h3 className="verdict-card-title">AI Analysis</h3>
       </div>
-      <div className={panelClass}>
+      <div className={`verdict-card-panel verdict-card-panel--${rec.toLowerCase()}`}>
         <p className="verdict-panel-label">Overall Take</p>
         <p className="verdict-summary">{ai.verdict}</p>
       </div>
@@ -560,21 +541,16 @@ function VerdictCard({ ai }: { ai: NonNullable<Analysis['aiAnalysis']> }) {
   )
 }
 
-export function SimilarProductsScroller({
-  analysis,
-  products,
-}: {
-  analysis: Analysis
-  products: SimilarProduct[]
-}) {
+// ─── Similar Products Scroller ────────────────────────────────────────────────
+
+export function SimilarProductsScroller({ analysis, products }: { analysis: Analysis; products: SimilarProduct[] }) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
 
-  const updateScrollButtons = () => {
+  const updateScrollState = () => {
     const el = scrollRef.current
     if (!el) return
-
     const maxScroll = el.scrollWidth - el.clientWidth
     setCanScrollLeft(el.scrollLeft > 2)
     setCanScrollRight(el.scrollLeft < maxScroll - 2)
@@ -583,71 +559,54 @@ export function SimilarProductsScroller({
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-
-    updateScrollButtons()
-    el.addEventListener('scroll', updateScrollButtons, { passive: true })
-    window.addEventListener('resize', updateScrollButtons)
-
-    const resizeObserver = new ResizeObserver(updateScrollButtons)
-    resizeObserver.observe(el)
-
+    updateScrollState()
+    el.addEventListener('scroll', updateScrollState, { passive: true })
+    window.addEventListener('resize', updateScrollState)
+    const ro = new ResizeObserver(updateScrollState)
+    ro.observe(el)
     return () => {
-      el.removeEventListener('scroll', updateScrollButtons)
-      window.removeEventListener('resize', updateScrollButtons)
-      resizeObserver.disconnect()
+      el.removeEventListener('scroll', updateScrollState)
+      window.removeEventListener('resize', updateScrollState)
+      ro.disconnect()
     }
   }, [products.length])
 
-  const scrollOneProduct = (direction: 'left' | 'right') => {
+  const scrollByCard = (direction: 'left' | 'right') => {
     const el = scrollRef.current
     if (!el) return
-
     const cards = Array.from(el.querySelectorAll<HTMLElement>('.similar-card'))
-    const firstCard = cards[0]
-    if (!firstCard) return
-
-    const secondCard = cards[1]
-    const cardStep = secondCard
-      ? secondCard.getBoundingClientRect().left - firstCard.getBoundingClientRect().left
-      : firstCard.offsetWidth
-
-    el.scrollBy({
-      left: direction === 'right' ? cardStep : -cardStep,
-      behavior: 'smooth',
-    })
+    const step = cards[1]
+      ? cards[1].getBoundingClientRect().left - cards[0].getBoundingClientRect().left
+      : cards[0]?.offsetWidth ?? 0
+    el.scrollBy({ left: direction === 'right' ? step : -step, behavior: 'smooth' })
   }
 
-  const bestAlternativeIndex = getBestAlternativeIndex(analysis, products)
+  const bestIndex = getBestAlternativeIndex(analysis, products)
 
   return (
     <div className="similar-scroll-shell">
       <div className={`similar-fade-left ${canScrollLeft ? 'similar-fade-left--visible' : ''}`} />
       <div className={`similar-fade-right ${canScrollRight ? 'similar-fade-right--visible' : ''}`} />
       {canScrollLeft && (
-        <button
-          type="button"
-          className="similar-scroll-arrow similar-scroll-arrow--left"
-          aria-label="Scroll similar products left"
-          onClick={() => scrollOneProduct('left')}
-        >
+        <button type="button" className="similar-scroll-arrow similar-scroll-arrow--left" aria-label="Scroll left" onClick={() => scrollByCard('left')}>
           <span />
         </button>
       )}
       <div className="similar-scroll" ref={scrollRef}>
         {products.map((product, i) => {
           const comparison = compareProductAgainstCurrent(analysis, product)
-          const isBestAlternative = i === bestAlternativeIndex
+          const isBest = i === bestIndex
           return (
             <a
               key={product.listingId ?? product.asin ?? i}
               href={getCommerceUrl(product)}
               target="_blank"
               rel="noreferrer"
-              className={`similar-card ${isBestAlternative ? 'similar-card--best' : ''}`}
+              className={`similar-card ${isBest ? 'similar-card--best' : ''}`}
             >
               <div className="similar-card-top">
                 <div className="similar-card-badges">
-                  {isBestAlternative && <span className="best-alt-badge">BEST ALT</span>}
+                  {isBest && <span className="best-alt-badge">BEST ALT</span>}
                   <span className={getTagClassName(comparison.tag)}>{comparison.tag}</span>
                 </div>
                 {product.isPrime && <span className="prime-badge">Prime</span>}
@@ -674,12 +633,7 @@ export function SimilarProductsScroller({
         })}
       </div>
       {canScrollRight && (
-        <button
-          type="button"
-          className="similar-scroll-arrow similar-scroll-arrow--right"
-          aria-label="Scroll similar products right"
-          onClick={() => scrollOneProduct('right')}
-        >
+        <button type="button" className="similar-scroll-arrow similar-scroll-arrow--right" aria-label="Scroll right" onClick={() => scrollByCard('right')}>
           <span />
         </button>
       )}
@@ -687,123 +641,463 @@ export function SimilarProductsScroller({
   )
 }
 
+// ─── Scan History Section ─────────────────────────────────────────────────────
+
+function ScanHistorySection({
+  scanHistory,
+  selectedCompareIds,
+  deletingScanIds,
+  isClearingHistory,
+  onLoad,
+  onToggleCompare,
+  onDelete,
+  onClearAll,
+  onCompare,
+}: {
+  scanHistory: ScanRecord[]
+  selectedCompareIds: string[]
+  deletingScanIds: string[]
+  isClearingHistory: boolean
+  onLoad: (record: ScanRecord) => void
+  onToggleCompare: (id: string) => void
+  onDelete: (id: string) => void
+  onClearAll: () => void
+  onCompare: () => void
+}) {
+  return (
+    <SectionCard title="Scan History" collapsible defaultOpen={false} className="section-card--history">
+      {scanHistory.length > 0 ? (
+        <>
+          <div className="scan-history-toolbar">
+            <p className="scan-history-count">
+              {scanHistory.length} saved {scanHistory.length === 1 ? 'scan' : 'scans'}
+            </p>
+            <button type="button" className="history-clear-btn" onClick={onClearAll} disabled={isClearingHistory}>
+              {isClearingHistory ? 'Clearing…' : 'Clear All'}
+            </button>
+          </div>
+
+          <div className="scan-history-list">
+            {scanHistory.map((item) => {
+              const isSelected = selectedCompareIds.includes(item.id)
+              const isDeleting = deletingScanIds.includes(item.id)
+              return (
+                <div
+                  key={item.id}
+                  className={`history-item history-item--selectable ${isSelected ? 'history-item--selected' : ''} ${isDeleting ? 'history-item--deleting' : ''}`}
+                >
+                  <button type="button" className="history-load-btn" onClick={() => onLoad(item)}>
+                    <div className="history-item-top">
+                      <p className="history-item-title">{item.analysis.title ?? 'Untitled Product'}</p>
+                      <span className="history-score">{item.analysis.overallScore ?? '--'}</span>
+                    </div>
+                    <div className="history-item-meta-row">
+                      <span className="history-item-meta history-item-meta--brand">{item.analysis.brand ?? 'Unknown brand'}</span>
+                      <span className="history-item-meta-separator" aria-hidden="true" />
+                      <span className="history-item-meta history-item-meta--time">{new Date(item.scannedAt).toLocaleString()}</span>
+                    </div>
+                  </button>
+
+                  <div className="history-item-actions">
+                    <button
+                      type="button"
+                      className={`why-score-btn history-compare-btn ${isSelected ? 'secondary-btn--active history-compare-btn--selected' : ''}`}
+                      onClick={() => onToggleCompare(item.id)}
+                      aria-pressed={isSelected}
+                      aria-label={isSelected ? 'Selected for Compare' : 'Select to Compare'}
+                    >
+                      <span className={`history-compare-btn-indicator ${isSelected ? 'history-compare-btn-indicator--selected' : ''}`} aria-hidden="true" />
+                      <span className="history-compare-btn-copy" aria-hidden="true">
+                        <span className={`history-compare-btn-text ${isSelected ? 'history-compare-btn-text--hidden' : 'history-compare-btn-text--visible'}`}>
+                          Select to Compare
+                        </span>
+                        <span className={`history-compare-btn-text history-compare-btn-text--selected ${isSelected ? 'history-compare-btn-text--visible' : 'history-compare-btn-text--hidden'}`}>
+                          Selected for Compare
+                        </span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="history-delete-btn"
+                      aria-label={`Delete scan for ${item.analysis.title ?? 'product'}`}
+                      title="Delete this scan"
+                      onClick={() => onDelete(item.id)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {scanHistory.length >= 2 && (
+            <div className="compare-history-actions">
+              <button className="scan-btn" disabled={selectedCompareIds.length !== 2} onClick={onCompare}>
+                {selectedCompareIds.length === 2 ? 'Compare Selected Products' : 'Select 2 Products to Compare'}
+              </button>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="empty-state empty-state--compact">No saved scans yet.</div>
+      )}
+    </SectionCard>
+  )
+}
+
+// ─── Results View ─────────────────────────────────────────────────────────────
+
+function ResultsView({ analysis, isExiting }: { analysis: Analysis; isExiting: boolean }) {
+  return (
+    <div className={`results-animate${isExiting ? ' results-exit-waterfall' : ''}`}>
+      <div className="cascade-item cascade-delay-1">
+        <SectionCard title="Overall Score" collapsible className="section-card--score">
+          <div className="overall-score-stack">
+            <div className="score-row score-row--hero">
+              <span className="score-number score-number--hero" style={{ color: getScoreColor(analysis.overallScore) }}>
+                {analysis.overallScore ?? '--'}
+              </span>
+              <span className="score-max">/100</span>
+            </div>
+            {analysis.aiAnalysis?.recommendation && (
+              <div className="overall-score-chip-row">
+                <span className={getRecommendationClass(analysis.aiAnalysis.recommendation)}>
+                  {analysis.aiAnalysis.recommendation}
+                </span>
+              </div>
+            )}
+          </div>
+          <MetricBar label="Trust Score" value={analysis.overallScore} />
+        </SectionCard>
+      </div>
+
+      <div className="cascade-item cascade-delay-2">
+        <SectionCard title="Product" collapsible>
+          <div className="info-list">
+            <p><strong>Title:</strong> {analysis.title ?? 'N/A'}</p>
+            <p><strong>Brand:</strong> {analysis.brand ?? 'N/A'}</p>
+            <p><strong>Price:</strong> {analysis.price ?? 'N/A'}</p>
+            <p><strong>Rating:</strong> {analysis.rating ?? 'N/A'}</p>
+            <p><strong>Review Count:</strong> {analysis.reviewCount ?? 'N/A'}</p>
+          </div>
+        </SectionCard>
+      </div>
+
+      {analysis.aiAnalysis && (
+        <div className="cascade-item cascade-delay-3">
+          <VerdictCard ai={analysis.aiAnalysis} />
+        </div>
+      )}
+
+      <div className="cascade-item cascade-delay-4">
+        <SectionCard title="Review Integrity" collapsible className="section-card--integrity">
+          <div className="integrity-lead">
+            <div className="mini-score mini-score--featured">
+              <span>Score</span>
+              <strong>{analysis.reviewIntegrity?.score ?? 'N/A'}</strong>
+            </div>
+            <ScoreTrack value={analysis.reviewIntegrity?.score} />
+          </div>
+          {Object.entries(analysis.reviewIntegrity?.flags ?? {}).some(([, active]) => active) && (
+            <div className="integrity-flags">
+              {Object.entries(analysis.reviewIntegrity!.flags!)
+                .filter(([, active]) => active)
+                .map(([flag]) => (
+                  <span key={flag} className="integrity-flag">{formatFlagLabel(flag)}</span>
+                ))}
+            </div>
+          )}
+          <div className="info-list">
+            <p><strong>Label:</strong> {analysis.reviewIntegrity?.label ?? 'N/A'}</p>
+            <p><strong>Verified Purchase Ratio:</strong> {analysis.reviewIntegrity?.verifiedPurchaseRatio ?? 'N/A'}</p>
+            <p><strong>Sentiment Consistency:</strong> {analysis.reviewIntegrity?.sentimentConsistencyRatio ?? 'N/A'}</p>
+            <p className="keywords-label"><strong>Top Keywords:</strong></p>
+            <KeywordPills keywords={analysis.reviewIntegrity?.commonKeywords} emptyMessage="No keywords found" />
+          </div>
+          <ScoreExplainer metric="review_integrity" analysis={analysis} />
+        </SectionCard>
+      </div>
+
+      <div className="cascade-item cascade-delay-5">
+        <SectionCard title="Brand Reputation" collapsible className="section-card--brand">
+          <div className="brand-lead">
+            <div className="mini-score mini-score--featured">
+              <span>Score</span>
+              <strong>{analysis.brandReputation?.score ?? 'N/A'}</strong>
+            </div>
+            <ScoreTrack value={analysis.brandReputation?.score} />
+          </div>
+          <div className="info-list">
+            <p><strong>Label:</strong> {analysis.brandReputation?.label ?? 'N/A'}</p>
+            <p><strong>Reviews Analyzed:</strong> {analysis.brandReputation?.reviewsAnalyzed ?? 'N/A'}</p>
+          </div>
+          {analysis.brandReputation?.insights?.length ? (
+            <div className="insight-list">
+              {analysis.brandReputation.insights.map((insight) => (
+                <div key={insight.topic} className="insight-pill">
+                  <span>{insight.topic}</span>
+                  <strong>{insight.status}</strong>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="body-text muted">No brand insights yet.</p>
+          )}
+          <p className="keywords-label"><strong>Top Keywords:</strong></p>
+          <KeywordPills keywords={analysis.brandReputation?.commonKeywords} emptyMessage="No keywords found" />
+          <ScoreExplainer metric="brand_reputation" analysis={analysis} />
+        </SectionCard>
+      </div>
+
+      <div className="cascade-item cascade-delay-6">
+        <SectionCard title="Similar Products" collapsible className="section-card--similar">
+          {(analysis.similarProducts?.length ?? 0) > 0 ? (
+            <SimilarProductsScroller analysis={analysis} products={analysis.similarProducts ?? []} />
+          ) : (
+            <p className="body-text muted empty-state empty-state--compact">
+              No alternatives found{analysis.productKeyword && analysis.productKeyword !== 'unknown' ? ` for ${analysis.productKeyword}` : ''}.
+            </p>
+          )}
+        </SectionCard>
+      </div>
+    </div>
+  )
+}
+
+// ─── Compare View ─────────────────────────────────────────────────────────────
+
+function CompareView({ records, onBack }: { records: [ScanRecord, ScanRecord]; onBack: () => void }) {
+  const [left, right] = records
+  const la = left.analysis
+  const ra = right.analysis
+
+  const scoreW = getMetricWinner(la.overallScore, ra.overallScore, 'higher')
+  const priceW = getMetricWinner(la.price, ra.price, 'lower')
+  const ratingW = getMetricWinner(la.rating, ra.rating, 'higher')
+  const reviewCountW = getMetricWinner(la.reviewCount, ra.reviewCount, 'higher')
+  const integrityW = getMetricWinner(la.reviewIntegrity?.score, ra.reviewIntegrity?.score, 'higher')
+  const brandW = getMetricWinner(la.brandReputation?.score, ra.brandReputation?.score, 'higher')
+
+  const allWinners = [scoreW, priceW, ratingW, reviewCountW, integrityW, brandW]
+  const leftWins = allWinners.filter((w) => w === 'left').length
+  const rightWins = allWinners.filter((w) => w === 'right').length
+  const summaryLabel = leftWins === rightWins ? 'CLOSE MATCH' : leftWins > rightWins ? 'LEFT PRODUCT LEADS' : 'RIGHT PRODUCT LEADS'
+
+  const coreMetrics = [
+    { label: 'Overall Score', lv: la.overallScore, rv: ra.overallScore, winner: scoreW },
+    { label: 'Price', lv: la.price, rv: ra.price, winner: priceW },
+    { label: 'Rating', lv: la.rating, rv: ra.rating, winner: ratingW },
+    { label: 'Review Count', lv: la.reviewCount, rv: ra.reviewCount, winner: reviewCountW },
+  ]
+
+  const trustMetrics = [
+    { label: 'Review Integrity', lv: la.reviewIntegrity?.score, rv: ra.reviewIntegrity?.score, winner: integrityW },
+    { label: 'Integrity Label', lv: la.reviewIntegrity?.label, rv: ra.reviewIntegrity?.label, winner: 'tie' as const },
+    { label: 'Verified Ratio', lv: la.reviewIntegrity?.verifiedPurchaseRatio, rv: ra.reviewIntegrity?.verifiedPurchaseRatio, winner: 'tie' as const },
+    { label: 'Brand Reputation', lv: la.brandReputation?.score, rv: ra.brandReputation?.score, winner: brandW },
+    { label: 'Brand Label', lv: la.brandReputation?.label, rv: ra.brandReputation?.label, winner: 'tie' as const },
+  ]
+
+  return (
+    <main className="app-shell">
+      <div className="popup-shell">
+        <header className="top-header">
+          <div className="brand-row">
+            <img src={logoSrc} alt="Nectar logo" className="brand-logo" />
+            <div className="brand-block">
+              <h1>Nectar</h1>
+              <p>PRODUCT COMPARISON</p>
+            </div>
+          </div>
+          <button className="premium-btn" onClick={onBack}>← Back</button>
+        </header>
+
+        <div className="content" key="compare-view">
+          <div className="cascade-item cascade-delay-1">
+            <section className="section-card compare-hero">
+              <div className="compare-hero-top">
+                <div>
+                  <h3 className="compare-hero-title">Compare Products</h3>
+                  <p className="compare-hero-text">Side-by-side view of pricing, trust, ratings, and AI verdicts.</p>
+                </div>
+                <span className="compare-summary-badge">{summaryLabel}</span>
+              </div>
+              <div className="compare-summary-pills">
+                <span className={`compare-chip ${priceW}`}>Best Value · {priceW === 'tie' ? 'Tie' : priceW === 'left' ? 'Left' : 'Right'}</span>
+                <span className={`compare-chip ${ratingW}`}>Higher Rated · {ratingW === 'tie' ? 'Tie' : ratingW === 'left' ? 'Left' : 'Right'}</span>
+                <span className={`compare-chip ${integrityW}`}>More Trusted · {integrityW === 'tie' ? 'Tie' : integrityW === 'left' ? 'Left' : 'Right'}</span>
+                <span className={`compare-chip ${brandW}`}>Better Brand · {brandW === 'tie' ? 'Tie' : brandW === 'left' ? 'Left' : 'Right'}</span>
+              </div>
+            </section>
+          </div>
+
+          <div className="cascade-item cascade-delay-2">
+            <section className="compare-products-grid">
+              {([
+                { side: 'LEFT', a: la, record: left, image: getAnalysisImage(la), isLeader: leftWins > rightWins },
+                { side: 'RIGHT', a: ra, record: right, image: getAnalysisImage(ra), isLeader: rightWins > leftWins },
+              ] as const).map(({ side, a, record, image, isLeader }) => (
+                <article key={side} className={`compare-product-card ${isLeader ? 'compare-product-card--leader' : ''}`}>
+                  <div className="compare-product-image-wrap">
+                    {image
+                      ? <img src={image} alt={a.title ?? 'Product'} className="compare-product-image" />
+                      : <ProductImagePlaceholder className="compare-product-image" />}
+                  </div>
+                  <div className="compare-product-card-body">
+                    <div className="compare-product-card-top">
+                      <span className="compare-side-badge">{side}</span>
+                      {isLeader && <span className="compare-winner-badge">BEST PICK</span>}
+                    </div>
+                    <p className="compare-product-title">{a.title ?? 'Untitled Product'}</p>
+                    <p className="compare-product-meta">{a.brand ?? 'Unknown brand'} · {new Date(record.scannedAt).toLocaleString()}</p>
+                    <div className="compare-quick-stats">
+                      <div className="compare-quick-stat"><span>Score</span><strong>{renderMetricValue(a.overallScore)}</strong></div>
+                      <div className="compare-quick-stat"><span>Price</span><strong>{renderMetricValue(a.price)}</strong></div>
+                      <div className="compare-quick-stat"><span>Rating</span><strong>{renderMetricValue(a.rating)}</strong></div>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </section>
+          </div>
+
+          <div className="cascade-item cascade-delay-3">
+            <section className="section-card compare-section-card">
+              <h3 className="compare-section-title">Core Metrics</h3>
+              <div className="compare-rows">
+                {coreMetrics.map(({ label, lv, rv, winner }) => (
+                  <div key={label} className="compare-row">
+                    <div className="compare-row-label">{label}</div>
+                    <div className={getCompareValueClass(winner, 'left')}>{renderMetricValue(lv)}</div>
+                    <div className={getCompareValueClass(winner, 'right')}>{renderMetricValue(rv)}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          <div className="cascade-item cascade-delay-4">
+            <section className="section-card compare-section-card">
+              <h3 className="compare-section-title">Trust & Reputation</h3>
+              <div className="compare-rows">
+                {trustMetrics.map(({ label, lv, rv, winner }) => (
+                  <div key={label} className="compare-row">
+                    <div className="compare-row-label">{label}</div>
+                    <div className={getCompareValueClass(winner, 'left')}>{renderMetricValue(lv)}</div>
+                    <div className={getCompareValueClass(winner, 'right')}>{renderMetricValue(rv)}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          <div className="cascade-item cascade-delay-5">
+            <section className="section-card compare-section-card">
+              <h3 className="compare-section-title">AI Verdict</h3>
+              <div className="compare-ai-grid">
+                {[la, ra].map((a, i) => (
+                  <div key={i} className="compare-ai-card">
+                    <p className="compare-ai-label">Recommendation</p>
+                    <p className="compare-ai-recommendation">{renderMetricValue(a.aiAnalysis?.recommendation)}</p>
+                    <p className="compare-ai-verdict">{renderMetricValue(a.aiAnalysis?.verdict)}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          <div className="cascade-item cascade-delay-6">
+            <SectionCard title="Review Integrity Keywords">
+              <p className="compare-subtitle">{la.title ?? 'Left Product'}</p>
+              <KeywordPills keywords={la.reviewIntegrity?.commonKeywords} emptyMessage="No keywords found" />
+              <div style={{ height: 14 }} />
+              <p className="compare-subtitle">{ra.title ?? 'Right Product'}</p>
+              <KeywordPills keywords={ra.reviewIntegrity?.commonKeywords} emptyMessage="No keywords found" />
+            </SectionCard>
+          </div>
+
+          <div className="cascade-item cascade-delay-7">
+            <SectionCard title="Brand Reputation Keywords">
+              <p className="compare-subtitle">{la.title ?? 'Left Product'}</p>
+              <KeywordPills keywords={la.brandReputation?.commonKeywords} emptyMessage="No keywords found" />
+              <div style={{ height: 14 }} />
+              <p className="compare-subtitle">{ra.title ?? 'Right Product'}</p>
+              <KeywordPills keywords={ra.brandReputation?.commonKeywords} emptyMessage="No keywords found" />
+            </SectionCard>
+          </div>
+        </div>
+      </div>
+    </main>
+  )
+}
+
+// ─── App ──────────────────────────────────────────────────────────────────────
+
 export default function App() {
-  const [currentUrl, setCurrentUrl] = useState('Loading...')
+  const [scanUrl, setScanUrl] = useState('')
+  const [isAutoDetected, setIsAutoDetected] = useState(false)
   const [backendStatus, setBackendStatus] = useState('Ready to scan')
   const [analysis, setAnalysis] = useState<Analysis | null>(DEV_PREVIEW ? mockAnalysis : null)
   const [view, setView] = useState<'home' | 'premium' | 'compare'>('home')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [hasScanned, setHasScanned] = useState<boolean>(DEV_PREVIEW)
-  const [deletingScanIds, setDeletingScanIds] = useState<string[]>([])
-  const [isClearingHistory, setIsClearingHistory] = useState(false)
+  const [isExitingResults, setIsExitingResults] = useState(false)
+  const [cancelAvailable, setCancelAvailable] = useState(false)
+  const [windowControlsVisible, setWindowControlsVisible] = useState(false)
 
   const [currentSavedScan, setCurrentSavedScan] = useState<ScanRecord | null>(null)
   const [previousSavedScan, setPreviousSavedScan] = useState<ScanRecord | null>(null)
   const [scanHistory, setScanHistory] = useState<ScanRecord[]>([])
+  const [deletingScanIds, setDeletingScanIds] = useState<string[]>([])
+  const [isClearingHistory, setIsClearingHistory] = useState(false)
   const [selectedCompareIds, setSelectedCompareIds] = useState<string[]>([])
   const [compareRecords, setCompareRecords] = useState<[ScanRecord, ScanRecord] | null>(null)
-  // FIX: tracks whether the results container is playing its exit waterfall animation
-  const [isClearingCurrentView, setIsClearingCurrentView] = useState(false)
-  const [cancelAvailable, setCancelAvailable] = useState(false)
+
   const scanAbortRef = useRef<AbortController | null>(null)
   const scanIdRef = useRef<string | null>(null)
   const cancelTimerRef = useRef<number | null>(null)
   const scanDelayResolveRef = useRef<(() => void) | null>(null)
   const scanWasCancelledRef = useRef(false)
 
-  const toggleCompareSelection = (id: string) => {
-    setSelectedCompareIds((prev) => {
-      if (prev.includes(id)) return prev.filter((item) => item !== id)
-      if (prev.length >= 2) return [prev[1], id]
-      return [...prev, id]
-    })
-  }
+  useEffect(() => {
+    detectActiveUrl()
+    loadCurrentSavedScan().then(setCurrentSavedScan)
+    loadPreviousSavedScan().then(setPreviousSavedScan)
+    loadScanHistory().then(setScanHistory)
+    return () => {
+      if (cancelTimerRef.current !== null) window.clearTimeout(cancelTimerRef.current)
+      scanDelayResolveRef.current?.()
+      scanAbortRef.current?.abort()
+    }
+  }, [])
 
-  function renderMetricValue(value?: string | number | null) {
-    return value ?? 'N/A'
-  }
+  // ── URL Detection ──
 
-  function getAnalysisImage(item: Analysis | null | undefined): string | undefined {
-    if (!item) return undefined
-    return item.image || item.imageUrl || item.mainImageUrl || item.mainImage || undefined
-  }
-
-  function getNumericMetric(value?: string | number | null): number | null {
-    if (value === null || value === undefined) return null
-    if (typeof value === 'number') return Number.isFinite(value) ? value : null
-    const cleaned = String(value).replace(/[^0-9.\-]/g, '')
-    const parsed = Number(cleaned)
-    return Number.isFinite(parsed) ? parsed : null
-  }
-
-  function getMetricWinner(
-    leftValue: string | number | null | undefined,
-    rightValue: string | number | null | undefined,
-    direction: 'higher' | 'lower' = 'higher'
-  ): 'left' | 'right' | 'tie' {
-    const leftNum = getNumericMetric(leftValue)
-    const rightNum = getNumericMetric(rightValue)
-    if (leftNum === null || rightNum === null) return 'tie'
-    if (leftNum === rightNum) return 'tie'
-    if (direction === 'higher') return leftNum > rightNum ? 'left' : 'right'
-    return leftNum < rightNum ? 'left' : 'right'
-  }
-
-  function getCompareValueClass(winner: 'left' | 'right' | 'tie', side: 'left' | 'right') {
-    if (winner === 'tie') return 'compare-value'
-    if (winner === side) return 'compare-value compare-value--winner'
-    return 'compare-value compare-value--muted'
-  }
-
-  const [scanUrl, setScanUrl] = useState('')
-  const [isAutoDetected, setIsAutoDetected] = useState(false)
-
-  const fetchActiveUrl = async () => {
+  const detectActiveUrl = async () => {
     try {
-      if (window.electronAPI && typeof window.electronAPI.getActiveTabUrl === 'function') {
-        const detectedUrl = await window.electronAPI.getActiveTabUrl()
-        if (detectedUrl) {
-          setCurrentUrl(detectedUrl)
-          setScanUrl(detectedUrl)
+      if (typeof window.electronAPI?.getActiveTabUrl === 'function') {
+        const url = await window.electronAPI.getActiveTabUrl()
+        if (url) {
+          setScanUrl(url)
           setIsAutoDetected(true)
-          const isAmazon = /amazon\.(com|co\.|ca|com\.au|de|fr|es|it|nl|pl|se|sg|ae)/i.test(detectedUrl)
-          if (isAmazon) {
-            setBackendStatus('Amazon product page auto-detected')
-            setError('')
-          } else {
-            setBackendStatus('Active tab detected. Edit or enter a product URL.')
-          }
+          setBackendStatus(isAmazonUrl(url) ? 'Amazon product page auto-detected' : 'Active tab detected. Edit or enter a product URL.')
+          setError('')
         } else {
-          setCurrentUrl('No active tab detected')
           setIsAutoDetected(false)
           setBackendStatus('No active browser tab found. Enter URL manually.')
         }
       } else {
-        setCurrentUrl('No active tab detected')
         setIsAutoDetected(false)
         setBackendStatus('Running outside Electron. Enter URL manually.')
       }
-    } catch (err) {
-      console.error('Error fetching active URL:', err)
-      setCurrentUrl('No active tab detected')
+    } catch {
       setIsAutoDetected(false)
     }
   }
 
-  useEffect(() => {
-    fetchActiveUrl()
-    loadCurrentSavedScan().then((saved) => { setCurrentSavedScan(saved) })
-    loadPreviousSavedScan().then((saved) => { setPreviousSavedScan(saved) })
-    loadScanHistory().then((history) => { setScanHistory(history) })
-
-    return () => {
-      if (cancelTimerRef.current !== null) window.clearTimeout(cancelTimerRef.current)
-      scanDelayResolveRef.current?.()
-      scanDelayResolveRef.current = null
-      scanAbortRef.current?.abort()
-    }
-  }, [])
+  // ── Scan Lifecycle ──
 
   const closeCancelWindow = () => {
     if (cancelTimerRef.current !== null) {
@@ -821,21 +1115,17 @@ export default function App() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ scanId }),
-    }).catch(() => {
-      // The local abort is still authoritative for the UI.
-    })
+    }).catch(() => { })
   }
 
   const handleCancelScan = () => {
     if (!loading || !cancelAvailable) return
-
     scanWasCancelledRef.current = true
     const scanId = scanIdRef.current
     const controller = scanAbortRef.current
     closeCancelWindow()
     controller?.abort()
-    if (controller) notifyBackendScanCancelled(scanId)
-
+    notifyBackendScanCancelled(scanId)
     setLoading(false)
     setAnalysis(null)
     setError('')
@@ -844,29 +1134,18 @@ export default function App() {
 
   const handleScan = async () => {
     const url = scanUrl.trim()
-    setCurrentUrl(url || 'No active tab found')
-
-    const isAmazon = /amazon\.(com|co\.|ca|com\.au|de|fr|es|it|nl|pl|se|sg|ae)/i.test(url)
-
-    if (!isAmazon) {
-      const msg = url
-        ? 'Navigate to an Amazon product page, or enter a valid Amazon URL.'
-        : 'Enter an Amazon product page URL first.'
-      setError(msg)
-      setBackendStatus(msg)
-      return
-    }
 
     if (!url) {
-      const msg = 'No URL available to send.'
-      setError(msg)
-      setBackendStatus(msg)
-      return
+      const msg = 'Enter an Amazon product page URL first.'
+      setError(msg); setBackendStatus(msg); return
+    }
+    if (!isAmazonUrl(url)) {
+      const msg = 'Navigate to an Amazon product page, or enter a valid Amazon URL.'
+      setError(msg); setBackendStatus(msg); return
     }
 
     try {
       scanWasCancelledRef.current = false
-
       setLoading(true)
       setCancelAvailable(true)
       setError('')
@@ -878,9 +1157,7 @@ export default function App() {
         cancelTimerRef.current = window.setTimeout(closeCancelWindow, SCAN_CANCEL_WINDOW_MS)
       })
 
-      if (scanWasCancelledRef.current) {
-        return
-      }
+      if (scanWasCancelledRef.current) return
 
       const scanId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
       const controller = new AbortController()
@@ -905,18 +1182,14 @@ export default function App() {
 
       if (!response.ok) {
         const msg = typeof data.detail === 'string' ? data.detail : 'Request failed.'
-        setBackendStatus(msg)
-        setError(msg)
-        return
+        setBackendStatus(msg); setError(msg); return
       }
 
-      const nextAnalysis = data.analysis ?? null
+      const nextAnalysis: Analysis | null = data.analysis ?? null
 
       if (!nextAnalysis) {
         const msg = 'Scan completed, but no analysis was returned.'
-        setBackendStatus(msg)
-        setError(msg)
-        return
+        setBackendStatus(msg); setError(msg); return
       }
 
       setAnalysis(nextAnalysis)
@@ -925,8 +1198,6 @@ export default function App() {
       setError('')
       setView('home')
 
-      const oldCurrent = await loadCurrentSavedScan()
-
       const record: ScanRecord = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         scannedAt: new Date().toISOString(),
@@ -934,17 +1205,13 @@ export default function App() {
         analysis: nextAnalysis,
       }
 
-      await storageSet({
-        [CURRENT_SCAN_KEY]: record,
-        [PREVIOUS_SCAN_KEY]: oldCurrent,
-      })
-
+      const oldCurrent = await loadCurrentSavedScan()
+      await storageSet({ [CURRENT_SCAN_KEY]: record, [PREVIOUS_SCAN_KEY]: oldCurrent })
       setCurrentSavedScan(record)
-      setPreviousSavedScan(oldCurrent ?? null)
+      setPreviousSavedScan(oldCurrent)
 
-      const existingHistory = (await loadScanHistory()) ?? []
+      const existingHistory = await loadScanHistory()
       const nextHistory = [record, ...existingHistory].slice(0, MAX_SCAN_HISTORY)
-
       await storageSet({ [SCAN_HISTORY_KEY]: nextHistory })
       setScanHistory(nextHistory)
     } catch (err) {
@@ -953,10 +1220,8 @@ export default function App() {
         setError('')
         return
       }
-
       const msg = 'Scan failed. Please open an Amazon product or start server.'
-      setBackendStatus(msg)
-      setError(msg)
+      setBackendStatus(msg); setError(msg)
     } finally {
       closeCancelWindow()
       scanAbortRef.current = null
@@ -966,56 +1231,65 @@ export default function App() {
     }
   }
 
-  // FIX: Trigger animated exit waterfall, then clear state after animation completes
+  // ── Results Exit Animation ──
+
   const triggerResultsExit = (onComplete: () => void) => {
-    setIsClearingCurrentView(true)
+    setIsExitingResults(true)
     setTimeout(() => {
       onComplete()
-      setIsClearingCurrentView(false)
+      setIsExitingResults(false)
     }, EXIT_ANIMATION_MS)
   }
 
-  const handleDeleteScan = async (id: string) => {
-    setDeletingScanIds((prev) => [...prev, id])
+  // ── History Management ──
 
+  const toggleCompareSelection = (id: string) => {
+    setSelectedCompareIds((prev) => {
+      if (prev.includes(id)) return prev.filter((i) => i !== id)
+      if (prev.length >= 2) return [prev[1], id]
+      return [...prev, id]
+    })
+  }
+
+  const handleLoadScan = (record: ScanRecord) => {
+    setAnalysis(record.analysis)
+    setHasScanned(true)
+    setBackendStatus('Loaded scan from history')
+    setError('')
+  }
+
+  const handleDeleteScan = (id: string) => {
+    setDeletingScanIds((prev) => [...prev, id])
     setTimeout(async () => {
-      const itemToDelete = scanHistory.find((item) => item.id === id)
+      const deletedRecord = scanHistory.find((item) => item.id === id)
       const nextHistory = scanHistory.filter((item) => item.id !== id)
 
       await storageSet({ [SCAN_HISTORY_KEY]: nextHistory })
 
-      const currentScan = await loadCurrentSavedScan()
-      const previousScan = await loadPreviousSavedScan()
-      const cleanupKeys: string[] = []
-
-      if (currentScan?.id === id) cleanupKeys.push(CURRENT_SCAN_KEY)
-      if (previousScan?.id === id) cleanupKeys.push(PREVIOUS_SCAN_KEY)
-      if (cleanupKeys.length) await storageRemove(cleanupKeys)
+      const [savedCurrent, savedPrevious] = await Promise.all([loadCurrentSavedScan(), loadPreviousSavedScan()])
+      const keysToRemove: string[] = []
+      if (savedCurrent?.id === id) keysToRemove.push(CURRENT_SCAN_KEY)
+      if (savedPrevious?.id === id) keysToRemove.push(PREVIOUS_SCAN_KEY)
+      if (keysToRemove.length) await storageRemove(keysToRemove)
 
       setScanHistory(nextHistory)
-      setSelectedCompareIds((prev) => prev.filter((itemId) => itemId !== id))
-
+      setSelectedCompareIds((prev) => prev.filter((i) => i !== id))
       if (currentSavedScan?.id === id) setCurrentSavedScan(null)
       if (previousSavedScan?.id === id) setPreviousSavedScan(null)
 
-      // Only animate out the results if the deleted scan is currently displayed
-      if (itemToDelete?.analysis === analysis) {
-        triggerResultsExit(() => {
-          setAnalysis(null)
-          setHasScanned(false)
-        })
+      if (deletedRecord?.analysis === analysis) {
+        triggerResultsExit(() => { setAnalysis(null); setHasScanned(false) })
       }
 
-      setDeletingScanIds((prev) => prev.filter((itemId) => itemId !== id))
+      setDeletingScanIds((prev) => prev.filter((i) => i !== id))
       setBackendStatus('Removed scan from history')
       setError('')
     }, DELETE_ENTRY_DELAY_MS)
   }
 
-  const handleClearScanHistory = async () => {
+  const handleClearScanHistory = () => {
     setIsClearingHistory(true)
     setDeletingScanIds(scanHistory.map((item) => item.id))
-
     setTimeout(async () => {
       await storageSet({ [SCAN_HISTORY_KEY]: [] })
       await storageRemove([CURRENT_SCAN_KEY, PREVIOUS_SCAN_KEY])
@@ -1025,301 +1299,35 @@ export default function App() {
       setCompareRecords(null)
       setCurrentSavedScan(null)
       setPreviousSavedScan(null)
+      setView('home')
+      setBackendStatus('Scan history cleared')
+      setError('')
 
       if (analysis) {
-        // Animate results out before clearing state
-        triggerResultsExit(() => {
-          setAnalysis(null)
-          setHasScanned(false)
-        })
+        triggerResultsExit(() => { setAnalysis(null); setHasScanned(false) })
       } else {
         setAnalysis(null)
         setHasScanned(false)
       }
 
-      setBackendStatus('Scan history cleared')
-      setError('')
-      setView('home')
       setDeletingScanIds([])
       setIsClearingHistory(false)
     }, CLEAR_ALL_ENTRY_DELAY_MS)
   }
 
-  const scanHistorySection = (
-    <SectionCard title="Scan History" collapsible defaultOpen={false} className="section-card--history">
-      {scanHistory.length > 0 ? (
-        <>
-          <div className="scan-history-toolbar">
-            <p className="scan-history-count">
-              {scanHistory.length} saved {scanHistory.length === 1 ? 'scan' : 'scans'}
-            </p>
-            <button
-              type="button"
-              className="history-clear-btn"
-              onClick={handleClearScanHistory}
-              disabled={isClearingHistory}
-            >
-              {isClearingHistory ? 'Clearing…' : 'Clear All'}
-            </button>
-          </div>
+  const handleStartCompare = () => {
+    const selected = scanHistory.filter((item) => selectedCompareIds.includes(item.id))
+    if (selected.length === 2) {
+      setCompareRecords([selected[0], selected[1]])
+      setView('compare')
+      setSelectedCompareIds([])
+    }
+  }
 
-          <div className="scan-history-list">
-            {scanHistory.map((item) => {
-              const isSelected = selectedCompareIds.includes(item.id)
-
-              return (
-                <div
-                  key={item.id}
-                  className={`history-item history-item--selectable ${isSelected ? 'history-item--selected' : ''} ${deletingScanIds.includes(item.id) ? 'history-item--deleting' : ''}`}
-                >
-                  <button
-                    type="button"
-                    className="history-load-btn"
-                    onClick={() => {
-                      setAnalysis(item.analysis)
-                      setHasScanned(true)
-                      setBackendStatus('Loaded scan from history')
-                      setError('')
-                    }}
-                  >
-                    <div className="history-item-top">
-                      <p className="history-item-title">{item.analysis.title ?? 'Untitled Product'}</p>
-                      <span className="history-score">{item.analysis.overallScore ?? '--'}</span>
-                    </div>
-                    <div className="history-item-meta-row">
-                      <span className="history-item-meta history-item-meta--brand">{item.analysis.brand ?? 'Unknown brand'}</span>
-                      <span className="history-item-meta-separator" aria-hidden="true" />
-                      <span className="history-item-meta history-item-meta--time">{new Date(item.scannedAt).toLocaleString()}</span>
-                    </div>
-                  </button>
-
-                  <div className="history-item-actions">
-                    <button
-                      type="button"
-                      className={`why-score-btn history-compare-btn ${isSelected ? 'secondary-btn--active history-compare-btn--selected' : ''}`}
-                      onClick={() => toggleCompareSelection(item.id)}
-                      aria-pressed={isSelected}
-                      aria-label={isSelected ? 'Selected for Compare' : 'Select to Compare'}
-                    >
-                      <span
-                        className={`history-compare-btn-indicator ${isSelected ? 'history-compare-btn-indicator--selected' : ''}`}
-                        aria-hidden="true"
-                      />
-                      <span className="history-compare-btn-copy" aria-hidden="true">
-                        <span
-                          className={`history-compare-btn-text ${isSelected ? 'history-compare-btn-text--hidden' : 'history-compare-btn-text--visible'}`}
-                        >
-                          Select to Compare
-                        </span>
-                        <span
-                          className={`history-compare-btn-text history-compare-btn-text--selected ${isSelected ? 'history-compare-btn-text--visible' : 'history-compare-btn-text--hidden'}`}
-                        >
-                          Selected for Compare
-                        </span>
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      className="history-delete-btn"
-                      aria-label={`Delete scan for ${item.analysis.title ?? 'product'}`}
-                      title="Delete this scan"
-                      onClick={() => handleDeleteScan(item.id)}
-                    >
-                      ×
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-
-          {scanHistory.length >= 2 && (
-            <div className="compare-history-actions">
-              <button
-                className="scan-btn"
-                disabled={selectedCompareIds.length !== 2}
-                onClick={() => {
-                  const selected = scanHistory.filter((item) => selectedCompareIds.includes(item.id))
-                  if (selected.length === 2) {
-                    setCompareRecords([selected[0], selected[1]])
-                    setView('compare')
-                    setSelectedCompareIds([])
-                  }
-                }}
-              >
-                {selectedCompareIds.length === 2
-                  ? 'Compare Selected Products'
-                  : 'Select 2 Products to Compare'}
-              </button>
-            </div>
-          )}
-        </>
-      ) : (
-        <div className="empty-state empty-state--compact">No saved scans yet.</div>
-      )}
-    </SectionCard>
-  )
+  // ── Routing ──
 
   if (view === 'compare' && compareRecords) {
-    const [left, right] = compareRecords
-    const leftAnalysis = left.analysis
-    const rightAnalysis = right.analysis
-    const leftImage = getAnalysisImage(leftAnalysis)
-    const rightImage = getAnalysisImage(rightAnalysis)
-
-    const scoreWinner = getMetricWinner(leftAnalysis.overallScore, rightAnalysis.overallScore, 'higher')
-    const priceWinner = getMetricWinner(leftAnalysis.price, rightAnalysis.price, 'lower')
-    const ratingWinner = getMetricWinner(leftAnalysis.rating, rightAnalysis.rating, 'higher')
-    const reviewCountWinner = getMetricWinner(leftAnalysis.reviewCount, rightAnalysis.reviewCount, 'higher')
-    const integrityWinner = getMetricWinner(leftAnalysis.reviewIntegrity?.score, rightAnalysis.reviewIntegrity?.score, 'higher')
-    const brandWinner = getMetricWinner(leftAnalysis.brandReputation?.score, rightAnalysis.brandReputation?.score, 'higher')
-
-    const leftWins =
-      (scoreWinner === 'left' ? 1 : 0) + (priceWinner === 'left' ? 1 : 0) +
-      (ratingWinner === 'left' ? 1 : 0) + (reviewCountWinner === 'left' ? 1 : 0) +
-      (integrityWinner === 'left' ? 1 : 0) + (brandWinner === 'left' ? 1 : 0)
-
-    const rightWins =
-      (scoreWinner === 'right' ? 1 : 0) + (priceWinner === 'right' ? 1 : 0) +
-      (ratingWinner === 'right' ? 1 : 0) + (reviewCountWinner === 'right' ? 1 : 0) +
-      (integrityWinner === 'right' ? 1 : 0) + (brandWinner === 'right' ? 1 : 0)
-
-    const summaryLabel =
-      leftWins === rightWins ? 'CLOSE MATCH'
-        : leftWins > rightWins ? 'LEFT PRODUCT LEADS'
-          : 'RIGHT PRODUCT LEADS'
-
-    return (
-      <main className="app-shell">
-        <div className="popup-shell">
-          <header className="top-header">
-            <div className="brand-row">
-              <img src={logoSrc} alt="Nectar logo" className="brand-logo" />
-              <div className="brand-block">
-                <h1>Nectar</h1>
-                <p>PRODUCT COMPARISON</p>
-              </div>
-            </div>
-            <button className="premium-btn" onClick={() => setView('home')}>← Back</button>
-          </header>
-
-          <div className="content" key="compare-view">
-            <div className="cascade-item cascade-delay-1"><section className="section-card compare-hero">
-              <div className="compare-hero-top">
-                <div>
-                  <h3 className="compare-hero-title">Compare Products</h3>
-                  <p className="compare-hero-text">Side-by-side view of pricing, trust, ratings, and AI verdicts.</p>
-                </div>
-                <span className="compare-summary-badge">{summaryLabel}</span>
-              </div>
-              <div className="compare-summary-pills">
-                <span className={`compare-chip ${priceWinner}`}>Best Value · {priceWinner === 'tie' ? 'Tie' : priceWinner === 'left' ? 'Left' : 'Right'}</span>
-                <span className={`compare-chip ${ratingWinner}`}>Higher Rated · {ratingWinner === 'tie' ? 'Tie' : ratingWinner === 'left' ? 'Left' : 'Right'}</span>
-                <span className={`compare-chip ${integrityWinner}`}>More Trusted · {integrityWinner === 'tie' ? 'Tie' : integrityWinner === 'left' ? 'Left' : 'Right'}</span>
-                <span className={`compare-chip ${brandWinner}`}>Better Brand · {brandWinner === 'tie' ? 'Tie' : brandWinner === 'left' ? 'Left' : 'Right'}</span>
-              </div>
-            </section></div>
-
-            <div className="cascade-item cascade-delay-2"><section className="compare-products-grid">
-              <article className={`compare-product-card ${leftWins > rightWins ? 'compare-product-card--leader' : ''}`}>
-                <div className="compare-product-image-wrap">
-                  {leftImage
-                    ? <img src={leftImage} alt={leftAnalysis.title ?? 'Product'} className="compare-product-image" />
-                    : <ProductImagePlaceholder className="compare-product-image" />}
-                </div>
-                <div className="compare-product-card-body">
-                  <div className="compare-product-card-top">
-                    <span className="compare-side-badge">LEFT</span>
-                    {leftWins > rightWins && <span className="compare-winner-badge">BEST PICK</span>}
-                  </div>
-                  <p className="compare-product-title">{leftAnalysis.title ?? 'Untitled Product'}</p>
-                  <p className="compare-product-meta">{leftAnalysis.brand ?? 'Unknown brand'} · {new Date(left.scannedAt).toLocaleString()}</p>
-                  <div className="compare-quick-stats">
-                    <div className="compare-quick-stat"><span>Score</span><strong>{renderMetricValue(leftAnalysis.overallScore)}</strong></div>
-                    <div className="compare-quick-stat"><span>Price</span><strong>{renderMetricValue(leftAnalysis.price)}</strong></div>
-                    <div className="compare-quick-stat"><span>Rating</span><strong>{renderMetricValue(leftAnalysis.rating)}</strong></div>
-                  </div>
-                </div>
-              </article>
-
-              <article className={`compare-product-card ${rightWins > leftWins ? 'compare-product-card--leader' : ''}`}>
-                <div className="compare-product-image-wrap">
-                  {rightImage
-                    ? <img src={rightImage} alt={rightAnalysis.title ?? 'Product'} className="compare-product-image" />
-                    : <ProductImagePlaceholder className="compare-product-image" />}
-                </div>
-                <div className="compare-product-card-body">
-                  <div className="compare-product-card-top">
-                    <span className="compare-side-badge">RIGHT</span>
-                    {rightWins > leftWins && <span className="compare-winner-badge">BEST PICK</span>}
-                  </div>
-                  <p className="compare-product-title">{rightAnalysis.title ?? 'Untitled Product'}</p>
-                  <p className="compare-product-meta">{rightAnalysis.brand ?? 'Unknown brand'} · {new Date(right.scannedAt).toLocaleString()}</p>
-                  <div className="compare-quick-stats">
-                    <div className="compare-quick-stat"><span>Score</span><strong>{renderMetricValue(rightAnalysis.overallScore)}</strong></div>
-                    <div className="compare-quick-stat"><span>Price</span><strong>{renderMetricValue(rightAnalysis.price)}</strong></div>
-                    <div className="compare-quick-stat"><span>Rating</span><strong>{renderMetricValue(rightAnalysis.rating)}</strong></div>
-                  </div>
-                </div>
-              </article>
-            </section></div>
-
-            <div className="cascade-item cascade-delay-3"><section className="section-card compare-section-card">
-              <h3 className="compare-section-title">Core Metrics</h3>
-              <div className="compare-rows">
-                <div className="compare-row"><div className="compare-row-label">Overall Score</div><div className={getCompareValueClass(scoreWinner, 'left')}>{renderMetricValue(leftAnalysis.overallScore)}</div><div className={getCompareValueClass(scoreWinner, 'right')}>{renderMetricValue(rightAnalysis.overallScore)}</div></div>
-                <div className="compare-row"><div className="compare-row-label">Price</div><div className={getCompareValueClass(priceWinner, 'left')}>{renderMetricValue(leftAnalysis.price)}</div><div className={getCompareValueClass(priceWinner, 'right')}>{renderMetricValue(rightAnalysis.price)}</div></div>
-                <div className="compare-row"><div className="compare-row-label">Rating</div><div className={getCompareValueClass(ratingWinner, 'left')}>{renderMetricValue(leftAnalysis.rating)}</div><div className={getCompareValueClass(ratingWinner, 'right')}>{renderMetricValue(rightAnalysis.rating)}</div></div>
-                <div className="compare-row"><div className="compare-row-label">Review Count</div><div className={getCompareValueClass(reviewCountWinner, 'left')}>{renderMetricValue(leftAnalysis.reviewCount)}</div><div className={getCompareValueClass(reviewCountWinner, 'right')}>{renderMetricValue(rightAnalysis.reviewCount)}</div></div>
-              </div>
-            </section></div>
-
-            <div className="cascade-item cascade-delay-4"><section className="section-card compare-section-card">
-              <h3 className="compare-section-title">Trust & Reputation</h3>
-              <div className="compare-rows">
-                <div className="compare-row"><div className="compare-row-label">Review Integrity</div><div className={getCompareValueClass(integrityWinner, 'left')}>{renderMetricValue(leftAnalysis.reviewIntegrity?.score)}</div><div className={getCompareValueClass(integrityWinner, 'right')}>{renderMetricValue(rightAnalysis.reviewIntegrity?.score)}</div></div>
-                <div className="compare-row"><div className="compare-row-label">Integrity Label</div><div className="compare-value">{renderMetricValue(leftAnalysis.reviewIntegrity?.label)}</div><div className="compare-value">{renderMetricValue(rightAnalysis.reviewIntegrity?.label)}</div></div>
-                <div className="compare-row"><div className="compare-row-label">Verified Ratio</div><div className="compare-value">{renderMetricValue(leftAnalysis.reviewIntegrity?.verifiedPurchaseRatio)}</div><div className="compare-value">{renderMetricValue(rightAnalysis.reviewIntegrity?.verifiedPurchaseRatio)}</div></div>
-                <div className="compare-row"><div className="compare-row-label">Brand Reputation</div><div className={getCompareValueClass(brandWinner, 'left')}>{renderMetricValue(leftAnalysis.brandReputation?.score)}</div><div className={getCompareValueClass(brandWinner, 'right')}>{renderMetricValue(rightAnalysis.brandReputation?.score)}</div></div>
-                <div className="compare-row"><div className="compare-row-label">Brand Label</div><div className="compare-value">{renderMetricValue(leftAnalysis.brandReputation?.label)}</div><div className="compare-value">{renderMetricValue(rightAnalysis.brandReputation?.label)}</div></div>
-              </div>
-            </section></div>
-
-            <div className="cascade-item cascade-delay-5"><section className="section-card compare-section-card">
-              <h3 className="compare-section-title">AI Verdict</h3>
-              <div className="compare-ai-grid">
-                <div className="compare-ai-card">
-                  <p className="compare-ai-label">Recommendation</p>
-                  <p className="compare-ai-recommendation">{renderMetricValue(leftAnalysis.aiAnalysis?.recommendation)}</p>
-                  <p className="compare-ai-verdict">{renderMetricValue(leftAnalysis.aiAnalysis?.verdict)}</p>
-                </div>
-                <div className="compare-ai-card">
-                  <p className="compare-ai-label">Recommendation</p>
-                  <p className="compare-ai-recommendation">{renderMetricValue(rightAnalysis.aiAnalysis?.recommendation)}</p>
-                  <p className="compare-ai-verdict">{renderMetricValue(rightAnalysis.aiAnalysis?.verdict)}</p>
-                </div>
-              </div>
-            </section></div>
-
-            <div className="cascade-item cascade-delay-6"><SectionCard title="Review Integrity Keywords">
-              <p className="compare-subtitle">{leftAnalysis.title ?? 'Left Product'}</p>
-              <KeywordPills keywords={leftAnalysis.reviewIntegrity?.commonKeywords} emptyMessage="No keywords found" />
-              <div style={{ height: 14 }} />
-              <p className="compare-subtitle">{rightAnalysis.title ?? 'Right Product'}</p>
-              <KeywordPills keywords={rightAnalysis.reviewIntegrity?.commonKeywords} emptyMessage="No keywords found" />
-            </SectionCard></div>
-
-            <div className="cascade-item cascade-delay-7"><SectionCard title="Brand Reputation Keywords">
-              <p className="compare-subtitle">{leftAnalysis.title ?? 'Left Product'}</p>
-              <KeywordPills keywords={leftAnalysis.brandReputation?.commonKeywords} emptyMessage="No keywords found" />
-              <div style={{ height: 14 }} />
-              <p className="compare-subtitle">{rightAnalysis.title ?? 'Right Product'}</p>
-              <KeywordPills keywords={rightAnalysis.brandReputation?.commonKeywords} emptyMessage="No keywords found" />
-            </SectionCard></div>
-          </div>
-        </div>
-      </main>
-    )
+    return <CompareView records={compareRecords} onBack={() => setView('home')} />
   }
 
   if (view === 'premium') {
@@ -1332,18 +1340,36 @@ export default function App() {
     )
   }
 
+  const historySection = (
+    <ScanHistorySection
+      scanHistory={scanHistory}
+      selectedCompareIds={selectedCompareIds}
+      deletingScanIds={deletingScanIds}
+      isClearingHistory={isClearingHistory}
+      onLoad={handleLoadScan}
+      onToggleCompare={toggleCompareSelection}
+      onDelete={handleDeleteScan}
+      onClearAll={handleClearScanHistory}
+      onCompare={handleStartCompare}
+    />
+  )
+
   return (
     <main className="app-shell">
       <div className="popup-shell">
-        <header className="top-header">
+        <header className="top-header" onMouseEnter={() => setWindowControlsVisible(true)} onMouseLeave={() => setWindowControlsVisible(false)}>
           <div className="brand-row">
             <img src={logoSrc} alt="Nectar logo" className="brand-logo" />
             <div className="brand-block">
               <h1>Nectar</h1>
-              <p>AMAZON PRODUCT ANALYZER</p>
+              <p>SMART PRODUCT ANALYZER</p>
             </div>
           </div>
           <button className="premium-btn" onClick={() => setView('premium')}>Go Premium</button>
+          <div className={`window-controls ${windowControlsVisible ? 'visible' : ''}`}>
+            <button className="window-control window-control-minimize" onClick={() => window.electronAPI?.minimizeWindow?.()} title="Minimize" />
+            <button className="window-control window-control-close" onClick={() => window.electronAPI?.closeWindow?.()} title="Close" />
+          </div>
         </header>
 
         <div className="content" key="home-view">
@@ -1351,16 +1377,9 @@ export default function App() {
             <SectionCard title="Product Analysis" className="section-card--hero">
               <div className="url-input-container">
                 <div className="url-status-bar">
-                  <span className={`status-dot ${isAutoDetected ? 'status-dot--active' : ''}`}></span>
-                  <span className="status-label">
-                    {isAutoDetected ? 'Active Browser Tab' : 'Manual Entry'}
-                  </span>
-                  <button
-                    type="button"
-                    className="url-refresh-btn"
-                    onClick={fetchActiveUrl}
-                    title="Detect active URL from browser"
-                  >
+                  <span className={`status-dot ${isAutoDetected ? 'status-dot--active' : ''}`} />
+                  <span className="status-label">{isAutoDetected ? 'Active Browser Tab' : 'Manual Entry'}</span>
+                  <button type="button" className="url-refresh-btn" onClick={detectActiveUrl} title="Detect active URL from browser">
                     ↻ Sync Browser
                   </button>
                 </div>
@@ -1369,10 +1388,7 @@ export default function App() {
                   className="premium-url-input"
                   placeholder="Paste Amazon product URL here..."
                   value={scanUrl}
-                  onChange={(e) => {
-                    setScanUrl(e.target.value)
-                    setIsAutoDetected(false)
-                  }}
+                  onChange={(e) => { setScanUrl(e.target.value); setIsAutoDetected(false) }}
                 />
               </div>
               <p className={`body-text hero-status ${error ? 'status-error' : 'status-ok'}`}>
@@ -1382,217 +1398,21 @@ export default function App() {
                 {loading ? 'Scanning…' : 'Scan Product'}
               </button>
               {loading && cancelAvailable && (
-                <button
-                  type="button"
-                  className="scan-cancel-btn"
-                  onClick={handleCancelScan}
-                >
+                <button type="button" className="scan-cancel-btn" onClick={handleCancelScan}>
                   <span>Cancel Scan</span>
                 </button>
               )}
             </SectionCard>
           </div>
 
-          {!hasScanned && <div className="cascade-item cascade-delay-2">{scanHistorySection}</div>}
-
+          {!hasScanned && <div className="cascade-item cascade-delay-2">{historySection}</div>}
           {loading && <SkeletonResults />}
 
-          {/* FIX: apply results-exit-waterfall class when isClearingCurrentView is true
-              This triggers the left-sweep cascade animation before state is cleared */}
           {!loading && hasScanned && analysis && (
-            <div className={`results-animate${isClearingCurrentView ? ' results-exit-waterfall' : ''}`}>
-              <div className="cascade-item cascade-delay-1">
-                <SectionCard title="Overall Score" collapsible className="section-card--score">
-                  <div className="overall-score-stack">
-                    <div className="score-row score-row--hero">
-                      <span className="score-number score-number--hero" style={{ color: getScoreColor(analysis.overallScore) }}>
-                        {analysis.overallScore ?? '--'}
-                      </span>
-                      <span className="score-max">/100</span>
-                    </div>
-                    {analysis.aiAnalysis?.recommendation && (
-                      <div className="overall-score-chip-row">
-                        <span className={getRecommendationClass(analysis.aiAnalysis.recommendation)}>
-                          {analysis.aiAnalysis.recommendation}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  <MetricBar label="Trust Score" value={analysis.overallScore} />
-                </SectionCard>
-              </div>
-
-              <div className="cascade-item cascade-delay-2">
-                <SectionCard title="Product" collapsible>
-                  <div className="info-list">
-                    <p><strong>Title:</strong> {analysis.title ?? 'N/A'}</p>
-                    <p><strong>Brand:</strong> {analysis.brand ?? 'N/A'}</p>
-                    <p><strong>Price:</strong> {analysis.price ?? 'N/A'}</p>
-                    <p><strong>Rating:</strong> {analysis.rating ?? 'N/A'}</p>
-                    <p><strong>Review Count:</strong> {analysis.reviewCount ?? 'N/A'}</p>
-                  </div>
-                </SectionCard>
-              </div>
-
-              {analysis.aiAnalysis && (
-                <div className="cascade-item cascade-delay-3">
-                  <VerdictCard ai={analysis.aiAnalysis} />
-                </div>
-              )}
-
-              <div className="cascade-item cascade-delay-4">
-                <SectionCard title="Review Integrity" collapsible className="section-card--integrity">
-                  <div className="integrity-lead">
-                    <div className="mini-score mini-score--featured">
-                      <span>Score</span>
-                      <strong>{analysis.reviewIntegrity?.score ?? 'N/A'}</strong>
-                    </div>
-                    <ScoreTrack value={analysis.reviewIntegrity?.score} />
-                  </div>
-                  {Object.entries(analysis.reviewIntegrity?.flags ?? {}).some(([, active]) => active) && (
-                    <div className="integrity-flags">
-                      {Object.entries(analysis.reviewIntegrity?.flags ?? {})
-                        .filter(([, active]) => active)
-                        .map(([flag]) => (
-                          <span key={flag} className="integrity-flag">{formatFlagLabel(flag)}</span>
-                        ))}
-                    </div>
-                  )}
-                  <div className="info-list">
-                    <p><strong>Label:</strong> {analysis.reviewIntegrity?.label ?? 'N/A'}</p>
-                    <p><strong>Verified Purchase Ratio:</strong> {analysis.reviewIntegrity?.verifiedPurchaseRatio ?? 'N/A'}</p>
-                    <p><strong>Sentiment Consistency:</strong> {analysis.reviewIntegrity?.sentimentConsistencyRatio ?? 'N/A'}</p>
-                    <p className="keywords-label"><strong>Top Keywords:</strong></p>
-                    <KeywordPills keywords={analysis.reviewIntegrity?.commonKeywords} emptyMessage="No keywords found" />
-                  </div>
-                  <ScoreExplainer metric="review_integrity" analysis={analysis} />
-                </SectionCard>
-              </div>
-
-              <div className="cascade-item cascade-delay-5">
-                <SectionCard title="Brand Reputation" collapsible className="section-card--brand">
-                  <div className="brand-lead">
-                    <div className="mini-score mini-score--featured">
-                      <span>Score</span>
-                      <strong>{analysis.brandReputation?.score ?? 'N/A'}</strong>
-                    </div>
-                    <ScoreTrack value={analysis.brandReputation?.score} />
-                  </div>
-                  <div className="info-list">
-                    <p><strong>Label:</strong> {analysis.brandReputation?.label ?? 'N/A'}</p>
-                    <p><strong>Reviews Analyzed:</strong> {analysis.brandReputation?.reviewsAnalyzed ?? 'N/A'}</p>
-                  </div>
-                  {analysis.brandReputation?.insights?.length ? (
-                    <div className="insight-list">
-                      {analysis.brandReputation.insights.map((insight) => (
-                        <div key={insight.topic} className="insight-pill">
-                          <span>{insight.topic}</span>
-                          <strong>{insight.status}</strong>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="body-text muted">No brand insights yet.</p>
-                  )}
-                  <p className="keywords-label"><strong>Top Keywords:</strong></p>
-                  <KeywordPills keywords={analysis.brandReputation?.commonKeywords} emptyMessage="No keywords found" />
-                  <ScoreExplainer metric="brand_reputation" analysis={analysis} />
-                </SectionCard>
-              </div>
-
-              <div className="cascade-item cascade-delay-6">
-                <SectionCard
-                  title={getSimilarProductsTitle(analysis.productKeyword)}
-                  collapsible
-                  className="section-card--similar"
-                >
-                  {(analysis.similarProducts?.length ?? 0) > 0 ? (
-                    <>
-                      <SimilarProductsScroller analysis={analysis} products={analysis.similarProducts ?? []} />
-                      {/*
-                    <div className="similar-scroll-shell">
-                      {canScrollSimilarLeft && (
-                        <button
-                          type="button"
-                          className="similar-scroll-arrow similar-scroll-arrow--left"
-                          aria-label="Scroll similar products left"
-                          onClick={() => scrollSimilarProducts('left')}
-                        >
-                          <span />
-                        </button>
-                      )}
-                      {/*
-                      <div className="similar-scroll" ref={similarScrollRef}>
-                      {(() => {
-                        const bestAlternativeIndex = getBestAlternativeIndex(analysis, analysis.similarProducts)
-                        return analysis.similarProducts?.map((product, i) => {
-                          const comparison = compareProductAgainstCurrent(analysis, product)
-                          const isBestAlternative = i === bestAlternativeIndex
-                          return (
-                            <a
-                              key={product.listingId ?? product.asin ?? i}
-                              href={getCommerceUrl(product)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className={`similar-card ${isBestAlternative ? 'similar-card--best' : ''}`}
-                            >
-                              <div className="similar-card-top">
-                                <div className="similar-card-badges">
-                                  {isBestAlternative && <span className="best-alt-badge">BEST ALT</span>}
-                                  <span className={getTagClassName(comparison.tag)}>{comparison.tag}</span>
-                                </div>
-                                {product.isPrime && <span className="prime-badge">Prime</span>}
-                              </div>
-                              {product.image
-                                ? <img src={product.image} alt={product.title ?? 'Product'} className="similar-card-image" />
-                                : <ProductImagePlaceholder />}
-                              <p className="similar-card-title">{product.title ?? 'Untitled Product'}</p>
-                              <p className="similar-card-brand">{product.brand ?? 'Unknown brand'}</p>
-                              <div className="similar-card-price-row">
-                                <p className="similar-card-price">{product.price ?? 'No price'}</p>
-                                {comparison.priceDiff !== null && (
-                                  <span className={`price-diff ${comparison.priceDiff <= 0 ? 'price-diff--down' : 'price-diff--up'}`}>
-                                    {formatPriceDifference(comparison.priceDiff)}
-                                  </span>
-                                )}
-                              </div>
-                              <p className="similar-card-rating">
-                                ⭐ {product.rating ?? 'N/A'}
-                                {product.reviewCount ? ` · ${product.reviewCount.toLocaleString()} reviews` : ''}
-                              </p>
-                            </a>
-                          )
-                        })
-                      })()}
-                      </div>
-                      {canScrollSimilarRight && (
-                        <button
-                          type="button"
-                          className="similar-scroll-arrow similar-scroll-arrow--right"
-                          aria-label="Scroll similar products right"
-                          onClick={() => scrollSimilarProducts('right')}
-                        >
-                          <span />
-                        </button>
-                      )}
-                    </div>
-                      */}
-                    </>
-                  ) : (
-                    <p className="body-text muted empty-state empty-state--compact">
-                      No alternatives found
-                      {analysis.productKeyword && analysis.productKeyword !== 'unknown'
-                        ? ` for ${analysis.productKeyword}`
-                        : ''}.
-                    </p>
-                  )}
-                </SectionCard>
-              </div>
-
-              {hasScanned && (
-                <div className="cascade-item cascade-delay-7">{scanHistorySection}</div>
-              )}
-            </div>
+            <>
+              <ResultsView analysis={analysis} isExiting={isExitingResults} />
+              <div className="cascade-item cascade-delay-7">{historySection}</div>
+            </>
           )}
         </div>
       </div>

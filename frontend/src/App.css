@@ -23,11 +23,6 @@ button:focus-visible {
   width: 400px;
   background: transparent;
   /* drag region for frameless window */
-  -webkit-app-region: drag;
-}
-
-.app-shell * {
-  /* children should NOT be drag regions by default */
   -webkit-app-region: no-drag;
 }
 
@@ -42,17 +37,26 @@ button:focus-visible {
 
 .popup-shell {
   width: 100%;
-  border-radius: var(--radius-xl);
+
+  display: flex;
+  flex-direction: column;
+
+  flex: 1;
+  height: auto;
+  min-height: 300px;
+
+  max-height: 85vh;
+
+  position: relative;
+
   background: var(--glass-bg);
   backdrop-filter: var(--blur);
   -webkit-backdrop-filter: var(--blur);
-  box-shadow: var(--shadow-overlay);
+
+  border-radius: var(--radius-xl);
   border: 1px solid var(--glass-border);
+
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  /* Subtle inner highlight at top */
-  position: relative;
 }
 
 .popup-shell::before {
@@ -79,6 +83,7 @@ button:focus-visible {
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   padding: 14px 16px;
+  padding-right: 96px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -102,11 +107,23 @@ button:focus-visible {
 
 .brand-block h1 {
   margin: 0;
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 800;
   line-height: 1;
   color: var(--ink);
   letter-spacing: -0.03em;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.brand-subtitle {
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  font-weight: 700;
+  margin: 0;
+  position: relative;
 }
 
 .brand-block p {
@@ -121,18 +138,38 @@ button:focus-visible {
 .content {
   position: relative;
   z-index: 1;
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px 12px 14px;
+  padding: 12px 12px 25px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  /* max-height for overlay — user can resize window */
-  max-height: calc(100vh - 60px);
+  scroll-behavior: smooth;
+  -webkit-user-select: text;
+  user-select: text;
+  pointer-events: auto;
+  transform: translate3d(0, 0, 0);
+  -webkit-app-region: no-drag;
 }
 
-.content::-webkit-scrollbar { display: none; }
+.content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.content::-webkit-scrollbar-thumb {
+  background: rgba(200, 190, 180, 0.3);
+  border-radius: 3px;
+}
+
+.content::-webkit-scrollbar-thumb:hover {
+  background: rgba(200, 190, 180, 0.5);
+}
 
 /* ── Section cards — glass-on-glass ───────────────────────────────────── */
 .section-card {
@@ -143,17 +180,17 @@ button:focus-visible {
   backdrop-filter: blur(12px) saturate(1.4);
   -webkit-backdrop-filter: blur(12px) saturate(1.4);
   transition:
-    background 0.26s var(--motion-smooth),
-    border-color 0.26s var(--motion-smooth),
-    box-shadow 0.26s var(--motion-smooth),
-    transform 0.32s var(--motion-surface) !important;
+    background 0.24s var(--motion-smooth),
+    border-color 0.24s var(--motion-smooth),
+    box-shadow 0.24s var(--motion-smooth),
+    transform 0.28s var(--motion-bounce) !important;
 }
 
 .section-card:hover {
   background: var(--glass-surface-hover) !important;
   border-color: var(--glass-border-accent) !important;
   box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.10) !important;
-  transform: translateY(-1px);
+  transform: translateY(-2px);
 }
 
 .section-card h3 {
@@ -445,7 +482,6 @@ button:focus-visible {
 
 /* ── Buttons ──────────────────────────────────────────────────────────── */
 .scan-btn,
-.premium-btn,
 .premium-plan-cta,
 .why-score-btn,
 .secondary-btn,
@@ -454,11 +490,11 @@ button:focus-visible {
   cursor: pointer;
   font-family: var(--font-body);
   transition:
-    background 0.20s var(--motion-smooth),
-    border-color 0.20s var(--motion-smooth),
-    box-shadow 0.20s var(--motion-smooth),
+    background 0.24s var(--motion-smooth),
+    border-color 0.24s var(--motion-smooth),
+    box-shadow 0.24s var(--motion-smooth),
     color 0.16s ease,
-    transform 0.24s var(--motion-control),
+    transform 0.28s var(--motion-bounce),
     opacity 0.16s ease !important;
 }
 
@@ -633,15 +669,15 @@ button:focus-visible {
   gap: 6px;
   backdrop-filter: blur(10px);
   transition:
-    background 0.20s var(--motion-smooth),
-    border-color 0.20s var(--motion-smooth),
-    transform 0.26s var(--motion-surface) !important;
+    background 0.24s var(--motion-smooth),
+    border-color 0.24s var(--motion-smooth),
+    transform 0.28s var(--motion-bounce) !important;
 }
 
 .similar-card:hover {
   background: rgba(255, 255, 255, 0.92) !important;
   border-color: rgba(249, 115, 22, 0.28) !important;
-  transform: translateY(-2px);
+  transform: translateY(-3px);
 }
 
 .similar-card-image,
@@ -748,23 +784,34 @@ button:focus-visible {
   border: none;
   background: var(--brand);
   color: white;
-  font-size: 10.5px;
-  font-weight: 760;
-  padding: 7px 11px;
-  border-radius: var(--radius-md);
+
+  font-size: 9px;
+  font-weight: 700;
+
+  padding: 0px 8px;
+  min-height: 18px;
+
+  border-radius: 999px;
+
   white-space: nowrap;
   flex-shrink: 0;
+
   box-shadow: var(--shadow-warm);
   backdrop-filter: blur(6px);
+
   cursor: pointer;
+  position: relative;
+  left: 84px;
+  top: 12px;
+
   transition:
-    background 0.20s var(--motion-smooth),
-    box-shadow 0.20s var(--motion-smooth),
-    transform 0.22s var(--motion-control),
+    background 0.24s var(--motion-smooth),
+    box-shadow 0.24s var(--motion-smooth),
+    transform 0.28s var(--motion-bounce),
     color 0.16s ease !important;
 }
 
-.premium-btn:hover { background: #ffffff; color: var(--brand); transform: translateY(-0.5px) scale(1.02); }
+.premium-btn:hover { background: #ffffff; color: var(--brand); transform: translateY(-2px) scale(1.03); }
 .premium-btn:active { transform: scale(0.97) !important; }
 
 .premium-plan-card {
@@ -984,12 +1031,12 @@ button:focus-visible {
   cursor: pointer;
   backdrop-filter: blur(8px);
   transition:
-    background 0.20s var(--motion-smooth),
-    border-color 0.20s var(--motion-smooth),
-    transform 0.26s var(--motion-surface) !important;
+    background 0.24s var(--motion-smooth),
+    border-color 0.24s var(--motion-smooth),
+    transform 0.28s var(--motion-bounce) !important;
 }
 
-.history-item:hover { border-color: rgba(249, 115, 22, 0.28) !important; background: rgba(255, 253, 250, 0.92); transform: translateY(-1px); }
+.history-item:hover { border-color: rgba(249, 115, 22, 0.28) !important; background: rgba(255, 253, 250, 0.92); transform: translateY(-2px); }
 
 .history-item--selectable { display: flex; flex-direction: column; gap: 6px; }
 .history-load-btn { width: 100%; text-align: left; border: none; background: transparent; padding: 0; cursor: pointer; }
@@ -1409,4 +1456,124 @@ button:focus-visible {
   .cascade-item, .skeleton, .results-animate, .explain-box { animation: none !important; opacity: 1; filter: none; transform: none; }
   .section-content, .collapse-chevron, .metric-fill { transition: none !important; }
   .scan-cancel-btn::before { animation: none; transform: scaleX(1); }
+}
+
+.module-hover {
+  transition: all 0.28s var(--motion-bounce);
+  transform: translateY(0px);
+}
+
+.module-hover:hover {
+  transform: translateY(-4px);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.module-hover:active {
+  transform: scale(0.99);
+}
+
+html,
+body,
+#root {
+  height: auto;
+  width: 100%;
+  overflow: scroll;
+}
+
+.app-shell {
+  height: 100%vh;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.window-controls {
+  position: absolute;
+  top: 6px;
+  right: 12px;
+  z-index: 100;
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  opacity: 0;
+  transform: translateY(-12px) scale(0.85);
+  transition: opacity 0.32s cubic-bezier(0.34, 1.56, 0.64, 1),
+              transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+  pointer-events: none;
+}
+
+.window-controls.visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.window-control {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 6px;
+  color: transparent;
+  transition: background 0.2s ease, transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.window-control:hover {
+  transform: scale(1.15);
+}
+
+.window-control-minimize {
+  background: rgba(255, 200, 0, 0.8);
+}
+
+.window-control-minimize:hover {
+  background: #fbbf24;
+}
+
+.window-control-minimize::before {
+  content: '−';
+  color: #000;
+  font-size: 7px;
+  font-weight: bold;
+}
+
+.window-control-close {
+  background: rgba(239, 68, 68, 0.8);
+}
+
+.window-control-close:hover {
+  background: #ef4444;
+}
+
+.window-control-close::before {
+  content: '✕';
+  color: #fff;
+  font-size: 7px;
+  font-weight: bold;
+}
+
+.premium-plan-card {
+  transition:
+    transform 0.28s var(--motion-bounce),
+    box-shadow 0.24s ease,
+    border-color 0.24s ease,
+    background 0.24s ease;
+}
+
+.premium-plan-card:hover {
+  transform: translateY(-3px) scale(1.006);
+  border-color: rgba(249,115,22,.30) !important;
+  box-shadow:
+    0 12px 32px rgba(249,115,22,.12);
 }
