@@ -22,7 +22,7 @@ function createWindow() {
     frame: false,
     transparent: true,
     alwaysOnTop: true,
-    resizable: true,
+    resizable: false,
     hasShadow: false,
     // Position: top-right corner, with some padding
     x: screenWidth - DEFAULT_WIDTH - 24,
@@ -42,12 +42,27 @@ function createWindow() {
     mainWindow.setContentProtection(true)
     mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
     mainWindow.setAlwaysOnTop(true, 'floating')
+    // ADD THIS LINE FOR MACOS BLUR
+    mainWindow.setVibrancy('under-window')
   }
 
   // Windows: keep on top across virtual desktops
   if (process.platform === 'win32') {
     mainWindow.setAlwaysOnTop(true, 'normal')
     app.setAppUserModelId('com.nectar.app')
+    // ADD THESE LINES FOR WINDOWS BLUR (CSS-based visual effect)
+    mainWindow.setBackgroundColor('#00000000')
+    mainWindow.webContents.on('did-finish-load', () => {
+      mainWindow.webContents.insertCSS(`
+        body, html {
+          background: transparent !important;
+        }
+        .app-container, .main-content {
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+        }
+      `)
+    })
   }
 
   const isDev = process.argv.includes('--dev')

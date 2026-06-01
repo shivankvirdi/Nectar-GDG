@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "mica-electron": "^1.5.17"
+  }
+}
