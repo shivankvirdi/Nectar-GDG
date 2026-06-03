@@ -1,84 +1,82 @@
 @import url('https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,800,900&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap');
 
+/* ═══════════════════════════════════════════════════════════════
+   EASY TUNING — change these four lines to adjust glass look:
+
+   --blur-amount   : higher = more frosted (try 8px–60px)
+   --tint-opacity  : higher = more coloured / less see-through (0.0–1.0)
+   --tint-color    : the RGB of the panel tint (warm white by default)
+   --tint-sat      : backdrop-filter saturation boost (1.0 = neutral)
+   ═══════════════════════════════════════════════════════════════ */
 :root {
-  /* Overlay glass tokens */
-  --glass-bg: rgba(252, 245, 235, 0.88);
-  --glass-bg-deep: rgba(248, 235, 220, 0.95);
-  --glass-surface: rgba(255, 252, 245, 0.78);
-  --glass-surface-hover: rgba(255, 248, 240, 0.92);
-  --glass-border: rgba(249, 180, 120, 0.28);
-  --glass-border-accent: rgba(249, 115, 22, 0.40);
+  --blur-amount:   14px;
+  --tint-opacity:  0.48;
+  --tint-color:    255, 254, 243;   /* warm white — change to e.g. 220,235,255 for cool blue */
+  --tint-sat:      2.0;
 
-  --brand: #ff8c42;
+  /* Derived glass tokens — don't need to touch these normally */
+  --glass-bg:            rgba(var(--tint-color), var(--tint-opacity));
+  --glass-bg-deep:       rgba(var(--tint-color), calc(var(--tint-opacity) + 0.15));
+  --glass-surface:       rgba(var(--tint-color), calc(var(--tint-opacity) - 0.2));
+  --glass-surface-hover: rgba(var(--tint-color), calc(var(--tint-opacity) + 0.15));
+  ---glass-border: rgba(255,255,255,.20);
+  --glass-border-accent: rgba(249, 115, 22, 0.38);
+
+  --blur: blur(var(--blur-amount)) saturate(var(--tint-sat)) brightness(1.04);
+
+  /* Brand */
+  --brand:      #ff8c42;
   --brand-deep: #e87722;
-  --ink: #1a1410;
-  --muted: #8a7e74;
-  --text: #2a2018;
+  --ink:        #1a1410;
+  --muted:      #8a7e74;
+  --text:       #2a2018;
 
-  --font-heading: 'Satoshi', sans-serif;
-  --font-body: 'Manrope', sans-serif;
+  /* Fonts */
+  --font-heading: 'Satoshi',  system-ui, sans-serif;
+  --font-body:    'Manrope',  system-ui, sans-serif;
   --font-display: var(--font-heading);
-  --font-mono: var(--font-body);
+  --font-mono:    var(--font-body);
 
-  --radius-xl: 24px;
-  --radius-lg: 18px;
-  --radius-md: 14px;
-  --radius-sm: 10px;
+  /* Radii */
+  --radius-xl:   24px;
+  --radius-lg:   18px;
+  --radius-md:   14px;
+  --radius-sm:   10px;
   --radius-pill: 999px;
 
-  --blur: blur(28px) saturate(1.6);
-  --blur-strong: blur(40px) saturate(1.8);
-
-  --motion-smooth: cubic-bezier(0.22, 1, 0.36, 1);
-  --motion-soft: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Motion */
+  --motion-smooth:  cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-soft:    cubic-bezier(0.16, 1, 0.3, 1);
   --motion-surface: cubic-bezier(0.18, 1, 0.22, 1);
   --motion-control: cubic-bezier(0.16, 1, 0.3, 1);
-  --motion-spring: var(--motion-surface);
-  --motion-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --motion-spring:  var(--motion-surface);
+  --motion-bounce:  cubic-bezier(0.34, 1.56, 0.64, 1);
 
   --shadow-warm: 0 8px 20px rgba(255, 140, 66, 0.14);
 }
 
-/* RESET */
-* {
-  box-sizing: border-box;
-}
+/* ── Reset ──────────────────────────────────────────────────── */
+* { box-sizing: border-box; }
 
-html,
-body,
-#root {
+html, body, #root {
   margin: 0;
-  padding: 0;
-  width: 400px;
+  padding: 0px;
+  width:  100%;
   min-width: 340px;
+  height: auto;
+  overflow-x: hidden;
   background: transparent !important;
   color: var(--text);
-  height: auto;
-  overflow: visible;
-}
-
-body {
-  margin: 0;
-  overflow: hidden;
-  background: transparent !important;
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-button {
-  font-family: var(--font-body);
-  background-color: transparent;
-  color: inherit;
-}
+button { font-family: var(--font-body); background-color: transparent; color: inherit; }
 
-/* Scrollbar hidden by default */
-::-webkit-scrollbar { width: 0; height: 0; display: none; }
+/* Hide all scrollbars at root level */
+::-webkit-scrollbar       { width: 0; height: 0; display: none; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: transparent; }
-
-/* Firefox scrollbar */
-* {
-  scrollbar-width: none;
-}
+* { scrollbar-width: none; }
