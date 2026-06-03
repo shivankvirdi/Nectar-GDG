@@ -23,7 +23,7 @@ function createWindow() {
     minWidth:  340,
     minHeight: 100,
     frame: false,
-    transparent: false,        
+    transparent: process.platform==='darwin',        
     alwaysOnTop: true,
     resizable:   false,
     hasShadow:   false,         // we draw our own shadow via CSS box-shadow
@@ -32,7 +32,7 @@ function createWindow() {
     title: 'Nectar',
     icon: ICON_PATH,
     skipTaskbar: false,
-    backgroundColor: '#00000000',
+    backgroundColor: process.platform==='darwin'?undefined:'#1e1e1e',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -45,7 +45,7 @@ function createWindow() {
     mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
     mainWindow.setAlwaysOnTop(true, 'floating')
     // 'under-window' vibrancy gives native macOS frosted-glass
-    mainWindow.setVibrancy('under-window')
+    mainWindow.setVibrancy('popover')
   }
 
   if (isWin) {
