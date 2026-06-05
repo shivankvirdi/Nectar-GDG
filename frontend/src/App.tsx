@@ -1168,7 +1168,7 @@ export default function App() {
 
       const response = await fetch(`${API_BASE}/current-url`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Nectar-Secret': NECTAR_SECRET, },
         body: JSON.stringify({ url, scanId }),
         signal: controller.signal,
       })
