@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from .vision_model import ScanCancelled, analyze_product_url
 from .ai_analysis import explain_score_with_ai
 
-NECTAR_SECRET = os.getenv("oushifymoushitypeshitypeshi", "")
+NECTAR_SECRET = os.getenv("NECTAR_API_SECRET", "")
 
 app = FastAPI()
 
