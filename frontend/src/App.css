@@ -926,3 +926,30 @@ button:focus, button:focus-visible {
   .section-content, .collapse-chevron, .metric-fill { transition: none !important; }
   .scan-cancel-btn::before { animation: none; transform: scaleX(1); }
 }
+
+/* ── Marketplace Badges ───────────────────────────────────────── */
+.marketplace-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  font-size: 9.5px;
+  font-weight: 850;
+  border-radius: var(--radius-pill, 12px);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  border: 1px solid transparent;
+  margin: 0 4px;
+}
+
+.marketplace-badge--amazon {
+  background: rgba(249, 115, 22, 0.12) !important;
+  color: #ea580c !important;
+  border-color: rgba(249, 115, 22, 0.25) !important;
+}
+
+.marketplace-badge--ebay {
+  background: rgba(59, 130, 246, 0.12) !important;
+  color: #2563eb !important;
+  border-color: rgba(59, 130, 246, 0.25) !important;
+}

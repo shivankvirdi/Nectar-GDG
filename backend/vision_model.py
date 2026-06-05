@@ -503,8 +503,13 @@ async def analyze_product_url(
     profile         = await asyncio.to_thread(marketplace.fetch_product_profile, listing_id)
     _raise_if_cancelled(is_cancelled)
 
+    # Defensive: ensure profile sub-values are the expected types
     product = profile.get("product", {})
+    if not isinstance(product, dict):
+        product = {}
     reviews = profile.get("reviews") or []
+    if not isinstance(reviews, list):
+        reviews = []
 
     # ── Review integrity (identical for both marketplaces) ────────────────
     review_integrity = analyze_review_integrity(reviews)
@@ -513,9 +518,11 @@ async def analyze_product_url(
     # ── Reputation: brand (Amazon) vs seller (eBay) ───────────────────────
     if is_ebay:
         seller = profile.get("seller", {})
+        if not isinstance(seller, dict):
+            seller = {}
         reputation_result = await get_seller_reputation(seller, reviews)
         # For eBay, use seller name as the "brand" shown in the UI
-        brand = seller.get("name", "") or profile.get("brand", "")
+        brand = (seller.get("name", "") if isinstance(seller.get("name"), str) else "") or str(profile.get("brand", "") or "")
     else:
         brand = profile.get("brand", "") or product.get("brand", "")
         if brand:
@@ -571,12 +578,13 @@ async def analyze_product_url(
         overall_score=overall_score,
         integrity_score=integrity_score,
         reputation_score=reputation_score,
+        marketplace=marketplace.name,
     )
     _raise_if_cancelled(is_cancelled)
 
     # ── Reputation block label ────────────────────────────────────────────
-    # Use "Seller Reputation" label for eBay so the frontend can display it correctly
-    reputation_label_key = "sellerReputation" if is_ebay else "brandReputation"
+    integrity_key = "sellerReviewIntegrity" if is_ebay else "reviewIntegrity"
+    reputation_key = "sellerReputation" if is_ebay else "brandReputation"
 
     return {
         "asin":           listing_id,
@@ -594,7 +602,7 @@ async def analyze_product_url(
 
         "overallScore": overall_score,
 
-        "reviewIntegrity": {
+        integrity_key: {
             "score":                     integrity_score,
             "label":                     review_integrity.get("integrity_label"),
             "verifiedPurchaseRatio":     review_integrity.get("verified_purchase_ratio"),
@@ -603,9 +611,7 @@ async def analyze_product_url(
             "commonKeywords":            review_integrity.get("commonKeywords", []),
         },
 
-        # Always keyed as "brandReputation" so the frontend doesn't need changes.
-        # For eBay listings the label/insights reflect seller reputation instead.
-        "brandReputation": {
+        reputation_key: {
             "score":           reputation_score,
             "label":           reputation_result.get("overall_label"),
             "insights":        reputation_result.get("insights", []),

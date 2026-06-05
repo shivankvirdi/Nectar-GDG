@@ -13,6 +13,21 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
     raise RuntimeError("❌ GEMINI_API_KEY is missing from your .env file")
 
+# ai_analysis.py
+import os
+import json
+import time
+
+from dotenv import load_dotenv
+from google import genai
+from google.genai import types
+
+load_dotenv()
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if not GEMINI_API_KEY:
+    raise RuntimeError("❌ GEMINI_API_KEY is missing from your .env file")
+
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 
@@ -27,6 +42,7 @@ def get_ai_verdict(
     overall_score: int,
     integrity_score: int,
     reputation_score: int,
+    marketplace: str = "amazon",
 ) -> dict:
 
     review_snippets = "\n".join(
@@ -40,14 +56,20 @@ def get_ai_verdict(
 
     if not review_snippets.strip():
         print("[AI Analysis] No usable review text — using fallback")
-        return _fallback(overall_score)
+        return _fallback(overall_score, marketplace=marketplace)
 
-    prompt = f"""You are a shopping assistant analyzing Amazon product reviews.
+    is_ebay = marketplace == "ebay"
+    platform_name = "eBay" if is_ebay else "Amazon"
+    review_type = "eBay seller reviews" if is_ebay else "Amazon product reviews"
+    integrity_title = "Seller Review Integrity" if is_ebay else "Review Integrity"
+    reputation_title = "Seller Reputation" if is_ebay else "Brand Reputation"
+
+    prompt = f"""You are a shopping assistant analyzing {platform_name} product reviews.
 
 Product: {title}
 Trust Score: {overall_score}/100
-Review Integrity: {integrity_score}/100
-Brand Reputation: {reputation_score}/100
+{integrity_title}: {integrity_score}/100
+{reputation_title}: {reputation_score}/100
 
 Customer reviews:
 {review_snippets}
@@ -135,28 +157,29 @@ Rules:
                 except Exception as e:
                     if _is_quota_exhausted(e):
                         print(f"[AI Analysis] Quota exhausted for {model_name}; using fallback verdict.")
-                        return _fallback(overall_score)
+                        return _fallback(overall_score, marketplace=marketplace)
 
                     print(f"[AI Analysis] ⚠️ {model_name} failed: {e}")
                     time.sleep(1.5 * (attempt + 1))
 
         print("[AI Analysis] ❌ All Gemini attempts failed")
-        return _fallback(overall_score)
+        return _fallback(overall_score, marketplace=marketplace)
 
     except Exception as e:
         print(f"[AI Analysis] ❌ FINAL EXCEPTION: {e}")
         import traceback
         traceback.print_exc()
-        return _fallback(overall_score)
+        return _fallback(overall_score, marketplace=marketplace)
 
 
-def _fallback(overall_score: int) -> dict:
+def _fallback(overall_score: int, marketplace: str = "amazon") -> dict:
+    is_ebay = marketplace == "ebay"
     rec = "BUY" if overall_score >= 75 else "SKIP" if overall_score < 50 else "COMPARE"
     return {
         "pros": [
             "Verified purchase ratio is strong",
             "Rating aligns with review sentiment",
-            "Brand has positive reputation",
+            "Seller has positive reputation" if is_ebay else "Brand has positive reputation",
         ],
         "cons": [
             "Limited review data available",
@@ -167,12 +190,15 @@ def _fallback(overall_score: int) -> dict:
         "recommendation": rec,
     }
 
+
 def explain_score_with_ai(metric_name: str, analysis: dict) -> dict:
     title = analysis.get("title") or "Unknown product"
     overall_score = analysis.get("overallScore")
+    marketplace = analysis.get("marketplace", "amazon")
+    is_ebay = marketplace == "ebay"
 
-    review_integrity = analysis.get("reviewIntegrity") or {}
-    brand_reputation = analysis.get("brandReputation") or {}
+    review_integrity = analysis.get("reviewIntegrity") or analysis.get("sellerReviewIntegrity") or {}
+    brand_reputation = analysis.get("brandReputation") or analysis.get("sellerReputation") or {}
     raw = analysis.get("raw") or {}
     reviews = raw.get("reviews") or []
 
@@ -182,8 +208,8 @@ def explain_score_with_ai(metric_name: str, analysis: dict) -> dict:
         if (r.get("body") or "").strip()
     )
 
-    if metric_name == "review_integrity":
-        metric_title = "Review Integrity"
+    if metric_name in ("review_integrity", "seller_review_integrity"):
+        metric_title = "Seller Review Integrity" if is_ebay else "Review Integrity"
         score = review_integrity.get("score")
         details = {
             "label": review_integrity.get("label"),
@@ -193,8 +219,8 @@ def explain_score_with_ai(metric_name: str, analysis: dict) -> dict:
             "common_keywords": review_integrity.get("commonKeywords", []),
         }
         instructions = "Focus on verified purchase ratio, sentiment consistency, suspicious patterns, and review keyword trends."
-    elif metric_name == "brand_reputation":
-        metric_title = "Brand Reputation"
+    elif metric_name in ("brand_reputation", "seller_reputation"):
+        metric_title = "Seller Reputation" if is_ebay else "Brand Reputation"
         score = brand_reputation.get("score")
         details = {
             "label": brand_reputation.get("label"),
@@ -202,7 +228,12 @@ def explain_score_with_ai(metric_name: str, analysis: dict) -> dict:
             "insights": brand_reputation.get("insights", []),
             "common_keywords": brand_reputation.get("commonKeywords", []),
         }
-        instructions = "Focus on Trustpilot-style brand sentiment, the insight categories, and recurring positive or negative themes in the brand keywords."
+        if is_ebay:
+            details["sellerName"] = brand_reputation.get("sellerName")
+            details["sellerPositivePct"] = brand_reputation.get("sellerPositivePct")
+            details["sellerReviewCount"] = brand_reputation.get("sellerReviewCount")
+            details["topRatedSeller"] = brand_reputation.get("topRatedSeller")
+        instructions = "Focus on Trustpilot-style seller sentiment, the insight categories, and recurring positive or negative themes in the seller keywords." if is_ebay else "Focus on Trustpilot-style brand sentiment, the insight categories, and recurring positive or negative themes in the brand keywords."
     else:
         return {"answer": "Unknown score type."}
 
@@ -216,7 +247,7 @@ Metric Score: {score}/100
 Metric details:
 {json.dumps(details, indent=2)}
 
-Amazon review snippets (if available):
+{"eBay seller review snippets" if is_ebay else "Amazon review snippets"} (if available):
 {review_snippets or 'No review snippets available.'}
 
 Instructions:
@@ -286,20 +317,30 @@ Return JSON only in this exact shape:
 
 
 def _score_explainer_fallback(metric_name: str, analysis: dict) -> str:
-    if metric_name == "review_integrity":
-        ri = analysis.get("reviewIntegrity") or {}
+    marketplace = analysis.get("marketplace", "amazon")
+    is_ebay = marketplace == "ebay"
+    if metric_name in ("review_integrity", "seller_review_integrity"):
+        ri = analysis.get("reviewIntegrity") or analysis.get("sellerReviewIntegrity") or {}
         score = ri.get("score", "N/A")
         verified = ri.get("verifiedPurchaseRatio", "N/A")
         consistency = ri.get("sentimentConsistencyRatio", "N/A")
         flags = ", ".join((ri.get("flags") or {}).keys()) or "none"
-        return (
-            f"The review integrity score is {score} because it mainly depends on verified purchase ratio "
-            f"({verified}) and sentiment consistency ({consistency}). "
-            f"The current label reflects how often written review tone matches the star ratings. "
-            f"Detected warning flags: {flags}."
-        )
+        if is_ebay:
+            return (
+                f"The seller review integrity score is {score} because it mainly depends on verified purchase ratio "
+                f"({verified}) and sentiment consistency ({consistency}). "
+                f"The current label reflects how often written review tone matches the star ratings. "
+                f"Detected warning flags: {flags}."
+            )
+        else:
+            return (
+                f"The review integrity score is {score} because it mainly depends on verified purchase ratio "
+                f"({verified}) and sentiment consistency ({consistency}). "
+                f"The current label reflects how often written review tone matches the star ratings. "
+                f"Detected warning flags: {flags}."
+            )
 
-    br = analysis.get("brandReputation") or {}
+    br = analysis.get("brandReputation") or analysis.get("sellerReputation") or {}
     score = br.get("score", "N/A")
     reviews_analyzed = br.get("reviewsAnalyzed", "N/A")
     insight_bits = []
@@ -309,8 +350,16 @@ def _score_explainer_fallback(metric_name: str, analysis: dict) -> str:
         if topic and status:
             insight_bits.append(f"{topic}: {status}")
     insight_text = "; ".join(insight_bits) or "limited insight data available"
-    return (
-        f"The brand reputation score is {score} based on external brand sentiment signals across {reviews_analyzed} reviews. "
-        f"The strongest drivers shown here are {insight_text}. "
-        f"The label summarizes whether the broader brand feedback looks strong, mixed, or weak overall."
-    )
+    if is_ebay:
+        seller_name = br.get("sellerName") or "the seller"
+        return (
+            f"The seller reputation score is {score} based on external seller sentiment signals across {reviews_analyzed} reviews for {seller_name}. "
+            f"The strongest drivers shown here are {insight_text}. "
+            f"The label summarizes whether the broader seller feedback looks strong, mixed, or weak overall."
+        )
+    else:
+        return (
+            f"The brand reputation score is {score} based on external brand sentiment signals across {reviews_analyzed} reviews. "
+            f"The strongest drivers shown here are {insight_text}. "
+            f"The label summarizes whether the broader brand feedback looks strong, mixed, or weak overall."
+        )

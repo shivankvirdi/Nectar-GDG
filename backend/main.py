@@ -59,25 +59,32 @@ async def health():
 @app.post("/current-url")
 async def analyze_product(payload: UrlPayload):
     cancel_event: asyncio.Event | None = None
+
     if payload.scanId:
         cancel_event = asyncio.Event()
         active_scan_cancellations[payload.scanId] = cancel_event
-
+    ...
     try:
         analysis = await analyze_product_url(
             payload.url,
             is_cancelled=cancel_event.is_set if cancel_event else None,
         )
         return {"ok": True, "analysis": analysis}
+
     except ScanCancelled:
         return {"ok": False, "cancelled": True}
+
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-    finally:
-        if payload.scanId:
-            active_scan_cancellations.pop(payload.scanId, None)
+
+    except Exception:
+        import traceback
+
+        print("\n" + "=" * 80)
+        traceback.print_exc()
+        print("=" * 80 + "\n")
+
+        raise
 
 @app.post("/cancel-scan")
 async def cancel_scan(payload: CancelScanPayload):
@@ -92,4 +99,10 @@ async def explain_score(payload: ExplainScorePayload):
         answer = explain_score_with_ai(payload.metric, payload.analysis)
         return {"ok": True, **answer}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        import traceback
+
+        print("\n" + "=" * 80)
+        traceback.print_exc()
+        print("=" * 80 + "\n")
+
+        raise
