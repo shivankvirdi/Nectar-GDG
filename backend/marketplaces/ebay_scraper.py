@@ -132,20 +132,34 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
 
                 if resp.status_code == 200:
                     raw = resp.json()
+
+                    if isinstance(raw, list):
+                        if not raw:
+                            print(f"[eBay/ScraperAPI] Empty list response for {listing_id}")
+                            return self._empty_profile(listing_id)
+                        raw = raw[0]
+
+                    if not isinstance(raw, dict):
+                        print(
+                            f"[eBay/ScraperAPI] Unexpected response type "
+                            f"{type(raw).__name__} for {listing_id}"
+                        )
+                        return self._empty_profile(listing_id)
+
                     if not raw:
                         print(f"[eBay/ScraperAPI] Empty response for {listing_id}")
                         return self._empty_profile(listing_id)
 
-                    product  = self._normalize_product(raw)
-                    reviews  = self._normalize_reviews(raw)
-                    seller   = raw.get("seller") or {}
+                    product = self._normalize_product(raw)
+                    reviews = self._normalize_reviews(raw)
+                    seller = raw.get("seller") or {}
 
                     return {
-                        "asin":    listing_id,   # keep key name for compatibility
-                        "brand":   seller.get("name", ""),
+                        "asin": listing_id,
+                        "brand": seller.get("name", ""),
                         "product": product,
                         "reviews": reviews,
-                        "seller":  seller,       # extra key consumed by vision_model
+                        "seller": seller,
                     }
 
                 print(f"[eBay/ScraperAPI] HTTP {resp.status_code} on attempt {attempt}")
