@@ -8,6 +8,7 @@ if sys.platform.startswith("win"):
 from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .vision_model import ScanCancelled, analyze_product_url
@@ -37,6 +38,19 @@ class ExplainScorePayload(BaseModel):
     analysis: dict[str, Any]
 
 active_scan_cancellations: dict[str, asyncio.Event] = {}
+
+@app.middleware("http")
+async def log_and_verify(request: Request, call_next):
+    print(f"[REQUEST] {request.method} {request.url}")
+
+    if request.url.path != "/health":
+        token = request.headers.get("X-Nectar-Secret", "")
+        if NECTAR_SECRET and token != NECTAR_SECRET:
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+
+    response = await call_next(request)
+    print(f"[RESPONSE] Status: {response.status_code}")
+    return response
 
 @app.get("/health")
 async def health():
@@ -79,20 +93,3 @@ async def explain_score(payload: ExplainScorePayload):
         return {"ok": True, **answer}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    print(f"[REQUEST] {request.method} {request.url}")
-    response = await call_next(request)
-    print(f"[RESPONSE] Status: {response.status_code}")
-    return response
-
-async def verify_secret(request: Request, call_next):
-    # Allow health checks through unauthenticated
-    if request.url.path == "/health":
-        return await call_next(request)
-    token = request.headers.get("X-Nectar-Secret", "")
-    if not NECTAR_SECRET or token != NECTAR_SECRET:
-        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
-    
-    return await call_next(request)

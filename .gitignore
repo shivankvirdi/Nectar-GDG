@@ -32,3 +32,6 @@ __pycache__/
 *.pyd
 .aider*
 AGENTS.md
+frontend/.env.production
+frontend/.env.local
+frontend/.env*.local
