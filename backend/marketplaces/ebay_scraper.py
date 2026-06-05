@@ -350,6 +350,14 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
                 "3": raw.get("rating_count_3stars", 0),
                 "2": raw.get("rating_count_2stars", 0),
                 "1": raw.get("rating_count_1star",  0),
+            "estimatedDeliveryMin": raw.get("estimated_delivery_min"),
+            "estimatedDeliveryMax": raw.get("estimated_delivery_max"),
+            "shippingCost": raw.get("shipping_costs"),
+            "returnPolicy": raw.get("return_policy"),
+            "location": raw.get("location"),
+
+            "similarItems": raw.get("similar_items", []),
+            "relatedItems": raw.get("related_items", []),
             },
         }
 

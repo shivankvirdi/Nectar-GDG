@@ -142,7 +142,7 @@ def _parse_seller_pct(review_str: str) -> float | None:
     return float(m.group(1)) if m else None
 
 
-async def get_seller_reputation(seller: dict, reviews: list) -> dict:
+async def get_seller_reputation(seller: dict, reviews: list, product: dict) -> dict:
     """
     Build a seller-reputation block for eBay listings.
 
@@ -197,7 +197,13 @@ async def get_seller_reputation(seller: dict, reviews: list) -> dict:
         label = nlp_result.get("overall_label", "Seller reputation data unavailable.")
 
     # Build seller-specific insights that replace brand insights
-    insights = _build_seller_insights(seller, positive_pct, top_rated, normalised_reviews)
+    insights = _build_seller_insights(
+        seller,
+        positive_pct,
+        top_rated,
+        normalised_reviews,
+        product
+    )
 
     return {
         **nlp_result,
@@ -217,6 +223,7 @@ def _build_seller_insights(
     positive_pct: float | None,
     top_rated: bool,
     reviews: list,
+    product: dict,
 ) -> list[dict]:
     """
     Build three seller-specific insight topics that replace the generic
@@ -240,18 +247,16 @@ def _build_seller_insights(
     if top_rated:
         trust_status = f"{trust_status} · Top Rated"
 
-    # ── Insight 2: Shipping (from review text) ────────────────────────────
-    shipping_scores = []
-    for r in reviews:
-        text = (r.get("text") or "").lower()
-        if any(kw in text for kw in ["ship", "deliver", "arrived", "package", "fast", "slow", "late", "quick"]):
-            shipping_scores.append(sia.polarity_scores(r["text"])["compound"])
+    # ── Insight 2: Shipping ────────────────────────────
+    delivery_min = product.get("estimatedDeliveryMin")
+    delivery_max = product.get("estimatedDeliveryMax")
 
-    if not shipping_scores:
-        shipping_status = "Unknown"
+    if delivery_min and delivery_max:
+        shipping_status = f"{delivery_min} → {delivery_max}"
+    elif delivery_min:
+        shipping_status = delivery_min
     else:
-        avg = sum(shipping_scores) / len(shipping_scores)
-        shipping_status = "Positive" if avg >= 0.05 else "Caution" if avg <= -0.05 else "Neutral"
+        shipping_status = "Delivery estimate unavailable"
 
     # ── Insight 3: Item as Described (accuracy of listing) ────────────────
     accuracy_scores = []
@@ -261,15 +266,29 @@ def _build_seller_insights(
             accuracy_scores.append(sia.polarity_scores(r["text"])["compound"])
 
     if not accuracy_scores:
-        accuracy_status = "Unknown"
+        condition = product.get("condition")
+
+        if condition:
+            quality_status = condition
+        else:
+            quality_status = "Condition unavailable"
     else:
         avg = sum(accuracy_scores) / len(accuracy_scores)
         accuracy_status = "Positive" if avg >= 0.05 else "Caution" if avg <= -0.05 else "Neutral"
 
+    # ── Insight 4: Returns & Support ────────────────────────────
+    return_policy = product.get("returnPolicy")
+
+    if return_policy:
+        return_status = str(return_policy)
+    else:
+        return_status = "No return information"
+
     return [
         {"topic": "Seller Trust",        "status": trust_status},
         {"topic": "Shipping & Delivery", "status": shipping_status},
-        {"topic": "Item as Described",   "status": accuracy_status},
+        {"topic": "Item Condition",   "status": quality_status},
+        {"topic": "Returns & Support",   "status": return_status},
     ]
 
 
@@ -520,7 +539,7 @@ async def analyze_product_url(
         seller = profile.get("seller", {})
         if not isinstance(seller, dict):
             seller = {}
-        reputation_result = await get_seller_reputation(seller, reviews)
+        reputation_result = await get_seller_reputation(seller, reviews, product)
         # For eBay, use seller name as the "brand" shown in the UI
         brand = (seller.get("name", "") if isinstance(seller.get("name"), str) else "") or str(profile.get("brand", "") or "")
     else:
@@ -546,15 +565,39 @@ async def analyze_product_url(
     resolved_product_keyword = resolve_effective_product_keyword(product_keyword, title)
 
     # ── Similar products ──────────────────────────────────────────────────
-    similar_products: list = []
-    for term in build_similar_search_terms(title, brand_name, resolved_product_keyword):
-        _raise_if_cancelled(is_cancelled)
-        search_results = await asyncio.to_thread(marketplace.search_similar_products, term)
-        _raise_if_cancelled(is_cancelled)
-        results = clean_similar_products(search_results, listing_id, title)
-        if results:
-            similar_products = results
-            break
+    similar_products = []
+
+    embedded_similars = (
+        product.get("similarItems", [])
+        or product.get("relatedItems", [])
+    )
+
+    if embedded_similars:
+        similar_products = [
+            marketplace._normalize_search_result(item)
+            for item in embedded_similars
+            if isinstance(item, dict)
+        ]
+    else:
+        for term in build_similar_search_terms(
+            title,
+            brand_name,
+            resolved_product_keyword
+        ):
+            search_results = await asyncio.to_thread(
+                marketplace.search_similar_products,
+                term
+            )
+
+            results = clean_similar_products(
+                search_results,
+                listing_id,
+                title
+            )
+
+            if results:
+                similar_products = results
+                break
 
     # ── Scores ────────────────────────────────────────────────────────────
     rating           = product.get("rating")

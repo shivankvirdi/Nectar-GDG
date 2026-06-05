@@ -13,21 +13,6 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
     raise RuntimeError("❌ GEMINI_API_KEY is missing from your .env file")
 
-# ai_analysis.py
-import os
-import json
-import time
-
-from dotenv import load_dotenv
-from google import genai
-from google.genai import types
-
-load_dotenv()
-
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if not GEMINI_API_KEY:
-    raise RuntimeError("❌ GEMINI_API_KEY is missing from your .env file")
-
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 
@@ -43,7 +28,12 @@ def get_ai_verdict(
     integrity_score: int,
     reputation_score: int,
     marketplace: str = "amazon",
-) -> dict:
+    seller_positive_pct=None,
+    delivery_min=None,
+    delivery_max=None,
+    return_policy=None,
+    condition=None,
+):
 
     review_snippets = "\n".join(
         f"- [{r.get('rating', '?')}★] {r.get('body', '')[:200]}"
@@ -54,9 +44,21 @@ def get_ai_verdict(
     print(f"[AI Analysis] reviews received: {len(reviews)}")
     print(f"[AI Analysis] snippets built: {len(review_snippets.splitlines())}")
 
-    if not review_snippets.strip():
-        print("[AI Analysis] No usable review text — using fallback")
-        return _fallback(overall_score, marketplace=marketplace)
+    metadata_summary = []
+
+    if seller_positive_pct is not None:
+        metadata_summary.append(f"Seller feedback: {seller_positive_pct}% positive")
+
+    if delivery_min and delivery_max:
+        metadata_summary.append(f"Delivery estimate: {delivery_min}–{delivery_max}")
+
+    if return_policy:
+        metadata_summary.append(f"Returns: {return_policy}")
+
+    if condition:
+        metadata_summary.append(f"Condition: {condition}")
+
+    metadata_text = "\n".join(metadata_summary)
 
     is_ebay = marketplace == "ebay"
     platform_name = "eBay" if is_ebay else "Amazon"
@@ -70,6 +72,9 @@ Product: {title}
 Trust Score: {overall_score}/100
 {integrity_title}: {integrity_score}/100
 {reputation_title}: {reputation_score}/100
+
+Metadata:
+{metadata_text or "N/A"}
 
 Customer reviews:
 {review_snippets}
