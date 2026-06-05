@@ -1,4 +1,5 @@
 import sys
+import os
 import asyncio
 
 if sys.platform.startswith("win"):
@@ -11,6 +12,8 @@ from pydantic import BaseModel
 
 from .vision_model import ScanCancelled, analyze_product_url
 from .ai_analysis import explain_score_with_ai
+
+NECTAR_SECRET = os.getenv("oushifymoushitypeshitypeshi", "")
 
 app = FastAPI()
 
@@ -83,3 +86,13 @@ async def log_requests(request: Request, call_next):
     response = await call_next(request)
     print(f"[RESPONSE] Status: {response.status_code}")
     return response
+
+async def verify_secret(request: Request, call_next):
+    # Allow health checks through unauthenticated
+    if request.url.path == "/health":
+        return await call_next(request)
+    token = request.headers.get("X-Nectar-Secret", "")
+    if not NECTAR_SECRET or token != NECTAR_SECRET:
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+    
+    return await call_next(request)

@@ -20,6 +20,7 @@ declare global {
 
 const DEV_PREVIEW = import.meta.env.DEV && false
 const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+const NECTAR_SECRET = import.meta.env.VITE_NECTAR_SECRET || ''
 
 const EXIT_ANIMATION_MS = 720
 const DELETE_ENTRY_DELAY_MS = 240
@@ -485,7 +486,7 @@ function ScoreExplainer({ metric, analysis }: { metric: 'review_integrity' | 'br
       const { raw: _raw, ...safeAnalysis } = analysis
       const response = await fetch(`${API_BASE}/explain-score`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Nectar-Secret': NECTAR_SECRET, },
         body: JSON.stringify({ metric, analysis: safeAnalysis }),
       })
       const data = await response.json()
