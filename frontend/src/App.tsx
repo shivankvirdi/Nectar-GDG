@@ -142,8 +142,15 @@ const loadScanHistory = () => storageGet<ScanRecord[]>(SCAN_HISTORY_KEY).then((r
 
 // ─── Pure Utilities ───────────────────────────────────────────────────────────
 
-function isAmazonUrl(url: string): boolean {
-  return /amazon\.(com|co\.|ca|com\.au|de|fr|es|it|nl|pl|se|sg|ae)/i.test(url)
+function isSupportedUrl(url: string): boolean {
+  return (
+    /amazon\.(com|co\.|ca|com\.au|de|fr|es|it|nl|pl|se|sg|ae)/i.test(url) ||
+    /ebay\.(com|co\.uk|com\.au|de|ca|fr|it|es|at|ch|com\.sg|com\.my|ph|ie|pl|nl)/i.test(url)
+  )
+}
+
+function isEbayUrl(url: string): boolean {
+  return /ebay\./i.test(url)
 }
 
 function getNumericValue(value?: string | number | null): number | null {
@@ -486,7 +493,7 @@ function ScoreExplainer({ metric, analysis }: { metric: 'review_integrity' | 'br
       const { raw: _raw, ...safeAnalysis } = analysis
       const response = await fetch(`${API_BASE}/explain-score`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Nectar-Secret': NECTAR_SECRET, },
+        headers: { 'Content-Type': 'application/json', 'X-Nectar-Secret': NECTAR_SECRET },
         body: JSON.stringify({ metric, analysis: safeAnalysis }),
       })
       const data = await response.json()
@@ -1083,7 +1090,11 @@ export default function App() {
         if (url) {
           setScanUrl(url)
           setIsAutoDetected(true)
-          setBackendStatus(isAmazonUrl(url) ? 'Amazon product page auto-detected' : 'Active tab detected. Edit or enter a product URL.')
+          setBackendStatus(
+            isSupportedUrl(url)
+              ? `${isEbayUrl(url) ? 'eBay' : 'Amazon'} product page auto-detected`
+              : 'Active tab detected. Edit or enter a product URL.'
+          )
           setError('')
         } else {
           setIsAutoDetected(false)
@@ -1137,11 +1148,11 @@ export default function App() {
     const url = scanUrl.trim()
 
     if (!url) {
-      const msg = 'Enter an Amazon product page URL first.'
+      const msg = 'Enter a product page URL first.'
       setError(msg); setBackendStatus(msg); return
     }
-    if (!isAmazonUrl(url)) {
-      const msg = 'Navigate to an Amazon product page, or enter a valid Amazon URL.'
+    if (!isSupportedUrl(url)) {
+      const msg = 'Navigate to an Amazon or eBay product page, or enter a valid product URL.'
       setError(msg); setBackendStatus(msg); return
     }
 
@@ -1168,7 +1179,7 @@ export default function App() {
 
       const response = await fetch(`${API_BASE}/current-url`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Nectar-Secret': NECTAR_SECRET, },
+        headers: { 'Content-Type': 'application/json', 'X-Nectar-Secret': NECTAR_SECRET },
         body: JSON.stringify({ url, scanId }),
         signal: controller.signal,
       })
@@ -1221,7 +1232,7 @@ export default function App() {
         setError('')
         return
       }
-      const msg = 'Scan failed. Please open an Amazon product or start server.'
+      const msg = 'Scan failed. Please open a supported product page or start the server.'
       setBackendStatus(msg); setError(msg)
     } finally {
       closeCancelWindow()
@@ -1358,7 +1369,11 @@ export default function App() {
   return (
     <main className="app-shell">
       <div className="popup-shell">
-        <header className="top-header" onMouseEnter={() => setWindowControlsVisible(true)} onMouseLeave={() => setWindowControlsVisible(false)}>
+        <header
+          className="top-header"
+          onMouseEnter={() => setWindowControlsVisible(true)}
+          onMouseLeave={() => setWindowControlsVisible(false)}
+        >
           <div className="brand-row">
             <img src={logoSrc} alt="Nectar logo" className="brand-logo" />
             <div className="brand-block">
@@ -1387,7 +1402,7 @@ export default function App() {
                 <input
                   type="text"
                   className="premium-url-input"
-                  placeholder="Paste Amazon product URL here..."
+                  placeholder="Paste Amazon or eBay product URL here..."
                   value={scanUrl}
                   onChange={(e) => { setScanUrl(e.target.value); setIsAutoDetected(false) }}
                 />

@@ -5,7 +5,7 @@ from typing import Callable
 from urllib.parse import unquote, urlparse
 from .ai_analysis import get_ai_verdict
 
-from .brand_reputation import get_brand_reputation
+from .brand_reputation import get_brand_reputation, build_reputation_insights
 from .marketplaces import get_adapter_for_url
 from .review_integrity import analyze_review_integrity
 
@@ -18,184 +18,52 @@ def _raise_if_cancelled(is_cancelled: Callable[[], bool] | None) -> None:
     if is_cancelled and is_cancelled():
         raise ScanCancelled()
 
-# ─── Product keyword list ───────────────────────────────────────────
-# Rules:
-#  1. Longest / most specific phrases must come BEFORE shorter ones so the
-#     regex finds "wireless earbuds" before "earbuds", "gaming console" before
-#     "console", etc. The list is re-sorted by length at runtime so ordering
-#     here doesn't matter — just be thorough.
-#  2. Use the exact words a shopper or Amazon URL would contain.
 
+# ─── Product keyword list ────────────────────────────────────────────────────
 PRODUCT_KEYWORDS = [
-    # ── Audio ──────────────────────────────────────────────────────────────
-    "wireless earbuds",
-    "wired earbuds",
-    "noise cancelling headphones",
-    "over ear headphones",
-    "on ear headphones",
-    "in ear monitors",
-    "headphones",
-    "earbuds",
-    "soundbar",
-    "subwoofer",
-    "home theater",
-    "bluetooth speaker",
-    "smart speaker",
-    "speaker",
-    "microphone",
-    "podcast microphone",
-    "condenser microphone",
-    "usb microphone",
-    "record player",
-    "turntable",
-
-    # ── Displays ───────────────────────────────────────────────────────────
-    "smart tv",
-    "television",
-    "4k monitor",
-    "gaming monitor",
-    "ultrawide monitor",
-    "monitor",
-    "projector",
-    "portable projector",
-
-    # ── Computers & peripherals ────────────────────────────────────────────
-    "gaming laptop",
-    "laptop",
-    "chromebook",
-    "mechanical keyboard",
-    "gaming keyboard",
-    "keyboard",
-    "gaming mouse",
-    "wireless mouse",
-    "computer mouse",
-    "gaming mousepad",
-    "mouse pad",
-    "usb hub",
-    "docking station",
-    "laptop stand",
-    "monitor arm",
-    "monitor stand",
-    "webcam",
-    "ring light",
-    "graphics card",
-    "cpu cooler",
-    "cpu",
-    "ram",
-    "ssd",
-    "external hard drive",
-    "hard drive",
-    "flash drive",
-    "sd card",
-    "memory card",
-    "router",
-    "wifi extender",
-    "mesh wifi",
-    "printer",
-    "3d printer",
-    "scanner",
-
-    # ── Mobile & tablets ──────────────────────────────────────────────────
-    "smartphone",
-    "tablet",
-    "ipad",
-    "screen protector",
-    "tempered glass",
-    "phone case",
-    "case",
-
-    # ── Charging & power ──────────────────────────────────────────────────
-    "wireless charger",
-    "magsafe charger",
-    "charging cable",
-    "usb c cable",
-    "lightning cable",
-    "charger",
-    "power bank",
-    "solar charger",
-    "cable",
-
-    # ── Cameras & imaging ─────────────────────────────────────────────────
-    "mirrorless camera",
-    "dslr camera",
-    "action camera",
-    "dash cam",
-    "security camera",
-    "doorbell camera",
-    "trail camera",
-    "camera lens",
-    "camera",
-    "drone",
-    "gimbal",
-    "tripod",
-
-    # ── Smart home ────────────────────────────────────────────────────────
-    "smart home hub",
-    "smart bulb",
-    "smart plug",
-    "smart lock",
-    "smart thermostat",
-    "thermostat",
-    "led strip",
-    "led lights",
-    "robot vacuum",
-    "vacuum cleaner",
-    "air purifier",
-    "humidifier",
+    "wireless earbuds", "wired earbuds", "noise cancelling headphones",
+    "over ear headphones", "on ear headphones", "in ear monitors",
+    "headphones", "earbuds", "soundbar", "subwoofer", "home theater",
+    "bluetooth speaker", "smart speaker", "speaker", "microphone",
+    "podcast microphone", "condenser microphone", "usb microphone",
+    "record player", "turntable",
+    "smart tv", "television", "4k monitor", "gaming monitor",
+    "ultrawide monitor", "monitor", "projector", "portable projector",
+    "gaming laptop", "laptop", "chromebook", "mechanical keyboard",
+    "gaming keyboard", "keyboard", "gaming mouse", "wireless mouse",
+    "computer mouse", "gaming mousepad", "mouse pad", "usb hub",
+    "docking station", "laptop stand", "monitor arm", "monitor stand",
+    "webcam", "ring light", "graphics card", "cpu cooler", "cpu", "ram",
+    "ssd", "external hard drive", "hard drive", "flash drive", "sd card",
+    "memory card", "router", "wifi extender", "mesh wifi", "printer",
+    "3d printer", "scanner",
+    "smartphone", "tablet", "ipad", "screen protector", "tempered glass",
+    "phone case", "case",
+    "wireless charger", "magsafe charger", "charging cable", "usb c cable",
+    "lightning cable", "charger", "power bank", "solar charger", "cable",
+    "mirrorless camera", "dslr camera", "action camera", "dash cam",
+    "security camera", "doorbell camera", "trail camera", "camera lens",
+    "camera", "drone", "gimbal", "tripod",
+    "smart home hub", "smart bulb", "smart plug", "smart lock",
+    "smart thermostat", "thermostat", "led strip", "led lights",
+    "robot vacuum", "vacuum cleaner", "air purifier", "humidifier",
     "dehumidifier",
-
-    # ── Gaming ────────────────────────────────────────────────────────────
-    "gaming console",
-    "gaming headset",
-    "gaming chair",
-    "controller",
+    "gaming console", "gaming headset", "gaming chair", "controller",
     "steering wheel",
-
-    # ── Wearables ─────────────────────────────────────────────────────────
-    "smartwatch",
-    "fitness tracker",
-    "smart glasses",
-    "vr headset",
-    "watch",
-
-    # ── Kitchen appliances ────────────────────────────────────────────────
-    "air fryer",
-    "instant pot",
-    "pressure cooker",
-    "slow cooker",
-    "coffee maker",
-    "espresso machine",
-    "electric kettle",
-    "blender",
-    "food processor",
-    "stand mixer",
-    "toaster oven",
-    "toaster",
-    "rice cooker",
-    "microwave",
-
-    # ── Personal care & health ────────────────────────────────────────────
-    "electric toothbrush",
-    "water flosser",
-    "hair dryer",
-    "hair straightener",
-    "curling iron",
-    "electric razor",
-    "massage gun",
-    "smart scale",
-    "blood pressure monitor",
-    "pulse oximeter",
-
-    # ── Bags & organisation ───────────────────────────────────────────────
-    "backpack",
-    "laptop bag",
-    "laptop sleeve",
-    "cable organizer",
+    "smartwatch", "fitness tracker", "smart glasses", "vr headset", "watch",
+    "air fryer", "instant pot", "pressure cooker", "slow cooker",
+    "coffee maker", "espresso machine", "electric kettle", "blender",
+    "food processor", "stand mixer", "toaster oven", "toaster",
+    "rice cooker", "microwave",
+    "electric toothbrush", "water flosser", "hair dryer",
+    "hair straightener", "curling iron", "electric razor", "massage gun",
+    "smart scale", "blood pressure monitor", "pulse oximeter",
+    "backpack", "laptop bag", "laptop sleeve", "cable organizer",
     "desk organizer",
 ]
 
 
-# ─── URL helpers ──────────────────────────────────────────────────────────────
+# ─── URL helpers ─────────────────────────────────────────────────────────────
 
 def normalize_search_text(text: str) -> str:
     decoded = unquote(text or "").lower()
@@ -228,20 +96,187 @@ def build_overall_score(
     integrity_score: int,
     reputation_score: int,
 ) -> int:
+    """
+    Standard score used for Amazon. Weights:
+      40% product star rating, 35% review integrity, 25% brand/seller reputation
+    """
     rating_component = round((float(product_rating) / 5) * 100) if product_rating is not None else 0
     return round((rating_component * 0.4) + (integrity_score * 0.35) + (reputation_score * 0.25))
 
 
+def build_ebay_overall_score(
+    product_rating: float | int | None,
+    integrity_score: int,
+    seller_score: int,
+    seller_positive_pct: float | None,
+) -> int:
+    """
+    eBay-specific score. Seller reputation is weighted more heavily because
+    eBay is seller-centric — the same product from a 70% seller vs a 99.9%
+    seller is a very different purchase. Weights:
+      30% product star rating, 25% review integrity, 45% seller reputation
+
+    If we have a raw positive-feedback percentage from the seller profile
+    (e.g. 99.4%), we blend that directly into the final score for extra
+    accuracy.
+    """
+    rating_component = round((float(product_rating) / 5) * 100) if product_rating is not None else 0
+    base = round((rating_component * 0.30) + (integrity_score * 0.25) + (seller_score * 0.45))
+
+    # If seller_positive_pct is available, nudge the score toward it
+    # (prevents inflated integrity scores from masking a low-trust seller)
+    if seller_positive_pct is not None:
+        blended = round(base * 0.70 + seller_positive_pct * 0.30)
+        return blended
+
+    return base
+
+
+# ─── eBay seller reputation ───────────────────────────────────────────────────
+
+def _parse_seller_pct(review_str: str) -> float | None:
+    """Parse '99.4% positive' → 99.4"""
+    if not review_str:
+        return None
+    m = re.search(r"([\d.]+)\s*%", review_str)
+    return float(m.group(1)) if m else None
+
+
+async def get_seller_reputation(seller: dict, reviews: list) -> dict:
+    """
+    Build a seller-reputation block for eBay listings.
+
+    Uses the seller metadata returned by ScraperAPI (positive percentage,
+    review count, top_rated flag) as the primary signal, and runs the
+    product reviews through the existing NLP pipeline as a secondary signal
+    so we still get keyword extraction and sentiment insights.
+
+    Returns a dict shaped identically to what get_brand_reputation() returns,
+    so the rest of the pipeline (ai_analysis, vision_model output) is unchanged.
+    """
+    seller_name    = seller.get("name", "Unknown Seller")
+    positive_pct   = _parse_seller_pct(seller.get("seller_review", ""))
+    reviews_count  = seller.get("seller_reviews_count")
+    top_rated      = seller.get("top_rated", False)
+
+    # Normalise product reviews into the text-field shape brand_reputation expects
+    normalised_reviews = [
+        {
+            "text":   r.get("body", ""),
+            "title":  r.get("title", ""),
+            "rating": r.get("rating", 3),
+        }
+        for r in reviews
+        if r.get("body", "").strip()
+    ]
+
+    # Use the NLP pipeline to score what review text we do have
+    nlp_result = build_reputation_insights(
+        normalised_reviews,
+        brand_name=seller_name,
+        source_name="ebay_product_reviews",
+        # Pass the aggregate seller score as the "Google aggregate"
+        # so the Bayesian prior blends toward the real seller percentage
+        aggregate_rating=(positive_pct / 20.0) if positive_pct is not None else None,
+        aggregate_rating_count=reviews_count,
+    )
+
+    # Override the label to be seller-specific and more accurate
+    score = nlp_result.get("reputation_score_pct")
+
+    if positive_pct is not None:
+        if positive_pct >= 99.0:
+            label = f"Excellent seller — {positive_pct}% positive feedback across {reviews_count:,} ratings." if reviews_count else f"Excellent seller — {positive_pct}% positive feedback."
+        elif positive_pct >= 97.0:
+            label = f"Good seller — {positive_pct}% positive feedback."
+        elif positive_pct >= 90.0:
+            label = f"Mixed seller reputation — only {positive_pct}% positive feedback."
+        else:
+            label = f"Low-trust seller — {positive_pct}% positive feedback. Consider alternatives."
+    else:
+        label = nlp_result.get("overall_label", "Seller reputation data unavailable.")
+
+    # Build seller-specific insights that replace brand insights
+    insights = _build_seller_insights(seller, positive_pct, top_rated, normalised_reviews)
+
+    return {
+        **nlp_result,
+        "overall_label":  label,
+        "insights":       insights,
+        "source":         "ebay_seller_profile",
+        # Pass through raw seller data for the frontend
+        "sellerName":     seller_name,
+        "sellerPositivePct": positive_pct,
+        "sellerReviewCount": reviews_count,
+        "topRatedSeller": top_rated,
+    }
+
+
+def _build_seller_insights(
+    seller: dict,
+    positive_pct: float | None,
+    top_rated: bool,
+    reviews: list,
+) -> list[dict]:
+    """
+    Build three seller-specific insight topics that replace the generic
+    Customer Support / Shipping / Build Quality topics used for brands.
+    """
+    import re as _re
+    from .nlp_utils import sia
+
+    # ── Insight 1: Seller Trust ───────────────────────────────────────────
+    if positive_pct is None:
+        trust_status = "Unknown"
+    elif positive_pct >= 99.0:
+        trust_status = "Excellent"
+    elif positive_pct >= 97.0:
+        trust_status = "Good"
+    elif positive_pct >= 90.0:
+        trust_status = "Caution"
+    else:
+        trust_status = "Poor"
+
+    if top_rated:
+        trust_status = f"{trust_status} · Top Rated"
+
+    # ── Insight 2: Shipping (from review text) ────────────────────────────
+    shipping_scores = []
+    for r in reviews:
+        text = (r.get("text") or "").lower()
+        if any(kw in text for kw in ["ship", "deliver", "arrived", "package", "fast", "slow", "late", "quick"]):
+            shipping_scores.append(sia.polarity_scores(r["text"])["compound"])
+
+    if not shipping_scores:
+        shipping_status = "Unknown"
+    else:
+        avg = sum(shipping_scores) / len(shipping_scores)
+        shipping_status = "Positive" if avg >= 0.05 else "Caution" if avg <= -0.05 else "Neutral"
+
+    # ── Insight 3: Item as Described (accuracy of listing) ────────────────
+    accuracy_scores = []
+    for r in reviews:
+        text = (r.get("text") or "").lower()
+        if any(kw in text for kw in ["described", "accurate", "exactly", "expected", "different", "mislead", "wrong", "not as"]):
+            accuracy_scores.append(sia.polarity_scores(r["text"])["compound"])
+
+    if not accuracy_scores:
+        accuracy_status = "Unknown"
+    else:
+        avg = sum(accuracy_scores) / len(accuracy_scores)
+        accuracy_status = "Positive" if avg >= 0.05 else "Caution" if avg <= -0.05 else "Neutral"
+
+    return [
+        {"topic": "Seller Trust",        "status": trust_status},
+        {"topic": "Shipping & Delivery", "status": shipping_status},
+        {"topic": "Item as Described",   "status": accuracy_status},
+    ]
+
+
+# ─── Accessory / keyword helpers (unchanged) ─────────────────────────────────
+
 def detect_accessory_type(title: str, fallback_keyword: str = "") -> str:
-    """
-    Return the accessory-type string when the product is a device accessory,
-    or an empty string when it is a primary/standalone product.
-
-    The fallback_keyword is only echoed back when it is a known accessory
-    category — primary-product keywords like 'smartphone' are never returned.
-    """
     text = (title or "").lower()
-
     if "screen protector" in text or "tempered glass" in text:
         return "screen protector"
     if re.search(
@@ -267,8 +302,6 @@ def detect_accessory_type(title: str, fallback_keyword: str = "") -> str:
         return "usb hub"
     if "docking station" in text:
         return "docking station"
-
-    # Only fall back to the caller's keyword when it is a genuine accessory term
     if fallback_keyword and fallback_keyword.lower() in _KNOWN_ACCESSORY_KEYWORDS:
         return fallback_keyword
     return ""
@@ -291,7 +324,6 @@ def extract_device_name(title: str) -> str:
             return match.group(1).strip()
     return ""
 
-# Title-based category inference
 
 _TITLE_KEYWORD_PATTERNS: list[tuple[str, str]] = [
     (r"\biphone\b|\bgalaxy [sa]\d|\bpixel \d|\bandroid.{0,10}phone|5g.{0,6}phone", "smartphone"),
@@ -308,19 +340,15 @@ _TITLE_KEYWORD_PATTERNS: list[tuple[str, str]] = [
 
 
 def infer_keyword_from_title(title: str) -> str:
-    """Infer product category from the product title when URL extraction fails."""
     direct_keyword = extract_product_keyword_from_text(title)
     if direct_keyword != "unknown":
         return direct_keyword
-
     text = (title or "").lower()
     for pattern, keyword in _TITLE_KEYWORD_PATTERNS:
         if re.search(pattern, text, re.IGNORECASE):
             return keyword
     return "unknown"
 
-
-# Accessory detection helpers
 
 _ACCESSORY_TITLE_SIGNALS = (
     "screen protector", "tempered glass", "phone case", "charger",
@@ -356,19 +384,13 @@ def is_accessory_keyword(keyword: str) -> bool:
 
 
 def resolve_effective_product_keyword(url_keyword: str, title: str) -> str:
-    """
-    Prefer the title-inferred keyword when the URL only exposes an accessory
-    token like "case" but the product title clearly describes a primary item.
-    """
-    title_keyword = infer_keyword_from_title(title)
+    title_keyword      = infer_keyword_from_title(title)
     cleaned_url_keyword = (url_keyword or "").strip().lower()
-
     if title_keyword != "unknown":
         if cleaned_url_keyword in {"", "unknown"}:
             return title_keyword
         if is_accessory_keyword(cleaned_url_keyword) and not is_accessory_keyword(title_keyword):
             return title_keyword
-
     return cleaned_url_keyword or title_keyword or "unknown"
 
 
@@ -381,34 +403,24 @@ def extract_product_family(title: str) -> str:
 
 
 def is_accessory_title(title: str) -> bool:
-    """Return True when a product title looks like a device accessory."""
     text = (title or "").lower()
     if any(sig in text for sig in _ACCESSORY_TITLE_SIGNALS):
         return True
-
     return bool(re.search(
         r"\b(?:protective|silicone|replacement|shockproof|clear|magnetic)\b.{0,18}\bcase\b"
         r"|\bcase\b.{0,18}\b(?:cover|protector|shell|skin)\b"
         r"|\b(?:cover|protector|shell|skin)\b.{0,18}\bcase\b",
-        text,
-        re.IGNORECASE,
+        text, re.IGNORECASE,
     ))
+
 
 def clean_similar_products(
     similar_products: list,
     original_asin: str,
     original_title: str = "",
 ) -> list:
-    """
-    Deduplicate results and, when the scanned product is a primary device,
-    filter out obvious accessories (cases, chargers, cables…) that Canopy
-    occasionally returns even for category searches.
-    """
     cleaned:    list     = []
     seen_asins: set[str] = set()
-
-    # Apply the accessory filter only when the scanned item is itself a
-    # primary product; skip it for legitimate accessory-vs-accessory searches.
     original_keyword = resolve_effective_product_keyword("unknown", original_title)
     filter_accessories = not bool(detect_accessory_type(original_title, original_keyword))
 
@@ -431,22 +443,14 @@ def build_similar_search_terms(
 ) -> list[str]:
     title      = (title or "").strip()
     brand_name = (brand_name or "").strip()
-
-    # Resolve effective category keyword; fall back to title-based inference
-    # when the URL didn't contain a recognisable product word (e.g. iphone URLs).
     effective_keyword = resolve_effective_product_keyword(product_keyword, title)
-
-    # Detect genuine accessory type (returns "" for primary products)
-    accessory_type = detect_accessory_type(title, effective_keyword)
-    device_name    = extract_device_name(title)
-    product_family = extract_product_family(title)
+    accessory_type    = detect_accessory_type(title, effective_keyword)
+    device_name       = extract_device_name(title)
+    product_family    = extract_product_family(title)
 
     search_terms: list[str] = []
 
     if accessory_type:
-        # ── ACCESSORY ─────────────────────────────────────────────────────
-        # Search for the same accessory type for the same device, so the
-        # user sees competing cases/chargers rather than unrelated products.
         if device_name:
             if accessory_type == "screen protector":
                 search_terms.append(f"{device_name} tempered glass screen protector")
@@ -456,12 +460,7 @@ def build_similar_search_terms(
         search_terms.append(accessory_type)
         if title:
             search_terms.append(title)
-
     else:
-        # ── PRIMARY PRODUCT ───────────────────────────────────────────────
-        # Search by *category keyword only* — do NOT include the device name.
-        # "iPhone 15 Pro smartphone" returns iPhone accessories; "smartphone"
-        # returns competing phones from other brands.
         if product_family and effective_keyword and product_family not in effective_keyword:
             search_terms.append(f"{product_family} {effective_keyword}")
         if product_family:
@@ -470,7 +469,6 @@ def build_similar_search_terms(
             search_terms.append(f"{brand_name} {effective_keyword}")
         if effective_keyword and effective_keyword != "unknown":
             search_terms.append(effective_keyword)
-        # Fall back to full title only when no category could be determined
         if not search_terms and title:
             search_terms.append(title)
 
@@ -492,38 +490,55 @@ async def analyze_product_url(
 ) -> dict:
     _raise_if_cancelled(is_cancelled)
 
-    marketplace = get_adapter_for_url(url)
-    listing_id = marketplace.extract_listing_id(url)
+    marketplace    = get_adapter_for_url(url)
+    listing_id     = marketplace.extract_listing_id(url)
+    is_ebay        = marketplace.name == "ebay"
+
     if not listing_id:
-        raise ValueError(f"Could not find a {marketplace.name} listing ID in the provided URL.")
+        raise ValueError(
+            f"Could not find a {marketplace.name} listing ID in the provided URL."
+        )
 
     product_keyword = extract_product_keyword(url)
     profile         = await asyncio.to_thread(marketplace.fetch_product_profile, listing_id)
     _raise_if_cancelled(is_cancelled)
 
     product = profile.get("product", {})
-    brand   = profile.get("brand", "") or product.get("brand", "")
     reviews = profile.get("reviews") or []
 
+    # ── Review integrity (identical for both marketplaces) ────────────────
     review_integrity = analyze_review_integrity(reviews)
     _raise_if_cancelled(is_cancelled)
 
-    brand_reputation = await asyncio.to_thread(
-        lambda: asyncio.run(get_brand_reputation(brand, reviews))
-    ) if brand else {
-        "brand":                "",
-        "reputation_score_pct": None,
-        "overall_label":        "Brand not found.",
-        "insights":             [],
-        "reviews_analyzed":     0,
-        "commonKeywords":       [],
-    }
+    # ── Reputation: brand (Amazon) vs seller (eBay) ───────────────────────
+    if is_ebay:
+        seller = profile.get("seller", {})
+        reputation_result = await get_seller_reputation(seller, reviews)
+        # For eBay, use seller name as the "brand" shown in the UI
+        brand = seller.get("name", "") or profile.get("brand", "")
+    else:
+        brand = profile.get("brand", "") or product.get("brand", "")
+        if brand:
+            reputation_result = await asyncio.to_thread(
+                lambda: asyncio.run(get_brand_reputation(brand, reviews))
+            )
+        else:
+            reputation_result = {
+                "brand":                "",
+                "reputation_score_pct": None,
+                "overall_label":        "Brand not found.",
+                "insights":             [],
+                "reviews_analyzed":     0,
+                "commonKeywords":       [],
+            }
+
     _raise_if_cancelled(is_cancelled)
 
     title                    = (product.get("title") or "").strip()
-    brand_name               = (brand or "").strip()
+    brand_name               = brand.strip()
     resolved_product_keyword = resolve_effective_product_keyword(product_keyword, title)
 
+    # ── Similar products ──────────────────────────────────────────────────
     similar_products: list = []
     for term in build_similar_search_terms(title, brand_name, resolved_product_keyword):
         _raise_if_cancelled(is_cancelled)
@@ -534,11 +549,20 @@ async def analyze_product_url(
             similar_products = results
             break
 
+    # ── Scores ────────────────────────────────────────────────────────────
     rating           = product.get("rating")
     integrity_score  = review_integrity.get("integrity_score_pct", 50)
-    reputation_score = brand_reputation.get("reputation_score_pct") or 50
-    overall_score    = build_overall_score(rating, integrity_score, reputation_score)
+    reputation_score = reputation_result.get("reputation_score_pct") or 50
 
+    if is_ebay:
+        seller_pct   = reputation_result.get("sellerPositivePct")
+        overall_score = build_ebay_overall_score(
+            rating, integrity_score, reputation_score, seller_pct
+        )
+    else:
+        overall_score = build_overall_score(rating, integrity_score, reputation_score)
+
+    # ── AI analysis ───────────────────────────────────────────────────────
     _raise_if_cancelled(is_cancelled)
     ai_analysis = await asyncio.to_thread(
         get_ai_verdict,
@@ -549,6 +573,10 @@ async def analyze_product_url(
         reputation_score=reputation_score,
     )
     _raise_if_cancelled(is_cancelled)
+
+    # ── Reputation block label ────────────────────────────────────────────
+    # Use "Seller Reputation" label for eBay so the frontend can display it correctly
+    reputation_label_key = "sellerReputation" if is_ebay else "brandReputation"
 
     return {
         "asin":           listing_id,
@@ -575,13 +603,21 @@ async def analyze_product_url(
             "commonKeywords":            review_integrity.get("commonKeywords", []),
         },
 
+        # Always keyed as "brandReputation" so the frontend doesn't need changes.
+        # For eBay listings the label/insights reflect seller reputation instead.
         "brandReputation": {
             "score":           reputation_score,
-            "label":           brand_reputation.get("overall_label"),
-            "insights":        brand_reputation.get("insights", []),
-            "reviewsAnalyzed": brand_reputation.get("reviews_analyzed", 0),
-            "commonKeywords":  brand_reputation.get("commonKeywords", []),
-            "source":          brand_reputation.get("source"),
+            "label":           reputation_result.get("overall_label"),
+            "insights":        reputation_result.get("insights", []),
+            "reviewsAnalyzed": reputation_result.get("reviews_analyzed", 0),
+            "commonKeywords":  reputation_result.get("commonKeywords", []),
+            "source":          reputation_result.get("source"),
+            # eBay-only extras (ignored by frontend for Amazon)
+            "isSellerReputation": is_ebay,
+            "sellerName":         reputation_result.get("sellerName"),
+            "sellerPositivePct":  reputation_result.get("sellerPositivePct"),
+            "sellerReviewCount":  reputation_result.get("sellerReviewCount"),
+            "topRatedSeller":     reputation_result.get("topRatedSeller"),
         },
 
         "aiAnalysis": {

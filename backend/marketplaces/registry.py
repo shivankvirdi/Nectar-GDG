@@ -1,8 +1,9 @@
 from .amazon_canopy import AmazonCanopyAdapter
+from .ebay_scraper import EbayScraperAPIAdapter
 from .base import MarketplaceAdapter
 
 MARKETPLACE_ADAPTERS: tuple[MarketplaceAdapter, ...] = (
-    AmazonCanopyAdapter(),
+    AmazonCanopyAdapter(), EbayScraperAPIAdapter(),
 )
 
 
