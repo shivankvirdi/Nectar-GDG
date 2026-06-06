@@ -98,7 +98,7 @@ def build_overall_score(
 ) -> int:
     """
     Standard score used for Amazon. Weights:
-      40% product star rating, 35% review integrity, 25% brand/seller reputation
+      40% product star rating, 35% review integrity, 25% brand reputation
     """
     rating_component = round((float(product_rating) / 5) * 100) if product_rating is not None else 0
     return round((rating_component * 0.4) + (integrity_score * 0.35) + (reputation_score * 0.25))
@@ -112,19 +112,12 @@ def build_ebay_overall_score(
 ) -> int:
     """
     eBay-specific score. Seller reputation is weighted more heavily because
-    eBay is seller-centric — the same product from a 70% seller vs a 99.9%
-    seller is a very different purchase. Weights:
+    eBay is seller-centric. Weights:
       30% product star rating, 25% review integrity, 45% seller reputation
-
-    If we have a raw positive-feedback percentage from the seller profile
-    (e.g. 99.4%), we blend that directly into the final score for extra
-    accuracy.
     """
     rating_component = round((float(product_rating) / 5) * 100) if product_rating is not None else 0
     base = round((rating_component * 0.30) + (integrity_score * 0.25) + (seller_score * 0.45))
 
-    # If seller_positive_pct is available, nudge the score toward it
-    # (prevents inflated integrity scores from masking a low-trust seller)
     if seller_positive_pct is not None:
         blended = round(base * 0.70 + seller_positive_pct * 0.30)
         return blended
@@ -146,20 +139,15 @@ async def get_seller_reputation(seller: dict, reviews: list, product: dict) -> d
     """
     Build a seller-reputation block for eBay listings.
 
-    Uses the seller metadata returned by ScraperAPI (positive percentage,
-    review count, top_rated flag) as the primary signal, and runs the
-    product reviews through the existing NLP pipeline as a secondary signal
-    so we still get keyword extraction and sentiment insights.
-
-    Returns a dict shaped identically to what get_brand_reputation() returns,
-    so the rest of the pipeline (ai_analysis, vision_model output) is unchanged.
+    Uses the seller metadata (positive percentage, review count, top_rated flag)
+    as the primary signal, and runs the product reviews through the existing
+    NLP pipeline for keyword extraction and sentiment insights.
     """
     seller_name    = seller.get("name", "Unknown Seller")
     positive_pct   = _parse_seller_pct(seller.get("seller_review", ""))
     reviews_count  = seller.get("seller_reviews_count")
     top_rated      = seller.get("top_rated", False)
 
-    # Normalise product reviews into the text-field shape brand_reputation expects
     normalised_reviews = [
         {
             "text":   r.get("body", ""),
@@ -170,23 +158,23 @@ async def get_seller_reputation(seller: dict, reviews: list, product: dict) -> d
         if r.get("body", "").strip()
     ]
 
-    # Use the NLP pipeline to score what review text we do have
     nlp_result = build_reputation_insights(
         normalised_reviews,
         brand_name=seller_name,
         source_name="ebay_product_reviews",
-        # Pass the aggregate seller score as the "Google aggregate"
-        # so the Bayesian prior blends toward the real seller percentage
         aggregate_rating=(positive_pct / 20.0) if positive_pct is not None else None,
         aggregate_rating_count=reviews_count,
     )
 
-    # Override the label to be seller-specific and more accurate
     score = nlp_result.get("reputation_score_pct")
 
     if positive_pct is not None:
         if positive_pct >= 99.0:
-            label = f"Excellent seller — {positive_pct}% positive feedback across {reviews_count:,} ratings." if reviews_count else f"Excellent seller — {positive_pct}% positive feedback."
+            label = (
+                f"Excellent seller — {positive_pct}% positive feedback across {reviews_count:,} ratings."
+                if reviews_count
+                else f"Excellent seller — {positive_pct}% positive feedback."
+            )
         elif positive_pct >= 97.0:
             label = f"Good seller — {positive_pct}% positive feedback."
         elif positive_pct >= 90.0:
@@ -196,25 +184,23 @@ async def get_seller_reputation(seller: dict, reviews: list, product: dict) -> d
     else:
         label = nlp_result.get("overall_label", "Seller reputation data unavailable.")
 
-    # Build seller-specific insights that replace brand insights
     insights = _build_seller_insights(
         seller,
         positive_pct,
         top_rated,
         normalised_reviews,
-        product
+        product,
     )
 
     return {
         **nlp_result,
-        "overall_label":  label,
-        "insights":       insights,
-        "source":         "ebay_seller_profile",
-        # Pass through raw seller data for the frontend
-        "sellerName":     seller_name,
+        "overall_label":     label,
+        "insights":          insights,
+        "source":            "ebay_seller_profile",
+        "sellerName":        seller_name,
         "sellerPositivePct": positive_pct,
         "sellerReviewCount": reviews_count,
-        "topRatedSeller": top_rated,
+        "topRatedSeller":    top_rated,
     }
 
 
@@ -226,10 +212,10 @@ def _build_seller_insights(
     product: dict,
 ) -> list[dict]:
     """
-    Build three seller-specific insight topics that replace the generic
-    Customer Support / Shipping / Build Quality topics used for brands.
+    Build four seller-specific insight topics for eBay listings.
+    All data is pulled from the normalized product dict which has
+    estimatedDeliveryMin/Max, returnPolicy, condition at the top level.
     """
-    import re as _re
     from .nlp_utils import sia
 
     # ── Insight 1: Seller Trust ───────────────────────────────────────────
@@ -247,52 +233,75 @@ def _build_seller_insights(
     if top_rated:
         trust_status = f"{trust_status} · Top Rated"
 
-    # ── Insight 2: Shipping ────────────────────────────
-    delivery_min = product.get("estimatedDeliveryMin")
-    delivery_max = product.get("estimatedDeliveryMax")
+    # ── Insight 2: Shipping & Delivery ────────────────────────────────────
+    delivery_min  = product.get("estimatedDeliveryMin")
+    delivery_max  = product.get("estimatedDeliveryMax")
+    shipping_cost = product.get("shippingCost")
 
     if delivery_min and delivery_max:
-        shipping_status = f"{delivery_min} → {delivery_max}"
+        shipping_status = f"{delivery_min} – {delivery_max}"
     elif delivery_min:
-        shipping_status = delivery_min
+        shipping_status = f"Est. {delivery_min}"
+    elif shipping_cost is not None:
+        cost_str = str(shipping_cost).strip()
+        shipping_status = "Free shipping" if cost_str in ("0", "0.0", "Free", "free") else f"Shipping: {cost_str}"
     else:
-        shipping_status = "Delivery estimate unavailable"
+        shipping_status = "Estimate unavailable"
 
-    # ── Insight 3: Item as Described (accuracy of listing) ────────────────
+    # ── Insight 3: Item Condition ─────────────────────────────────────────
+    condition = product.get("condition")
+
     accuracy_scores = []
     for r in reviews:
         text = (r.get("text") or "").lower()
-        if any(kw in text for kw in ["described", "accurate", "exactly", "expected", "different", "mislead", "wrong", "not as"]):
+        if any(kw in text for kw in [
+            "described", "accurate", "exactly", "expected",
+            "different", "mislead", "wrong", "not as",
+        ]):
             accuracy_scores.append(sia.polarity_scores(r["text"])["compound"])
 
-    if not accuracy_scores:
-        condition = product.get("condition")
-
-        if condition:
-            quality_status = condition
-        else:
-            quality_status = "Condition unavailable"
-    else:
+    if accuracy_scores:
         avg = sum(accuracy_scores) / len(accuracy_scores)
-        accuracy_status = "Positive" if avg >= 0.05 else "Caution" if avg <= -0.05 else "Neutral"
-
-    # ── Insight 4: Returns & Support ────────────────────────────
-    return_policy = product.get("returnPolicy")
-
-    if return_policy:
-        return_status = str(return_policy)
+        if avg >= 0.05:
+            accuracy_label = "Accurate"
+        elif avg <= -0.05:
+            accuracy_label = "Disputed"
+        else:
+            accuracy_label = "Mixed"
+        quality_status = f"{condition} · {accuracy_label}" if condition else accuracy_label
+    elif condition:
+        quality_status = condition
     else:
-        return_status = "No return information"
+        quality_status = "Not specified"
+
+    # ── Insight 4: Returns & Support ─────────────────────────────────────
+    return_policy = product.get("returnPolicy")
+    if return_policy:
+        return_text = str(return_policy).strip()
+        if len(return_text) > 60:
+            return_text = return_text[:57] + "…"
+        return_status = return_text
+    else:
+        return_scores = []
+        for r in reviews:
+            text = (r.get("text") or "").lower()
+            if any(kw in text for kw in ["return", "refund", "support", "seller", "response", "contact"]):
+                return_scores.append(sia.polarity_scores(r["text"])["compound"])
+        if return_scores:
+            avg = sum(return_scores) / len(return_scores)
+            return_status = "Positive" if avg >= 0.05 else "Caution" if avg <= -0.05 else "Neutral"
+        else:
+            return_status = "No return info"
 
     return [
         {"topic": "Seller Trust",        "status": trust_status},
         {"topic": "Shipping & Delivery", "status": shipping_status},
-        {"topic": "Item Condition",   "status": quality_status},
+        {"topic": "Item Condition",      "status": quality_status},
         {"topic": "Returns & Support",   "status": return_status},
     ]
 
 
-# ─── Accessory / keyword helpers (unchanged) ─────────────────────────────────
+# ─── Accessory / keyword helpers ─────────────────────────────────────────────
 
 def detect_accessory_type(title: str, fallback_keyword: str = "") -> str:
     text = (title or "").lower()
@@ -403,7 +412,7 @@ def is_accessory_keyword(keyword: str) -> bool:
 
 
 def resolve_effective_product_keyword(url_keyword: str, title: str) -> str:
-    title_keyword      = infer_keyword_from_title(title)
+    title_keyword       = infer_keyword_from_title(title)
     cleaned_url_keyword = (url_keyword or "").strip().lower()
     if title_keyword != "unknown":
         if cleaned_url_keyword in {"", "unknown"}:
@@ -522,7 +531,6 @@ async def analyze_product_url(
     profile         = await asyncio.to_thread(marketplace.fetch_product_profile, listing_id)
     _raise_if_cancelled(is_cancelled)
 
-    # Defensive: ensure profile sub-values are the expected types
     product = profile.get("product", {})
     if not isinstance(product, dict):
         product = {}
@@ -530,7 +538,7 @@ async def analyze_product_url(
     if not isinstance(reviews, list):
         reviews = []
 
-    # ── Review integrity (identical for both marketplaces) ────────────────
+    # ── Review integrity ──────────────────────────────────────────────────
     review_integrity = analyze_review_integrity(reviews)
     _raise_if_cancelled(is_cancelled)
 
@@ -540,8 +548,11 @@ async def analyze_product_url(
         if not isinstance(seller, dict):
             seller = {}
         reputation_result = await get_seller_reputation(seller, reviews, product)
-        # For eBay, use seller name as the "brand" shown in the UI
-        brand = (seller.get("name", "") if isinstance(seller.get("name"), str) else "") or str(profile.get("brand", "") or "")
+        brand = (
+            seller.get("name", "")
+            if isinstance(seller.get("name"), str)
+            else ""
+        ) or str(profile.get("brand", "") or "")
     else:
         brand = profile.get("brand", "") or product.get("brand", "")
         if brand:
@@ -582,17 +593,17 @@ async def analyze_product_url(
         for term in build_similar_search_terms(
             title,
             brand_name,
-            resolved_product_keyword
+            resolved_product_keyword,
         ):
             search_results = await asyncio.to_thread(
                 marketplace.search_similar_products,
-                term
+                term,
             )
 
             results = clean_similar_products(
                 search_results,
                 listing_id,
-                title
+                title,
             )
 
             if results:
@@ -605,7 +616,7 @@ async def analyze_product_url(
     reputation_score = reputation_result.get("reputation_score_pct") or 50
 
     if is_ebay:
-        seller_pct   = reputation_result.get("sellerPositivePct")
+        seller_pct    = reputation_result.get("sellerPositivePct")
         overall_score = build_ebay_overall_score(
             rating, integrity_score, reputation_score, seller_pct
         )
@@ -625,9 +636,9 @@ async def analyze_product_url(
     )
     _raise_if_cancelled(is_cancelled)
 
-    # ── Reputation block label ────────────────────────────────────────────
-    integrity_key = "sellerReviewIntegrity" if is_ebay else "reviewIntegrity"
-    reputation_key = "sellerReputation" if is_ebay else "brandReputation"
+    # ── Build output keys ─────────────────────────────────────────────────
+    integrity_key  = "sellerReviewIntegrity" if is_ebay else "reviewIntegrity"
+    reputation_key = "sellerReputation"      if is_ebay else "brandReputation"
 
     return {
         "asin":           listing_id,

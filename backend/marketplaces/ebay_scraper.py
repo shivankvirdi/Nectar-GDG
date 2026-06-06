@@ -37,18 +37,12 @@ SEARCH_URL    = "https://api.scraperapi.com/structured/ebay/search"
 
 
 def _ensure_dict(value, fallback: dict | None = None) -> dict:
-    """Safely coerce *value* to a dict.
-
-    ScraperAPI frequently returns lists where a dict is expected.
-    This helper normalises every possible shape so downstream code
-    can safely call `.get()` without crashing.
-    """
+    """Safely coerce *value* to a dict."""
     if fallback is None:
         fallback = {}
     if isinstance(value, dict):
         return value
     if isinstance(value, list):
-        # Walk into nested lists until we find a dict or run out
         for item in value:
             if isinstance(item, dict):
                 return item
@@ -81,6 +75,7 @@ def _safe_str(value, default: str = "") -> str:
         return str(value)
     return default
 
+
 CONNECT_TIMEOUT = 10
 READ_TIMEOUT    = 45
 MAX_RETRIES     = 3
@@ -103,11 +98,7 @@ def _make_session() -> requests.Session:
 
 
 def _parse_seller_positive_pct(review_str: str) -> float | None:
-    """
-    ScraperAPI returns seller_review as e.g. "99.4% positive".
-    Parse that into a float (99.4) so we can use it as an aggregate score.
-    Returns None if the string cannot be parsed.
-    """
+    """Parse '99.4% positive' → 99.4"""
     if not review_str:
         return None
     match = re.search(r"([\d.]+)\s*%", review_str)
@@ -124,16 +115,8 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
         return "ebay." in hostname
 
     def extract_listing_id(self, url: str) -> str | None:
-        """
-        Extract the 12-digit item ID from common eBay URL shapes:
-          ebay.com/itm/123456789012
-          ebay.com/itm/title-here/123456789012
-          ebay.com/p/123456789012          (product page with EPID)
-        Also handles query-string fallback (?item=123456789012).
-        """
         decoded = unquote(url or "")
 
-        # Path patterns — most specific first
         for pattern in (
             r"/itm/(?:[^/]+/)?(\d{10,13})(?:[/?]|$)",
             r"/p/(\d{10,13})(?:[/?]|$)",
@@ -143,7 +126,6 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
             if m:
                 return m.group(1)
 
-        # Query-string fallback
         qs = parse_qs(urlparse(decoded).query)
         for key in ("item", "itemId", "ItemID"):
             for val in qs.get(key, []):
@@ -182,7 +164,6 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
                         print(f"[eBay/ScraperAPI] JSON decode failed: {je}")
                         return self._empty_profile(listing_id)
 
-                    # Normalise top-level: could be a list, dict, or junk
                     raw = _ensure_dict(raw)
                     if not raw:
                         print(f"[eBay/ScraperAPI] Empty/unusable response for {listing_id}")
@@ -193,7 +174,6 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
                     product = self._normalize_product(raw)
                     reviews = self._normalize_reviews(raw)
 
-                    # Seller — always ensure it's a dict
                     seller = _ensure_dict(raw.get("seller"))
                     seller_name = _safe_str(
                         seller.get("name") or seller.get("username"),
@@ -267,29 +247,33 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
         """
         Map ScraperAPI eBay product fields → the same shape that Canopy
         produces, so the rest of the pipeline needs no changes.
+
+        IMPORTANT: All top-level keys must be at the same dict level.
+        The ratingHistogram is a nested sub-dict containing only the
+        star-count breakdown. All other fields (delivery, returns, etc.)
+        must be top-level keys.
         """
         # ── Price ──────────────────────────────────────────────────────────
         price_val = None
         price_raw = _ensure_dict(raw.get("price"))
         if price_raw:
             v = price_raw.get("value")
-            c = _safe_str(price_raw.get("currency"), "USD")
             if v is not None:
                 try:
-                    price_val = {"display": f"{c} {v}", "value": float(v)}
+                    fv = float(v)
+                    price_val = {"display": f"${fv:.2f}", "value": fv}
                 except (TypeError, ValueError):
                     pass
         else:
-            # Sometimes price is a bare number
             p = raw.get("price")
             if isinstance(p, (int, float)):
-                price_val = {"display": f"${p}", "value": float(p)}
+                price_val = {"display": f"${float(p):.2f}", "value": float(p)}
             elif isinstance(p, str):
-                # "$29.99" or "29.99"
                 cleaned = re.sub(r"[^\d.]", "", p)
                 if cleaned:
                     try:
-                        price_val = {"display": p, "value": float(cleaned)}
+                        fv = float(cleaned)
+                        price_val = {"display": f"${fv:.2f}", "value": fv}
                     except ValueError:
                         pass
 
@@ -308,7 +292,6 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
         # ── Seller / brand names ───────────────────────────────────────────
         seller = _ensure_dict(raw.get("seller"))
         seller_name = _safe_str(seller.get("name") or seller.get("username"), "")
-
         brand_name = _safe_str(raw.get("brand"), "")
 
         # ── Feature bullets ────────────────────────────────────────────────
@@ -327,45 +310,89 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
             elif isinstance(s, str) and s.strip():
                 feature_bullets.append(s.strip())
 
+        # ── Delivery window ────────────────────────────────────────────────
+        # ScraperAPI may return these at different nesting levels; try both.
+        delivery_info = _ensure_dict(raw.get("delivery") or raw.get("shipping"))
+        estimated_delivery_min = (
+            raw.get("estimated_delivery_min")
+            or delivery_info.get("estimated_delivery_min")
+            or delivery_info.get("min")
+            or None
+        )
+        estimated_delivery_max = (
+            raw.get("estimated_delivery_max")
+            or delivery_info.get("estimated_delivery_max")
+            or delivery_info.get("max")
+            or None
+        )
+        shipping_cost = (
+            raw.get("shipping_costs")
+            or raw.get("shipping_cost")
+            or delivery_info.get("cost")
+            or None
+        )
+
+        # ── Return policy ──────────────────────────────────────────────────
+        return_policy = (
+            raw.get("return_policy")
+            or raw.get("returns")
+            or None
+        )
+        if isinstance(return_policy, dict):
+            return_policy = _safe_str(
+                return_policy.get("text") or return_policy.get("description") or return_policy.get("value"),
+                ""
+            ) or None
+
+        # ── Similar/related items ──────────────────────────────────────────
+        similar_items = _ensure_list(raw.get("similar_items") or raw.get("similarItems") or [])
+        related_items = _ensure_list(raw.get("related_items") or raw.get("relatedItems") or [])
+
         return {
-            "title":        _safe_str(raw.get("title")),
-            "mainImageUrl": main_image_url,
-            "rating":       raw.get("rating"),
-            "ratingsTotal": raw.get("review_count"),
-            "brand":        brand_name or seller_name,
-            "price":        price_val,
+            # Core product fields (matches Canopy shape)
+            "title":          _safe_str(raw.get("title")),
+            "mainImageUrl":   main_image_url,
+            "rating":         raw.get("rating"),
+            "ratingsTotal":   raw.get("review_count"),
+            "brand":          brand_name or seller_name,
+            "price":          price_val,
             "featureBullets": feature_bullets,
-            # eBay-specific extras (consumed downstream)
-            "condition":    _safe_str(raw.get("condition")),
-            "soldItems":    raw.get("sold_items"),
-            "watchers":     raw.get("watchers"),
-            # Rating aspect scores (0-100 integers from ScraperAPI)
-            "easyToUse":    raw.get("easy_to_use"),
-            "wellDesigned": raw.get("well_designed"),
-            "goodValue":    raw.get("good_value"),
-            # Star-histogram breakdown
+
+            # eBay-specific product fields
+            "condition":      _safe_str(raw.get("condition")),
+            "soldItems":      raw.get("sold_items"),
+            "watchers":       raw.get("watchers"),
+
+            # eBay rating aspect scores (0-100 integers)
+            "easyToUse":      raw.get("easy_to_use"),
+            "wellDesigned":   raw.get("well_designed"),
+            "goodValue":      raw.get("good_value"),
+
+            # Star histogram — nested sub-dict (only the 5 star counts)
             "ratingHistogram": {
                 "5": raw.get("rating_count_5stars", 0),
                 "4": raw.get("rating_count_4stars", 0),
                 "3": raw.get("rating_count_3stars", 0),
                 "2": raw.get("rating_count_2stars", 0),
                 "1": raw.get("rating_count_1star",  0),
-            "estimatedDeliveryMin": raw.get("estimated_delivery_min"),
-            "estimatedDeliveryMax": raw.get("estimated_delivery_max"),
-            "shippingCost": raw.get("shipping_costs"),
-            "returnPolicy": raw.get("return_policy"),
-            "location": raw.get("location"),
-
-            "similarItems": raw.get("similar_items", []),
-            "relatedItems": raw.get("related_items", []),
             },
+
+            # Logistics & policy — TOP-LEVEL (NOT inside ratingHistogram)
+            "estimatedDeliveryMin": estimated_delivery_min,
+            "estimatedDeliveryMax": estimated_delivery_max,
+            "shippingCost":         shipping_cost,
+            "returnPolicy":         return_policy,
+            "location":             raw.get("location"),
+
+            # Similar/related items for the similar products section
+            "similarItems": similar_items,
+            "relatedItems": related_items,
         }
 
     def _normalize_reviews(self, raw: dict) -> list[dict]:
         """
         Map ScraperAPI eBay review objects to the same shape that
-        amazon_canopy._normalize_reviews() produces, so review_integrity.py
-        and ai_analysis.py work without modification.
+        amazon_canopy._normalize_reviews() produces.
         """
         reviews = []
         raw_reviews = _ensure_list(raw.get("reviews"))
@@ -379,7 +406,6 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
             if not body:
                 continue
 
-            # Verified purchase is nested inside attrs list
             verified = False
             attrs = _ensure_list(r.get("attrs"))
             for attr in attrs:
@@ -392,7 +418,6 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
                         verified = _safe_str(attr[1]).strip().lower() == "yes"
                         break
 
-            # Rating can come in various field names
             rating = r.get("stars") or r.get("rating") or 3
             try:
                 rating = int(float(rating))
@@ -400,9 +425,9 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
                 rating = 3
 
             reviews.append({
-                "title":           _safe_str(r.get("title")).strip(),
-                "body":            body,
-                "rating":          rating,
+                "title":            _safe_str(r.get("title")).strip(),
+                "body":             body,
+                "rating":           rating,
                 "verifiedPurchase": verified,
             })
         return reviews
@@ -412,23 +437,29 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
         Map a ScraperAPI eBay search result item to the shape that
         vision_model.clean_similar_products() and the frontend expect.
         """
-        # ── Price ──────────────────────────────────────────────────────────
         price_val = None
         price_raw = _ensure_dict(r.get("price"))
         if price_raw:
             v = price_raw.get("value")
-            c = _safe_str(price_raw.get("currency"), "USD")
             if v is not None:
                 try:
-                    price_val = {"display": f"{c} {v}", "value": float(v)}
+                    fv = float(v)
+                    price_val = {"display": f"${fv:.2f}", "value": fv}
                 except (TypeError, ValueError):
                     pass
         else:
             p = r.get("price")
             if isinstance(p, (int, float)):
-                price_val = {"display": f"${p}", "value": float(p)}
+                price_val = {"display": f"${float(p):.2f}", "value": float(p)}
+            elif isinstance(p, str):
+                cleaned = re.sub(r"[^\d.]", "", p)
+                if cleaned:
+                    try:
+                        fv = float(cleaned)
+                        price_val = {"display": f"${fv:.2f}", "value": fv}
+                    except ValueError:
+                        pass
 
-        # ── Item ID ────────────────────────────────────────────────────────
         asin = _safe_str(r.get("item_id") or r.get("asin"), "")
         if not asin:
             url = _safe_str(r.get("url"), "")
@@ -436,24 +467,22 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
             if m:
                 asin = m.group(1)
 
-        # ── Brand / seller name ────────────────────────────────────────────
         seller_d = _ensure_dict(r.get("seller"))
         brand_name = _safe_str(seller_d.get("name") or seller_d.get("username"), "")
         if not brand_name:
-            brand_name = _safe_str(r.get("brand"), "")
+            brand_name = _safe_str(r.get("brand") or r.get("store_name") or r.get("seller_name"), "")
 
-        # ── Image ──────────────────────────────────────────────────────────
         image = _safe_str(r.get("image_url") or r.get("image") or r.get("thumbnail"), "")
 
         return {
-            "title":       _safe_str(r.get("title")),
-            "asin":        asin,
-            "brand":       brand_name,
-            "rating":      r.get("rating"),
+            "title":        _safe_str(r.get("title")),
+            "asin":         asin,
+            "brand":        brand_name,
+            "rating":       r.get("rating"),
             "ratingsTotal": r.get("review_count"),
             "mainImageUrl": image or None,
-            "isPrime":     False,   # eBay doesn't have Prime
-            "price":       price_val,
+            "isPrime":      False,
+            "price":        price_val,
         }
 
     @staticmethod

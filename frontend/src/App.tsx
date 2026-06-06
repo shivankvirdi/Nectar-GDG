@@ -12,13 +12,14 @@ declare global {
       resizeWindow: (opts: { width?: number; height: number }) => Promise<void>
       minimizeWindow: () => void
       closeWindow: () => void
+      openExternal?: (url: string) => void
     }
   }
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const DEV_PREVIEW = import.meta.env.DEV && false
+const DEV_PREVIEW = import.meta.env.DEV && true
 const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 const NECTAR_SECRET = import.meta.env.VITE_NECTAR_SECRET || ''
 
@@ -630,6 +631,13 @@ export function SimilarProductsScroller({ analysis, products }: { analysis: Anal
               target="_blank"
               rel="noreferrer"
               className={`similar-card ${isBest ? 'similar-card--best' : ''}`}
+              onClick={(e) => {
+                const url = getCommerceUrl(product)
+                if (url !== '#' && window.electronAPI?.openExternal) {
+                  e.preventDefault()
+                  window.electronAPI.openExternal(url)
+                }
+              }}
             >
               <div className="similar-card-top">
                 <div className="similar-card-badges">
@@ -780,6 +788,14 @@ function ResultsView({ analysis, isExiting }: { analysis: Analysis; isExiting: b
   const br = analysis.sellerReputation || analysis.brandReputation
   const isEbay = analysis.marketplace === 'ebay'
 
+  // Cast to access eBay-only fields that aren't in the base type
+  const brEbay = br as (typeof br & {
+    sellerName?: string
+    sellerPositivePct?: number
+    sellerReviewCount?: number
+    topRatedSeller?: boolean
+  })
+
   return (
     <div className={`results-animate${isExiting ? ' results-exit-waterfall' : ''}`}>
       <div className="cascade-item cascade-delay-1">
@@ -807,10 +823,14 @@ function ResultsView({ analysis, isExiting }: { analysis: Analysis; isExiting: b
         <SectionCard title="Product" collapsible>
           <div className="info-list">
             <p><strong>Title:</strong> {analysis.title ?? 'N/A'}</p>
-            <p><strong>Brand:</strong> {analysis.brand ?? 'N/A'}</p>
+            {isEbay ? (
+              <p><strong>Seller:</strong> {brEbay?.sellerName ?? analysis.brand ?? 'N/A'}</p>
+            ) : (
+              <p><strong>Brand:</strong> {analysis.brand ?? 'N/A'}</p>
+            )}
             <p><strong>Price:</strong> {analysis.price ?? 'N/A'}</p>
-            <p><strong>Rating:</strong> {analysis.rating ?? 'N/A'}</p>
-            <p><strong>Review Count:</strong> {analysis.reviewCount ?? 'N/A'}</p>
+            <p><strong>Rating:</strong> {analysis.rating != null ? `${analysis.rating} / 5` : 'N/A'}</p>
+            <p><strong>Review Count:</strong> {analysis.reviewCount != null ? analysis.reviewCount.toLocaleString() : 'N/A'}</p>
           </div>
         </SectionCard>
       </div>
@@ -822,7 +842,7 @@ function ResultsView({ analysis, isExiting }: { analysis: Analysis; isExiting: b
       )}
 
       <div className="cascade-item cascade-delay-4">
-        <SectionCard title={isEbay ? "Seller Review Integrity" : "Review Integrity"} collapsible className="section-card--integrity">
+        <SectionCard title={isEbay ? 'Seller Review Integrity' : 'Review Integrity'} collapsible className="section-card--integrity">
           <div className="integrity-lead">
             <div className="mini-score mini-score--featured">
               <span>Score</span>
@@ -841,17 +861,37 @@ function ResultsView({ analysis, isExiting }: { analysis: Analysis; isExiting: b
           )}
           <div className="info-list">
             <p><strong>Label:</strong> {ri?.label ?? 'N/A'}</p>
-            <p><strong>Verified Purchase Ratio:</strong> {ri?.verifiedPurchaseRatio ?? 'N/A'}</p>
-            <p><strong>Sentiment Consistency:</strong> {ri?.sentimentConsistencyRatio ?? 'N/A'}</p>
-            <p className="keywords-label"><strong>Top Keywords:</strong></p>
-            <KeywordPills keywords={ri?.commonKeywords} emptyMessage="No keywords found" />
+            {!isEbay && (
+              <>
+                <p>
+                  <strong>Verified Purchase Ratio:</strong>{' '}
+                  {ri?.verifiedPurchaseRatio != null
+                    ? `${Math.round((ri.verifiedPurchaseRatio as number) * 100)}%`
+                    : 'N/A'}
+                </p>
+                <p>
+                  <strong>Sentiment Consistency:</strong>{' '}
+                  {ri?.sentimentConsistencyRatio != null
+                    ? `${Math.round((ri.sentimentConsistencyRatio as number) * 100)}%`
+                    : 'N/A'}
+                </p>
+                <p className="keywords-label"><strong>Top Keywords:</strong></p>
+                <KeywordPills keywords={ri?.commonKeywords} emptyMessage="No keywords found" />
+              </>
+            )}
+            {isEbay && ri?.verifiedPurchaseRatio != null && (
+              <p>
+                <strong>Verified Purchase Ratio:</strong>{' '}
+                {`${Math.round((ri.verifiedPurchaseRatio as number) * 100)}%`}
+              </p>
+            )}
           </div>
-          <ScoreExplainer metric={isEbay ? "seller_review_integrity" : "review_integrity"} analysis={analysis} />
+          <ScoreExplainer metric={isEbay ? 'seller_review_integrity' : 'review_integrity'} analysis={analysis} />
         </SectionCard>
       </div>
 
       <div className="cascade-item cascade-delay-5">
-        <SectionCard title={isEbay ? "Seller Reputation" : "Brand Reputation"} collapsible className="section-card--brand">
+        <SectionCard title={isEbay ? 'Seller Reputation' : 'Brand Reputation'} collapsible className="section-card--brand">
           <div className="brand-lead">
             <div className="mini-score mini-score--featured">
               <span>Score</span>
@@ -862,12 +902,18 @@ function ResultsView({ analysis, isExiting }: { analysis: Analysis; isExiting: b
           <div className="info-list">
             {isEbay ? (
               <>
-                <p><strong>Seller Name:</strong> {br?.sellerName ?? 'N/A'}</p>
-                <p><strong>Feedback Label:</strong> {br?.label ?? 'N/A'}</p>
-                <p><strong>Positive Feedback:</strong> {br?.sellerPositivePct != null ? `${br.sellerPositivePct}%` : 'N/A'}</p>
-                <p><strong>Seller Review Count:</strong> {br?.sellerReviewCount != null ? br.sellerReviewCount.toLocaleString() : 'N/A'}</p>
-                {br?.topRatedSeller && (
-                  <p><strong>Status:</strong> <span style={{ color: '#15803d', fontWeight: 'bold' }}>Top Rated Seller</span></p>
+                <p><strong>Seller:</strong> {brEbay?.sellerName ?? 'N/A'}</p>
+                <p><strong>Feedback:</strong> {br?.label ?? 'N/A'}</p>
+                {brEbay?.sellerPositivePct != null && (
+                  <p><strong>Positive Feedback:</strong> {`${brEbay.sellerPositivePct}%`}</p>
+                )}
+                {brEbay?.sellerReviewCount != null && (
+                  <p><strong>Feedback Count:</strong> {brEbay.sellerReviewCount.toLocaleString()}</p>
+                )}
+                {brEbay?.topRatedSeller && (
+                  <p><strong>Status:</strong>{' '}
+                    <span style={{ color: '#15803d', fontWeight: 'bold' }}>⭐ Top Rated Seller</span>
+                  </p>
                 )}
               </>
             ) : (
@@ -887,11 +933,16 @@ function ResultsView({ analysis, isExiting }: { analysis: Analysis; isExiting: b
               ))}
             </div>
           ) : (
-            <p className="body-text muted">{isEbay ? "No seller insights yet." : "No brand insights yet."}</p>
+            <p className="body-text muted">{isEbay ? 'No seller insights yet.' : 'No brand insights yet.'}</p>
           )}
-          <p className="keywords-label"><strong>Top Keywords:</strong></p>
-          <KeywordPills keywords={br?.commonKeywords} emptyMessage="No keywords found" />
-          <ScoreExplainer metric={isEbay ? "seller_reputation" : "brand_reputation"} analysis={analysis} />
+          {/* Keywords only shown for Amazon — eBay NLP signal is lower quality */}
+          {!isEbay && (
+            <>
+              <p className="keywords-label"><strong>Top Keywords:</strong></p>
+              <KeywordPills keywords={br?.commonKeywords} emptyMessage="No keywords found" />
+            </>
+          )}
+          <ScoreExplainer metric={isEbay ? 'seller_reputation' : 'brand_reputation'} analysis={analysis} />
         </SectionCard>
       </div>
 
@@ -901,7 +952,11 @@ function ResultsView({ analysis, isExiting }: { analysis: Analysis; isExiting: b
             <SimilarProductsScroller analysis={analysis} products={analysis.similarProducts ?? []} />
           ) : (
             <p className="body-text muted empty-state empty-state--compact">
-              No alternatives found{analysis.productKeyword && analysis.productKeyword !== 'unknown' ? ` for ${analysis.productKeyword}` : ''}.
+              No alternatives found
+              {analysis.productKeyword && analysis.productKeyword !== 'unknown'
+                ? ` for "${analysis.productKeyword}"`
+                : ''}
+              .
             </p>
           )}
         </SectionCard>
@@ -947,32 +1002,32 @@ function CompareView({ records, onBack }: { records: [ScanRecord, ScanRecord]; o
   const integrityLabel = isLeftEbay && isRightEbay
     ? 'Seller Review Integrity'
     : isLeftEbay || isRightEbay
-    ? 'Review / Seller Review Integrity'
-    : 'Review Integrity'
+      ? 'Review / Seller Review Integrity'
+      : 'Review Integrity'
 
   const integrityLabelRow = isLeftEbay && isRightEbay
     ? 'Seller Integrity Label'
     : isLeftEbay || isRightEbay
-    ? 'Integrity Label / Seller Integrity Label'
-    : 'Integrity Label'
+      ? 'Integrity Label / Seller Integrity Label'
+      : 'Integrity Label'
 
   const verifiedLabel = isLeftEbay && isRightEbay
     ? 'Seller Verified Ratio'
     : isLeftEbay || isRightEbay
-    ? 'Verified Ratio / Seller Verified Ratio'
-    : 'Verified Ratio'
+      ? 'Verified Ratio / Seller Verified Ratio'
+      : 'Verified Ratio'
 
   const reputationLabel = isLeftEbay && isRightEbay
     ? 'Seller Reputation'
     : isLeftEbay || isRightEbay
-    ? 'Brand / Seller Reputation'
-    : 'Brand Reputation'
+      ? 'Brand / Seller Reputation'
+      : 'Brand Reputation'
 
   const brandLabelRow = isLeftEbay && isRightEbay
     ? 'Seller Label'
     : isLeftEbay || isRightEbay
-    ? 'Brand Label / Seller Label'
-    : 'Brand Label'
+      ? 'Brand Label / Seller Label'
+      : 'Brand Label'
 
   const trustMetrics = [
     { label: integrityLabel, lv: lri?.score, rv: rri?.score, winner: integrityW },

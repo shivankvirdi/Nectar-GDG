@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, screen } = require('electron')
 const path = require('path')
+const { shell } = require('electron')
 const {
   getActiveUrl,
   startUrlPolling
@@ -132,5 +133,11 @@ ipcMain.handle('get-active-tab-url', async () => {
       : `https://${url}`
   } catch {
     return null
+  }
+})
+
+ipcMain.handle('open-external', (_event, url) => {
+  if (url && /^https?:\/\//i.test(url)) {
+    shell.openExternal(url)
   }
 })

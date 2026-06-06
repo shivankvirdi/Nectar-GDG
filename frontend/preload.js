@@ -7,4 +7,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setOpacity: (opts) => ipcRenderer.invoke('set-opacity', opts),
   closeWindow: () => ipcRenderer.invoke('close-window'),
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
 })
