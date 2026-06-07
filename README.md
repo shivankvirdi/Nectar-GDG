@@ -73,19 +73,17 @@ npm run electron:start
 uvicorn backend.main:app --reload
 ```
 ## Troubleshooting
-
 ### Electron won't start
 Delete node_modules and reinstall:
-
+```
 npm install
-
+```
 ### Backend fails to start
 Verify:
 - CANOPY_API_KEY
 - GEMINI_API_KEY
 - GOOGLE_PLACES_API_KEY
-
 ### CORS or connection issues
-Verify VITE_API_URL matches your backend URL.
+##### Verify VITE_API_URL matches your backend URL.
 ---
 Project led by Shivank Virdi and co-developed with Jaycob Pakingan, Iyanna Arches, Aanya Agarwal, & Kaylana Chuan. We hope you enjoy using our application!
