@@ -5,6 +5,15 @@ https://github.com/user-attachments/assets/503b7d96-bcd8-418d-aa47-0589f6e007b4
 
 E-commerce lacks trustworthy product intelligence, with consumers losing billions to misleading/inflated reviews and poor purchasing decisions every year. That's why we built Nectar, a product-analyzer Electron desktop app that builds this needed trust layer by comparing products and providing in-depth insights on price, review integrity, quality, brand reputation, and similar alternatives. Nectar recommends the best option to help reduce shopper stress and support more informed purchasing decisions.
 
+## Features
+- AI-powered product analysis
+- Review integrity detection
+- Brand and seller reputation scoring
+- Similar product recommendations
+- Product comparison tools
+- Scan history and recommendation memory
+- Amazon and eBay support
+
 # Nectar Project Overview
 ## Technologies Used
 - Frontend: React, TypeScript, Vite, CSS
@@ -48,11 +57,10 @@ FastAPI Backend
   |
   v
 Analysis Pipeline
-  - Marketplace adapter selection
-  - Product data fetching
-  - Review integrity scoring
-  - Brand/seller reputation scoring
-  - Overall trust score generation
+  - Product data collection
+  - Review authenticity analysis
+  - Brand/Seller reputation scoring
+  - Overall trust score
   |
   +--> Canopy API: Amazon product data
   +--> ScraperAPI: eBay product data
@@ -77,6 +85,9 @@ python -m venv .venv
 source .venv/bin/activate # Mac/Linux
 ```
 ### Install dependencies
+Requirements:
+- Python 3.11+
+- Node.js 20+
 ```powershell
 pip install -r requirements.txt
 ```
@@ -90,19 +101,19 @@ npm install
 ```powershell
 npm run build
 ```
-## Deploying Backend Server
-### Use hosted backend (Requires a secret password): 
+## Running Nectar
+### Use Hosted Backend (Requires a secret password): 
 The backend is already deployed on Google Cloud!
 1. Create file frontend/.env.production
 2. Set VITE_API_URL=https://nectar-gdg-93066440894.us-west1.run.app and VITE_NECTAR_SECRET to the password\
    (contact maintainers for access)
-4. Run electron:
+3. Run electron:
 ```
 cd frontend
 npm run electron:start
 ```
 
-### Deploy locally
+### Use Local Backend
 1. Create .env in ROOT directory and add keys ('Nectar-GDG/.env')\
 https://www.canopyapi.co/ (GraphQL API)\
 https://aistudio.google.com/app/api-keys  
