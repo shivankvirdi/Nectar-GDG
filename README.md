@@ -6,14 +6,16 @@ https://github.com/user-attachments/assets/503b7d96-bcd8-418d-aa47-0589f6e007b4
 E-commerce lacks trustworthy product intelligence, with consumers losing billions to misleading/inflated reviews and poor purchasing decisions every year. That's why we built Nectar, a product-analyzer Electron desktop app that builds this needed trust layer by comparing products and providing in-depth insights on price, review integrity, quality, brand reputation, and similar alternatives. Nectar recommends the best option to help reduce shopper stress and support more informed purchasing decisions.
 
 # Nectar Project Overview
-The active application flow is centered around:
-
-- `frontend/src/App.tsx` for the main React UI
-- `frontend/electron-main.js` for the desktop Electron shell
-- `frontend/preload.js` for secure renderer-to-Electron IPC
-- `backend/main.py` for the FastAPI surface
-- `backend/vision_model.py` for the main product analysis pipeline
-- `backend/ai_analysis.py` for Gemini-powered verdicts, explanations, and recommendations
+## Technologies Used
+- Frontend: React, TypeScript, Vite, CSS
+- Desktop Shell: Electron
+- Backend: FastAPI, Python
+- AI: Google Gemini
+- NLP/Scoring: NLTK --> VADER, custom review-integrity logic
+- Marketplace Data: Canopy API, ScraperAPI
+- Reputation Data: Google Places API
+- Storage: Browser localStorage for scan history and recommendation memory
+- Deployment: Docker, Google Cloud Run, Cloud Build
 
 ---
 
@@ -57,16 +59,6 @@ Analysis Pipeline
   +--> Google Places API: brand reputation context
   +--> Gemini API: verdicts, explanations, smart recommendations
 ```
-## Technologies Used
-- Frontend: React, TypeScript, Vite, CSS
-- Desktop Shell: Electron
-- Backend: FastAPI, Python
-- AI: Google Gemini
-- NLP/Scoring: NLTK --> VADER, custom review-integrity logic
-- Marketplace Data: Canopy API, ScraperAPI
-- Reputation Data: Google Places API
-- Storage: Browser localStorage for scan history and recommendation memory
-- Deployment: Docker, Google Cloud Run, Cloud Build
 
 # How to Use
 ## Clone Repository:
