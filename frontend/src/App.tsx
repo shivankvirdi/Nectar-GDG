@@ -225,7 +225,7 @@ function getCommerceUrl(item?: Pick<SimilarProduct, 'listingUrl' | 'productUrl' 
   return item?.listingUrl || item?.productUrl || item?.amazonUrl || '#'
 }
 
-function compareProductAgainstCurrent(current: Analysis | null, product?: SimilarProduct) {
+function compareProductAgainstCurrent(current: Analysis | null | undefined, product?: SimilarProduct) {
   const currentPrice = getNumericValue(current?.price)
   const otherPrice = getNumericValue(product?.price)
   const currentRating = getNumericValue(current?.rating)
