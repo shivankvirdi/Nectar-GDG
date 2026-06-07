@@ -24,15 +24,6 @@ source .venv/bin/activate # Mac/Linux
 ```powershell
 pip install -r requirements.txt
 ```
-## Create .env in ROOT directory and add keys
-https://www.canopyapi.co/  
-https://aistudio.google.com/app/api-keys  
-https://console.cloud.google.com/marketplace/product/google/places.googleapis.com
-```
-CANOPY_API_KEY="your_api_key_here"
-GEMINI_API_KEY="your_api_key_here"
-GOOGLE_PLACES_API_KEY=your_api_key_here
-```
 ## Frontend Setup
 Install Node.js (http://nodejs.org/en/download) and add to PATH.
 ```powershell
@@ -50,10 +41,27 @@ npm run build
 4. Select Nectar-GDG/frontend/dist
 
 ## Deploying Backend Server
-### Use hosted backend (Recommended): 
-The backend is already deployed on Render -- no setup required. (Check if VITE URL correct)
-### Deploy locally (Optional)
-1. Set frontend/.env.production to:
+### Use hosted backend (Requires a secret password): 
+The backend is already deployed on Google Cloud!
+1. Create file frontend/.env.production
+2. Set VITE_API_URL=https://nectar-gdg-93066440894.us-west1.run.app and VITE_NECTAR_SECRET to the password
+3. Run electron:
+```
+cd frontend
+npm run electron:start
+```
+
+### Deploy locally
+1. Create .env in ROOT directory and add keys
+https://www.canopyapi.co/  
+https://aistudio.google.com/app/api-keys  
+https://console.cloud.google.com/marketplace/product/google/places.googleapis.com
+```
+CANOPY_API_KEY=your_api_key_here
+GEMINI_API_KEY=your_api_key_here
+GOOGLE_PLACES_API_KEY=your_api_key_here
+```
+2. Set frontend/.env.production to:
 ```powershell
 VITE_API_URL=http://127.0.0.1:8000
 ```
@@ -62,10 +70,12 @@ VITE_API_URL=http://127.0.0.1:8000
 cd frontend
 npm run build
 ```
-4. Run backend:
+4. Run backend and electron:
 ```powershell
-cd ..
+#Terminal 1 in frontend directory
+npm run electron:start
+#Terminal 2 in ROOT
 uvicorn backend.main:app --reload
 ```
 ---
-Project led by Shivank Virdi and co-developed with Jaycob Pakingan, Iyanna Arches, Aanya Agarwal, & Kaylana Chuan. We hope you enjoy using our extension!
+Project led by Shivank Virdi and co-developed with Jaycob Pakingan, Iyanna Arches, Aanya Agarwal, & Kaylana Chuan. We hope you enjoy using our application!
