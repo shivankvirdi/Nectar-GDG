@@ -33,6 +33,8 @@ const PREVIOUS_SCAN_KEY = 'nectar_previous_scan'
 const SCAN_HISTORY_KEY = 'nectar_scan_history'
 const MAX_SCAN_HISTORY = 10
 
+const RECOMMENDER_FILTERS = ['overall', 'durability', 'price', 'quality'] as const
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Insight = { topic: string; status: string }
@@ -116,12 +118,22 @@ type Analysis = {
 }
 
 type Recommendation = NonNullable<NonNullable<Analysis['aiAnalysis']>['recommendation']>
+type RecommenderFilter = typeof RECOMMENDER_FILTERS[number]
 
 type ScanRecord = {
   id: string
   scannedAt: string
   url: string
   analysis: Analysis
+}
+
+type RecommendationResponse = {
+  ok?: boolean
+  rejected?: boolean
+  message?: string
+  query?: string
+  reason?: string
+  products?: SimilarProduct[]
 }
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
@@ -285,6 +297,65 @@ function getCompareValueClass(winner: 'left' | 'right' | 'tie', side: 'left' | '
   return winner === side ? 'compare-value compare-value--winner' : 'compare-value compare-value--muted'
 }
 
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+}
+
+function hasDisplayablePrice(product: SimilarProduct): boolean {
+  return getNumericValue(product.price) !== null
+}
+
+function getFallbackProductRank(product: SimilarProduct, filter: RecommenderFilter): number {
+  const title = `${product.title ?? ''} ${product.brand ?? ''}`.toLowerCase()
+  const price = getNumericValue(product.price) ?? 999999
+  const rating = getNumericValue(product.rating) ?? 0
+  const reviews = getNumericValue(product.reviewCount) ?? 0
+  const reviewScore = Math.min(reviews, 5000) / 5000
+  const durableTerms = ['durable', 'sturdy', 'rugged', 'reinforced', 'waterproof', 'metal', 'steel', 'protective', 'heavy duty', 'reliable']
+  const qualityTerms = ['premium', 'pro', 'professional', 'high quality', 'flagship', 'top rated', 'noise cancelling', 'certified', 'trusted']
+  const durableScore = durableTerms.filter((term) => title.includes(term)).length
+  const qualityScore = qualityTerms.filter((term) => title.includes(term)).length
+
+  if (filter === 'price') return -price + rating * 1.5 + reviewScore * 4
+  if (filter === 'durability') return durableScore * 8 + rating * 8 + reviewScore * 10
+  if (filter === 'quality') return qualityScore * 8 + rating * 10 + reviewScore * 8
+  return rating * 8 + reviewScore * 8 - price / 500
+}
+
+function sortFallbackProducts(products: SimilarProduct[], filter: RecommenderFilter): SimilarProduct[] {
+  if (filter === 'price') {
+    return [...products].sort((a, b) => {
+      const priceA = getNumericValue(a.price) ?? 999999
+      const priceB = getNumericValue(b.price) ?? 999999
+      if (priceA !== priceB) return priceA - priceB
+      return (getNumericValue(b.rating) ?? 0) - (getNumericValue(a.rating) ?? 0)
+    })
+  }
+  return [...products].sort((a, b) => getFallbackProductRank(b, filter) - getFallbackProductRank(a, filter))
+}
+
+function getHistoryRecommendationFallback(history: ScanRecord[], filter: RecommenderFilter): SimilarProduct[] {
+  const seen = new Set<string>()
+  const products: SimilarProduct[] = []
+
+  for (const record of history) {
+    for (const product of record.analysis.similarProducts ?? []) {
+      const key = product.listingId ?? product.asin ?? product.listingUrl ?? product.productUrl ?? product.title
+      if (!hasDisplayablePrice(product)) continue
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      products.push(product)
+    }
+  }
+
+  return sortFallbackProducts(products, filter).slice(0, 5)
+}
+
 // ─── Mock Data (dev only) ─────────────────────────────────────────────────────
 
 const mockAnalysis: Analysis = {
@@ -397,18 +468,6 @@ function SkeletonResults() {
         <SkeletonLine width="70%" mb={4} />
         <SkeletonLine width="45%" />
       </SkeletonCard>
-      <SkeletonCard title="Similar Products">
-        <div style={{ display: 'flex', gap: 12, overflow: 'hidden' }}>
-          {[0, 1, 2].map((i) => (
-            <div key={i} style={{ minWidth: 160, flexShrink: 0 }}>
-              <SkeletonLine width="160px" height={110} />
-              <SkeletonLine width="90%" height={12} mb={4} />
-              <SkeletonLine width="60%" height={12} mb={4} />
-              <SkeletonLine width="40%" height={12} />
-            </div>
-          ))}
-        </div>
-      </SkeletonCard>
     </div>
   )
 }
@@ -456,29 +515,42 @@ function SectionCard({
   collapsible = false,
   defaultOpen = true,
   className = '',
+  headerLeading,
+  headerTitleSuffix,
+  headerActions,
 }: {
   title: string
   children: React.ReactNode
   collapsible?: boolean
   defaultOpen?: boolean
   className?: string
+  headerLeading?: React.ReactNode
+  headerTitleSuffix?: React.ReactNode
+  headerActions?: React.ReactNode
 }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
     <section className={`section-card ${className} ${open || !collapsible ? 'section-card--open' : 'section-card--closed'}`}>
       <div className="section-card-header">
-        <h3>{title}</h3>
-        {collapsible && (
-          <button
-            type="button"
-            className="collapse-icon-btn"
-            onClick={() => setOpen((prev) => !prev)}
-            aria-label={open ? `Collapse ${title}` : `Expand ${title}`}
-            title={open ? 'Collapse' : 'Expand'}
-          >
-            <span className={`collapse-chevron ${open ? 'collapse-chevron--open' : ''}`} />
-          </button>
-        )}
+        <div className="section-card-title-row">
+          {headerLeading}
+          <h3>{title}</h3>
+          {headerTitleSuffix}
+        </div>
+        <div className="section-card-actions">
+          {headerActions}
+          {collapsible && (
+            <button
+              type="button"
+              className="collapse-icon-btn"
+              onClick={() => setOpen((prev) => !prev)}
+              aria-label={open ? `Collapse ${title}` : `Expand ${title}`}
+              title={open ? 'Collapse' : 'Expand'}
+            >
+              <span className={`collapse-chevron ${open ? 'collapse-chevron--open' : ''}`} />
+            </button>
+          )}
+        </div>
       </div>
       <div className={`section-content ${!collapsible || open ? 'open' : ''}`}>
         <div className="section-content-inner">{children}</div>
@@ -569,9 +641,9 @@ function VerdictCard({ ai }: { ai: NonNullable<Analysis['aiAnalysis']> }) {
   )
 }
 
-// ─── Similar Products Scroller ────────────────────────────────────────────────
+// ─── Product Recommendation Scroller ─────────────────────────────────────────
 
-export function SimilarProductsScroller({ analysis, products }: { analysis: Analysis; products: SimilarProduct[] }) {
+export function ProductRecommendationScroller({ analysis, products }: { analysis?: Analysis | null; products: SimilarProduct[] }) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
@@ -609,7 +681,7 @@ export function SimilarProductsScroller({ analysis, products }: { analysis: Anal
     el.scrollBy({ left: direction === 'right' ? step : -step, behavior: 'smooth' })
   }
 
-  const bestIndex = getBestAlternativeIndex(analysis, products)
+  const bestIndex = analysis ? getBestAlternativeIndex(analysis, products) : -1
 
   return (
     <div className="similar-scroll-shell">
@@ -642,7 +714,11 @@ export function SimilarProductsScroller({ analysis, products }: { analysis: Anal
               <div className="similar-card-top">
                 <div className="similar-card-badges">
                   {isBest && <span className="best-alt-badge">BEST ALT</span>}
-                  <span className={getTagClassName(comparison.tag)}>{comparison.tag}</span>
+                  {analysis ? (
+                    <span className={getTagClassName(comparison.tag)}>{comparison.tag}</span>
+                  ) : (
+                    <span className="comparison-badge comparison-badge--recommended">MATCH</span>
+                  )}
                 </div>
                 {product.isPrime && <span className="prime-badge">Prime</span>}
               </div>
@@ -653,7 +729,7 @@ export function SimilarProductsScroller({ analysis, products }: { analysis: Anal
               <p className="similar-card-brand">{product.brand ?? 'Unknown brand'}</p>
               <div className="similar-card-price-row">
                 <p className="similar-card-price">{product.price ?? 'No price'}</p>
-                {comparison.priceDiff !== null && (
+                {analysis && comparison.priceDiff !== null && (
                   <span className={`price-diff ${comparison.priceDiff <= 0 ? 'price-diff--down' : 'price-diff--up'}`}>
                     {formatPriceDifference(comparison.priceDiff)}
                   </span>
@@ -673,6 +749,161 @@ export function SimilarProductsScroller({ analysis, products }: { analysis: Anal
         </button>
       )}
     </div>
+  )
+}
+
+function SmartRecommendationsSection({
+  products,
+  filter,
+  prompt,
+  imageName,
+  isLoading,
+  hasMemory,
+  message,
+  defaultOpen,
+  onFilterChange,
+  onPromptChange,
+  onImageUpload,
+  onSubmit,
+}: {
+  products: SimilarProduct[]
+  filter: RecommenderFilter
+  prompt: string
+  imageName: string
+  isLoading: boolean
+  hasMemory: boolean
+  message: string
+  defaultOpen: boolean
+  onFilterChange: (filter: RecommenderFilter) => void
+  onPromptChange: (prompt: string) => void
+  onImageUpload: (file: File | null) => void
+  onSubmit: () => void
+}) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const filterMenuRef = useRef<HTMLDivElement | null>(null)
+  const [filterOpen, setFilterOpen] = useState(false)
+
+  useEffect(() => {
+    if (!filterOpen) return
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!filterMenuRef.current?.contains(event.target as Node)) {
+        setFilterOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', closeOnOutsideClick)
+    return () => document.removeEventListener('mousedown', closeOnOutsideClick)
+  }, [filterOpen])
+
+  return (
+    <SectionCard
+      title="Recommended for You"
+      collapsible
+      defaultOpen={defaultOpen}
+      className="section-card--recommendations"
+      headerTitleSuffix={<span className="recommendation-title-star" aria-hidden="true" />}
+      headerActions={(
+        <div className="recommendation-filter-control" ref={filterMenuRef}>
+          <button
+            type="button"
+            className="recommendation-filter-main"
+            onClick={() => setFilterOpen((prev) => !prev)}
+            aria-haspopup="listbox"
+            aria-expanded={filterOpen}
+          >
+            <span className="recommendation-filter-star" aria-hidden="true" />
+            <span>Filter</span>
+          </button>
+          <button
+            type="button"
+            className="recommendation-filter-chevron-btn"
+            onClick={() => setFilterOpen((prev) => !prev)}
+            aria-label="Open recommendation filters"
+          >
+            <span className={`recommendation-filter-chevron ${filterOpen ? 'recommendation-filter-chevron--open' : ''}`} />
+          </button>
+          {filterOpen && (
+            <div className="recommendation-filter-menu" role="listbox" aria-label="Recommendation filters">
+              {RECOMMENDER_FILTERS.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  className={`recommendation-filter-option ${filter === option ? 'recommendation-filter-option--selected' : ''}`}
+                  onClick={() => {
+                    onFilterChange(option)
+                    setFilterOpen(false)
+                  }}
+                  role="option"
+                  aria-selected={filter === option}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    >
+      <div className="recommendation-carousel-wrap">
+        {isLoading ? (
+          <div className="recommendation-loading">
+            <SkeletonLine width="160px" height={110} />
+            <SkeletonLine width="160px" height={110} />
+          </div>
+        ) : message ? (
+          <div className="recommendation-empty recommendation-empty--blocked">
+            {message}
+          </div>
+        ) : products.length > 0 ? (
+          <ProductRecommendationScroller products={products} />
+        ) : (
+          <div className="recommendation-empty">
+            {hasMemory ? 'Refine your search to refresh recommendations.' : 'start scanning to get recommendations!'}
+          </div>
+        )}
+      </div>
+
+      <div className="recommendation-refine">
+        <textarea
+          className="recommendation-prompt"
+          value={prompt}
+          onChange={(e) => onPromptChange(e.target.value)}
+          placeholder="Refine your product selection..."
+          rows={2}
+        />
+        <div className="recommendation-refine-actions">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="recommendation-file-input"
+            onChange={(e) => onImageUpload(e.target.files?.[0] ?? null)}
+          />
+          <button
+            type="button"
+            className={`recommendation-image-btn ${imageName ? 'recommendation-image-btn--active' : ''}`}
+            onClick={() => fileInputRef.current?.click()}
+            title={imageName ? `Using ${imageName}` : 'Upload reference photo'}
+            aria-label="Upload reference photo"
+          >
+            <svg className="recommendation-image-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="4" y="5" width="16" height="16" rx="2.5" />
+              <circle cx="9" cy="10" r="1.6" />
+              <path d="M6.5 18.5 11 14l3 3 1.8-1.8 2.7 3.3" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="recommendation-send-btn"
+            onClick={onSubmit}
+            disabled={isLoading || (!prompt.trim() && !imageName && !hasMemory)}
+            title="Refresh recommendations"
+            aria-label="Refresh recommendations"
+          >
+            ↑
+          </button>
+        </div>
+      </div>
+    </SectionCard>
   )
 }
 
@@ -946,21 +1177,6 @@ function ResultsView({ analysis, isExiting }: { analysis: Analysis; isExiting: b
         </SectionCard>
       </div>
 
-      <div className="cascade-item cascade-delay-6">
-        <SectionCard title="Similar Products" collapsible className="section-card--similar">
-          {(analysis.similarProducts?.length ?? 0) > 0 ? (
-            <SimilarProductsScroller analysis={analysis} products={analysis.similarProducts ?? []} />
-          ) : (
-            <p className="body-text muted empty-state empty-state--compact">
-              No alternatives found
-              {analysis.productKeyword && analysis.productKeyword !== 'unknown'
-                ? ` for "${analysis.productKeyword}"`
-                : ''}
-              .
-            </p>
-          )}
-        </SectionCard>
-      </div>
     </div>
   )
 }
@@ -1193,12 +1409,63 @@ export default function App() {
   const [isClearingHistory, setIsClearingHistory] = useState(false)
   const [selectedCompareIds, setSelectedCompareIds] = useState<string[]>([])
   const [compareRecords, setCompareRecords] = useState<[ScanRecord, ScanRecord] | null>(null)
+  const [recommendationFilter, setRecommendationFilter] = useState<RecommenderFilter>('overall')
+  const [recommendationPrompt, setRecommendationPrompt] = useState('')
+  const [recommendationImageDataUrl, setRecommendationImageDataUrl] = useState('')
+  const [recommendationImageName, setRecommendationImageName] = useState('')
+  const [recommendedProducts, setRecommendedProducts] = useState<SimilarProduct[]>([])
+  const [recommendationMessage, setRecommendationMessage] = useState('')
+  const [recommendationsLoading, setRecommendationsLoading] = useState(false)
 
   const scanAbortRef = useRef<AbortController | null>(null)
   const scanIdRef = useRef<string | null>(null)
   const cancelTimerRef = useRef<number | null>(null)
   const scanDelayResolveRef = useRef<(() => void) | null>(null)
   const scanWasCancelledRef = useRef(false)
+
+  const fetchRecommendations = async (opts?: { prompt?: string; imageDataUrl?: string; history?: ScanRecord[]; filter?: RecommenderFilter }) => {
+    const historyForRequest = opts?.history ?? scanHistory
+    const promptForRequest = opts?.prompt ?? recommendationPrompt
+    const imageForRequest = opts?.imageDataUrl ?? recommendationImageDataUrl
+    const filterForRequest = opts?.filter ?? recommendationFilter
+    const fallbackProducts = getHistoryRecommendationFallback(historyForRequest, filterForRequest)
+
+    if (!historyForRequest.length && !promptForRequest.trim() && !imageForRequest) {
+      setRecommendedProducts([])
+      setRecommendationMessage('')
+      return
+    }
+
+    try {
+      setRecommendationsLoading(true)
+      setRecommendationMessage('')
+      const response = await fetch(`${API_BASE}/recommendations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Nectar-Secret': NECTAR_SECRET },
+        body: JSON.stringify({
+          history: historyForRequest,
+          filter: filterForRequest,
+          prompt: promptForRequest,
+          imageDataUrl: imageForRequest,
+        }),
+      })
+      const data: RecommendationResponse = await response.json()
+      if (data.rejected) {
+        setRecommendedProducts([])
+        setRecommendationMessage(data.message || 'Sorry, I cannot help you with that')
+        return
+      }
+      const apiProducts = Array.isArray(data.products) ? data.products.slice(0, 5) : []
+      setRecommendedProducts(apiProducts.length ? apiProducts : fallbackProducts)
+      setRecommendationMessage('')
+    } catch (err) {
+      console.error(err)
+      setRecommendedProducts(fallbackProducts)
+      setRecommendationMessage('')
+    } finally {
+      setRecommendationsLoading(false)
+    }
+  }
 
   useEffect(() => {
     detectActiveUrl()
@@ -1211,6 +1478,10 @@ export default function App() {
       scanAbortRef.current?.abort()
     }
   }, [])
+
+  useEffect(() => {
+    fetchRecommendations({ history: scanHistory, filter: recommendationFilter })
+  }, [recommendationFilter, scanHistory.length])
 
   // ── URL Detection ──
 
@@ -1356,7 +1627,13 @@ export default function App() {
       const existingHistory = await loadScanHistory()
       const nextHistory = [record, ...existingHistory].slice(0, MAX_SCAN_HISTORY)
       await storageSet({ [SCAN_HISTORY_KEY]: nextHistory })
+      setRecommendationPrompt('')
+      setRecommendationImageDataUrl('')
+      setRecommendationImageName('')
+      setRecommendationMessage('')
       setScanHistory(nextHistory)
+      setRecommendedProducts(getHistoryRecommendationFallback(nextHistory, recommendationFilter))
+      fetchRecommendations({ history: nextHistory, prompt: '', imageDataUrl: '', filter: recommendationFilter })
     } catch (err) {
       if (scanWasCancelledRef.current || (err instanceof DOMException && err.name === 'AbortError')) {
         setBackendStatus('Scan has been cancelled successfully')
@@ -1467,6 +1744,27 @@ export default function App() {
     }
   }
 
+  const handleRecommendationImageUpload = async (file: File | null) => {
+    if (!file) {
+      setRecommendationImageDataUrl('')
+      setRecommendationImageName('')
+      return
+    }
+    try {
+      const dataUrl = await fileToDataUrl(file)
+      setRecommendationImageDataUrl(dataUrl)
+      setRecommendationImageName(file.name)
+    } catch {
+      setRecommendationImageDataUrl('')
+      setRecommendationImageName('')
+      setBackendStatus('Could not read the selected image')
+    }
+  }
+
+  const handleRecommendationSubmit = () => {
+    fetchRecommendations()
+  }
+
   // ── Routing ──
 
   if (view === 'compare' && compareRecords) {
@@ -1482,6 +1780,27 @@ export default function App() {
       </main>
     )
   }
+
+  const recommendationsSection = (
+    <SmartRecommendationsSection
+      key={`recommendations-${loading ? 'loading' : hasScanned ? 'post-scan' : 'launch'}`}
+      products={recommendedProducts}
+      filter={recommendationFilter}
+      prompt={recommendationPrompt}
+      imageName={recommendationImageName}
+      isLoading={recommendationsLoading}
+      hasMemory={scanHistory.length > 0}
+      message={recommendationMessage}
+      defaultOpen={!loading && !hasScanned}
+      onFilterChange={setRecommendationFilter}
+      onPromptChange={(nextPrompt) => {
+        setRecommendationPrompt(nextPrompt)
+        if (recommendationMessage) setRecommendationMessage('')
+      }}
+      onImageUpload={handleRecommendationImageUpload}
+      onSubmit={handleRecommendationSubmit}
+    />
+  )
 
   const historySection = (
     <ScanHistorySection
@@ -1557,13 +1876,19 @@ export default function App() {
             </SectionCard>
           </div>
 
-          {!hasScanned && <div className="cascade-item cascade-delay-2">{historySection}</div>}
+          {!hasScanned && (
+            <>
+              <div className="cascade-item cascade-delay-2">{recommendationsSection}</div>
+              <div className="cascade-item cascade-delay-3">{historySection}</div>
+            </>
+          )}
           {loading && <SkeletonResults />}
 
           {!loading && hasScanned && analysis && (
             <>
               <ResultsView analysis={analysis} isExiting={isExitingResults} />
-              <div className="cascade-item cascade-delay-7">{historySection}</div>
+              <div className="cascade-item cascade-delay-7">{recommendationsSection}</div>
+              <div className="cascade-item cascade-delay-8">{historySection}</div>
             </>
           )}
         </div>

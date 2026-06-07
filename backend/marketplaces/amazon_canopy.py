@@ -320,26 +320,26 @@ class AmazonCanopyAdapter(MarketplaceAdapter):
     
     def test_canopy_connection(self):
         """Test if Canopy API is reachable and key works"""
-    test_query = """
-    query {
-      __typename
-    }
-    """
-    
-    session = _make_session()
-    try:
-        response = session.post(
-            CANOPY_URL,
-            json={"query": test_query},
-            headers=HEADERS,
-            timeout=(5, 10)
-        )
-        print(f"Canopy test response: {response.status_code}")
-        if response.status_code == 200:
-            print("✅ Canopy API connection successful")
-        else:
-            print(f"❌ Canopy API error: {response.status_code} - {response.text}")
-    except Exception as e:
-        print(f"❌ Cannot reach Canopy API: {e}")
-    finally:
-        session.close()
+        test_query = """
+        query {
+          __typename
+        }
+        """
+
+        session = _make_session()
+        try:
+            response = session.post(
+                CANOPY_URL,
+                json={"query": test_query},
+                headers=HEADERS,
+                timeout=(5, 10)
+            )
+            print(f"Canopy test response: {response.status_code}")
+            if response.status_code == 200:
+                print("Canopy API connection successful")
+            else:
+                print(f"Canopy API error: {response.status_code} - {response.text}")
+        except Exception as e:
+            print(f"Cannot reach Canopy API: {e}")
+        finally:
+            session.close()

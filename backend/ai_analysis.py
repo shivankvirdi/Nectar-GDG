@@ -2,6 +2,8 @@
 import os
 import json
 import time
+import base64
+import re
 
 from dotenv import load_dotenv
 from google import genai
@@ -15,10 +17,178 @@ if not GEMINI_API_KEY:
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
+UNRELATED_RECOMMENDATION_MESSAGE = "Sorry, I cannot help you with that"
+
+_SHOPPING_GUARD_TERMS = {
+    "amazon", "ebay", "buy", "deal", "deals", "price", "prices", "cheap", "budget",
+    "expensive", "affordable", "recommend", "recommendation", "alternative", "compare",
+    "similar", "brand", "product", "products", "quality", "durable", "durability",
+    "rating", "reviews", "under", "over", "headphones", "earbuds", "speaker", "laptop",
+    "keyboard", "mouse", "monitor", "camera", "charger", "case", "watch", "phone",
+    "tablet", "vacuum", "air fryer", "coffee", "backpack", "bottle",
+}
+
 
 def _is_quota_exhausted(error: Exception) -> bool:
     message = str(error).upper()
     return "RESOURCE_EXHAUSTED" in message or "429" in message or "QUOTA" in message
+
+
+def _looks_like_shopping_prompt(prompt: str, recent_items: list[dict]) -> bool:
+    if not prompt:
+        return True
+
+    words = set(re.findall(r"[a-z0-9]+", prompt.lower()))
+    if words & _SHOPPING_GUARD_TERMS:
+        return True
+
+    recent_text = " ".join(
+        str(item.get(key) or "")
+        for item in recent_items
+        for key in ("title", "brand", "productKeyword")
+    ).lower()
+    return any(word and len(word) >= 4 and word in recent_text for word in words)
+
+
+def build_recommendation_query(
+    history: list[dict],
+    filter_mode: str = "overall",
+    refinement_prompt: str = "",
+    image_data_url: str = "",
+) -> dict:
+    """Use Gemini to turn scan memory and user refinements into a commerce search."""
+    filter_mode = filter_mode if filter_mode in ("overall", "durability", "price", "quality") else "overall"
+    refinement_prompt = (refinement_prompt or "").strip()
+
+    recent_items = []
+    for item in history[:8]:
+        analysis = item.get("analysis") if isinstance(item, dict) else {}
+        if not isinstance(analysis, dict):
+            continue
+        recent_items.append({
+            "title": analysis.get("title"),
+            "brand": analysis.get("brand"),
+            "productKeyword": analysis.get("productKeyword"),
+            "price": analysis.get("price"),
+            "rating": analysis.get("rating"),
+            "overallScore": analysis.get("overallScore"),
+        })
+
+    fallback_term = "popular products"
+    for item in recent_items:
+        fallback_term = (
+            item.get("productKeyword")
+            or item.get("title")
+            or fallback_term
+        )
+        if fallback_term and fallback_term != "unknown":
+            break
+
+    if not image_data_url and not _looks_like_shopping_prompt(refinement_prompt, recent_items):
+        return {
+            "rejected": True,
+            "message": UNRELATED_RECOMMENDATION_MESSAGE,
+            "query": "",
+            "reason": "Prompt is outside Nectar's product recommendation scope.",
+        }
+
+    prompt = f"""You are Nectar's smart shopping recommender.
+
+Return JSON only.
+
+User scan memory:
+{json.dumps(recent_items, ensure_ascii=False)}
+
+Current filter: {filter_mode}
+User refinement: {refinement_prompt or "none"}
+
+Task:
+- First decide if the user request is in scope.
+- In scope means finding, refining, comparing, or recommending purchasable products using scan memory, filter, prompt, or uploaded product photo.
+- Out of scope includes general Q&A, coding, homework, jokes, politics, medical/legal/financial advice, recipes, weather, personal questions, or anything not about product recommendations.
+- If out of scope, return allowed=false, query="", reason="{UNRELATED_RECOMMENDATION_MESSAGE}".
+- Never answer the user's unrelated question.
+- Infer what product category the user is currently interested in.
+- If a photo is included, use its visible product style/brand/category as a refinement.
+- Create one concise marketplace search query that should return 5 products the user would like.
+- Tune the query for the filter:
+  overall = balanced value, reviews, trust
+  durability = reliable, long-lasting, sturdy, reputable
+  price = budget, deal, affordable, best value
+  quality = premium, top rated, high quality
+- Prefer concrete categories like "noise cancelling headphones" over vague terms.
+
+Schema:
+{{"allowed":true,"query":"string","reason":"string"}}
+"""
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "allowed": {"type": "boolean"},
+            "query": {"type": "string"},
+            "reason": {"type": "string"},
+        },
+        "required": ["allowed", "query", "reason"],
+    }
+
+    try:
+        contents: list = [prompt]
+        if image_data_url:
+            match = re.match(r"^data:(image/[^;]+);base64,(.+)$", image_data_url)
+            if match:
+                mime_type, raw_data = match.groups()
+                contents.append(types.Part.from_bytes(
+                    data=base64.b64decode(raw_data),
+                    mime_type=mime_type,
+                ))
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-lite",
+            contents=contents,
+            config=types.GenerateContentConfig(
+                temperature=0.35,
+                response_mime_type="application/json",
+                response_json_schema=schema,
+            ),
+        )
+
+        result = json.loads((response.text or "").strip())
+        if result.get("allowed") is False:
+            return {
+                "rejected": True,
+                "message": UNRELATED_RECOMMENDATION_MESSAGE,
+                "query": "",
+                "reason": UNRELATED_RECOMMENDATION_MESSAGE,
+            }
+
+        query = str(result.get("query") or "").strip()
+        if not query:
+            query = fallback_term
+        return {
+            "query": query[:120],
+            "reason": str(result.get("reason") or "Based on recent scan history.").strip()[:220],
+        }
+    except Exception as e:
+        print(f"[Recommendations] Gemini query build failed: {e}")
+        if refinement_prompt and not image_data_url and not _looks_like_shopping_prompt(refinement_prompt, recent_items):
+            return {
+                "rejected": True,
+                "message": UNRELATED_RECOMMENDATION_MESSAGE,
+                "query": "",
+                "reason": "Prompt is outside Nectar's product recommendation scope.",
+            }
+        suffix_by_filter = {
+            "overall": "best value",
+            "durability": "durable reliable",
+            "price": "budget deal",
+            "quality": "top rated premium",
+        }
+        prompt_term = refinement_prompt if refinement_prompt else fallback_term
+        return {
+            "query": f"{prompt_term} {suffix_by_filter[filter_mode]}".strip()[:120],
+            "reason": "Using scan history and the selected filter.",
+        }
 
 
 def get_ai_verdict(
