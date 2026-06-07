@@ -25,21 +25,16 @@ source .venv/bin/activate # Mac/Linux
 pip install -r requirements.txt
 ```
 ## Frontend Setup
-Install Node.js (http://nodejs.org/en/download) and add to PATH.
+Install Node.js (http://nodejs.org/en/download) and add to PATH. Then install electron.
 ```powershell
 cd frontend
 npm install
+npm install electron --save-dev
 ```
 ### Build extension
 ```powershell
 npm run build
 ```
-## Load Extension
-1. Go to chrome://extensions/
-2. Enable "Developer mode"
-3. Click load unpacked
-4. Select Nectar-GDG/frontend/dist
-
 ## Deploying Backend Server
 ### Use hosted backend (Requires a secret password): 
 The backend is already deployed on Google Cloud!
