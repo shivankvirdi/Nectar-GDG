@@ -14,7 +14,6 @@ E-commerce lacks trustworthy product intelligence, with consumers losing billion
 - Scan history and recommendation memory
 - Amazon and eBay support
 
-# Nectar Project Overview
 ## Technologies Used
 - Frontend: React, TypeScript, Vite, CSS
 - Desktop Shell: Electron
