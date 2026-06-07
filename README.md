@@ -69,7 +69,10 @@ Analysis Pipeline
 ```
 
 # How to Use
-## Clone Repository:
+## Clone Repository
+Requirements:
+- Python 3.11+
+- Node.js 20+
 ```powershell
 git clone https://github.com/shivankvirdi/Nectar-GDG.git
 cd Nectar-GDG
@@ -85,9 +88,6 @@ python -m venv .venv
 source .venv/bin/activate # Mac/Linux
 ```
 ### Install dependencies
-Requirements:
-- Python 3.11+
-- Node.js 20+
 ```powershell
 pip install -r requirements.txt
 ```
