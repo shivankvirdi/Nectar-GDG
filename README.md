@@ -38,7 +38,7 @@ npm run build
 ### Use hosted backend (Requires a secret password): 
 The backend is already deployed on Google Cloud!
 1. Create file frontend/.env.production
-2. Set VITE_API_URL=https://nectar-gdg-93066440894.us-west1.run.app and VITE_NECTAR_SECRET to the password
+2. Set VITE_API_URL=https://nectar-gdg-93066440894.us-west1.run.app and VITE_NECTAR_SECRET to the password\
    (contact maintainers for access)
 4. Run electron:
 ```
@@ -47,7 +47,7 @@ npm run electron:start
 ```
 
 ### Deploy locally
-1. Create .env in ROOT directory and add keys ('Nectar-GDG/.env')
+1. Create .env in ROOT directory and add keys ('Nectar-GDG/.env')\
 https://www.canopyapi.co/  
 https://aistudio.google.com/app/api-keys  
 https://console.cloud.google.com/marketplace/product/google/places.googleapis.com
