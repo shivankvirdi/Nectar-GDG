@@ -60,7 +60,7 @@ GOOGLE_PLACES_API_KEY=your_api_key_here
 ```powershell
 VITE_API_URL=http://127.0.0.1:8000
 ```
-3. Rebuild extension:
+3. Rebuild frontend:
 ```powershell
 cd frontend
 npm run build
