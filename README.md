@@ -48,7 +48,7 @@ npm run electron:start
 
 ### Deploy locally
 1. Create .env in ROOT directory and add keys ('Nectar-GDG/.env')\
-https://www.canopyapi.co/ (GraphQL API)
+https://www.canopyapi.co/ (GraphQL API)\
 https://aistudio.google.com/app/api-keys  
 https://console.cloud.google.com/marketplace/product/google/places.googleapis.com
 ```
