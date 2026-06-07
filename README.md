@@ -84,6 +84,6 @@ Verify:
 - GEMINI_API_KEY
 - GOOGLE_PLACES_API_KEY
 ### CORS or connection issues
-##### Verify VITE_API_URL matches your backend URL.
+#### Verify VITE_API_URL matches your backend URL.
 ---
 Project led by Shivank Virdi and co-developed with Jaycob Pakingan, Iyanna Arches, Aanya Agarwal, & Kaylana Chuan. We hope you enjoy using our application!
