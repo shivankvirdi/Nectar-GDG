@@ -57,6 +57,18 @@ Analysis Pipeline
   +--> Google Places API: brand reputation context
   +--> Gemini API: verdicts, explanations, smart recommendations
 ```
+## Technologies Used
+- Frontend: React, TypeScript, Vite, CSS
+- Desktop Shell: Electron
+- Backend: FastAPI, Python
+- AI: Google Gemini
+- NLP/Scoring: NLTK --> VADER, custom review-integrity logic
+- Marketplace Data: Canopy API, ScraperAPI
+- Reputation Data: Google Places API
+- Storage: Browser localStorage for scan history and recommendation memory
+- Deployment: Docker, Google Cloud Run, Cloud Build
+
+# How to Use
 ## Clone Repository:
 ```powershell
 git clone https://github.com/shivankvirdi/Nectar-GDG.git
