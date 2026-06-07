@@ -3,7 +3,7 @@
 https://github.com/user-attachments/assets/503b7d96-bcd8-418d-aa47-0589f6e007b4
 
 
-E-commerce lacks trustworthy product intelligence, with consumers losing billions to misleading/inflated reviews and poor purchasing decisions every year. That's why we built Nectar, a product-analyzer Chrome extension that builds this needed trust layer, comparing products and providing in-depth insights on price, review integrity, quality, brand reputation, and similar alternatives. Nectar recommends the best option to help reduce shopper stress and support more informed purchasing decisions.
+E-commerce lacks trustworthy product intelligence, with consumers losing billions to misleading/inflated reviews and poor purchasing decisions every year. That's why we built Nectar, a product-analyzer Electron desktop app that builds this needed trust layer by comparing products and providing in-depth insights on price, review integrity, quality, brand reputation, and similar alternatives. Nectar recommends the best option to help reduce shopper stress and support more informed purchasing decisions.
 
 ## Clone Repository:
 ```powershell
@@ -25,13 +25,12 @@ source .venv/bin/activate # Mac/Linux
 pip install -r requirements.txt
 ```
 ## Frontend Setup
-Install Node.js (http://nodejs.org/en/download) and add to PATH. Then install electron.
+Install Node.js (http://nodejs.org/en/download) and add to PATH
 ```powershell
 cd frontend
 npm install
-npm install electron --save-dev
 ```
-### Build extension
+### Build Frontend Assets
 ```powershell
 npm run build
 ```
@@ -39,7 +38,7 @@ npm run build
 ### Use hosted backend (Requires a secret password): 
 The backend is already deployed on Google Cloud!
 1. Create file frontend/.env.production
-2. Set VITE_API_URL=https://nectar-gdg-93066440894.us-west1.run.app and VITE_NECTAR_SECRET to the password
+2. Set VITE_API_URL=https://nectar-gdg-93066440894.us-west1.run.app and VITE_NECTAR_SECRET to the password (contact maintainers for access)
 3. Run electron:
 ```
 cd frontend
@@ -47,7 +46,7 @@ npm run electron:start
 ```
 
 ### Deploy locally
-1. Create .env in ROOT directory and add keys
+1. Create .env in ROOT directory and add keys ('Nectar-GDG/.env')
 https://www.canopyapi.co/  
 https://aistudio.google.com/app/api-keys  
 https://console.cloud.google.com/marketplace/product/google/places.googleapis.com
@@ -72,5 +71,20 @@ npm run electron:start
 #Terminal 2 in ROOT
 uvicorn backend.main:app --reload
 ```
+## Troubleshooting
+
+### Electron won't start
+Delete node_modules and reinstall:
+
+npm install
+
+### Backend fails to start
+Verify:
+- CANOPY_API_KEY
+- GEMINI_API_KEY
+- GOOGLE_PLACES_API_KEY
+
+### CORS or connection issues
+Verify VITE_API_URL matches your backend URL.
 ---
 Project led by Shivank Virdi and co-developed with Jaycob Pakingan, Iyanna Arches, Aanya Agarwal, & Kaylana Chuan. We hope you enjoy using our application!
