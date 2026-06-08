@@ -9,12 +9,12 @@ const {
 let mainWindow
 
 const ICON_PATH = path.join(__dirname, 'dist', 'icons', 'icon128.png')
-const DEFAULT_WIDTH = 420
-const DEFAULT_HEIGHT = 390
+const DEFAULT_WIDTH = 375
+const DEFAULT_HEIGHT = 420
 const MIN_WINDOW_HEIGHT = DEFAULT_HEIGHT
-const MAX_WINDOW_HEIGHT = DEFAULT_HEIGHT * 2
-const AUTO_RESIZE_FRAME_MS = 16
-const AUTO_RESIZE_EASE = 0.28
+const MAX_WINDOW_HEIGHT = DEFAULT_HEIGHT * 1.75
+const AUTO_RESIZE_FRAME_MS = 8
+const AUTO_RESIZE_EASE = 0.40
 
 let autoResizeTimer = null
 let autoResizeTargetHeight = DEFAULT_HEIGHT
@@ -28,12 +28,11 @@ function stopAutoResizeAnimation() {
   autoResizeTimer = null
 }
 
-function setPinnedWindowHeight(height) {
+function setWindowHeight(height) {
   if (!mainWindow) return
-  const { width: screenWidth } = screen.getPrimaryDisplay().workAreaSize
-  const [, y] = mainWindow.getPosition()
+  const [x, y] = mainWindow.getPosition()
   mainWindow.setBounds({
-    x: screenWidth - DEFAULT_WIDTH - 24,
+    x,
     y,
     width: DEFAULT_WIDTH,
     height,
@@ -49,7 +48,6 @@ function animateWindowToContentHeight(contentHeight) {
   autoResizeTargetHeight = targetHeight
 
   if (Math.abs(curH - targetHeight) <= 2 && curW === DEFAULT_WIDTH) {
-    setPinnedWindowHeight(targetHeight)
     return
   }
 
@@ -65,14 +63,14 @@ function animateWindowToContentHeight(contentHeight) {
     const diff = autoResizeTargetHeight - currentHeight
     const nextHeight = Math.round(currentHeight + diff * AUTO_RESIZE_EASE)
 
-    setPinnedWindowHeight(nextHeight)
+    setWindowHeight(nextHeight)
 
     if (Math.abs(diff) > 1) {
       autoResizeTimer = setTimeout(tick, AUTO_RESIZE_FRAME_MS)
       return
     }
 
-    setPinnedWindowHeight(autoResizeTargetHeight)
+    setWindowHeight(autoResizeTargetHeight)
     autoResizeTimer = null
   }
 
@@ -94,7 +92,7 @@ function createWindow() {
     frame: false,
     transparent: process.platform==='darwin',        
     alwaysOnTop: true,
-    resizable:   true,
+    resizable:   false,
     maximizable: false,
     hasShadow:   false,         // we draw our own shadow via CSS box-shadow
     x: screenWidth - DEFAULT_WIDTH - 24,
@@ -164,12 +162,9 @@ ipcMain.handle('fit-to-content', async (_event, { contentHeight }) => {
 ipcMain.handle('resize-window', async (_event, { height }) => {
   if (!mainWindow) return
   stopAutoResizeAnimation()
-  const { width: screenWidth } = screen.getPrimaryDisplay().workAreaSize
   const targetWidth  = DEFAULT_WIDTH
   const targetHeight = clampWindowHeight(height || DEFAULT_HEIGHT)
   mainWindow.setSize(targetWidth, targetHeight, true)
-  const [, y] = mainWindow.getPosition()
-  mainWindow.setPosition(screenWidth - targetWidth - 24, y, true)
 })
 
 ipcMain.handle('move-window', async (_event, { deltaX, deltaY }) => {

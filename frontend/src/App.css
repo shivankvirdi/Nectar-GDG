@@ -34,8 +34,15 @@ button:focus, button:focus-visible {
 }
 
 /* ── Draggable header region ─────────────────────────────────── */
-.top-header               { -webkit-app-region: drag; }
-.top-header *             { -webkit-app-region: no-drag; }
+.top-header,
+.top-header .brand-row,
+.top-header .brand-block,
+.top-header .brand-logo,
+.top-header h1,
+.top-header p             { -webkit-app-region: drag; }
+.top-header button,
+.window-controls,
+.window-controls *        { -webkit-app-region: no-drag; }
 
 /* ── The glass panel ─────────────────────────────────────────────
    Semi-transparent + strong blur → real frosted-glass look.
@@ -685,7 +692,7 @@ button:focus, button:focus-visible {
 
 /* ── Verdict card ────────────────────────────────────────────── */
 .verdict-card { padding: 14px !important; }
-.verdict-card-header { display: flex; align-items: center; margin-bottom: 6px; }
+.verdict-card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
 .verdict-card-title { margin: 0; }
 
 .verdict-card-panel { margin-bottom: 12px; padding: 10px; border-radius: var(--radius-md); border: 1px solid rgba(243, 223, 207, 0.55); background: rgba(255, 252, 248, 0.72); backdrop-filter: blur(8px); }

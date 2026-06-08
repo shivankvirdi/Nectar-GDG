@@ -678,27 +678,41 @@ function ScoreExplainer({ metric, analysis }: { metric: string; analysis: Analys
 
 function VerdictCard({ ai }: { ai: NonNullable<Analysis['aiAnalysis']> }) {
   const rec = ai.recommendation ?? 'COMPARE'
+  const [open, setOpen] = useState(true)
   return (
-    <section className="section-card verdict-card results-animate">
+    <section className={`section-card verdict-card results-animate ${open ? 'section-card--open' : 'section-card--closed'}`}>
       <div className="verdict-card-header">
         <h3 className="verdict-card-title">AI Analysis</h3>
+        <button
+          type="button"
+          className="collapse-icon-btn"
+          onClick={() => setOpen((prev) => !prev)}
+          aria-label={open ? 'Collapse AI Analysis' : 'Expand AI Analysis'}
+          title={open ? 'Collapse' : 'Expand'}
+        >
+          <span className={`collapse-chevron ${open ? 'collapse-chevron--open' : ''}`} />
+        </button>
       </div>
-      <div className={`verdict-card-panel verdict-card-panel--${rec.toLowerCase()}`}>
-        <p className="verdict-panel-label">Overall Take</p>
-        <p className="verdict-summary">{ai.verdict}</p>
-      </div>
-      <div className="verdict-columns">
-        <div className="verdict-column verdict-column--pros">
-          <p className="verdict-list-label verdict-list-label--pros">PROS</p>
-          {(ai.pros ?? []).map((pro, i) => (
-            <p key={i} className="verdict-pill verdict-pill--pros">{pro}</p>
-          ))}
-        </div>
-        <div className="verdict-column verdict-column--cons">
-          <p className="verdict-list-label verdict-list-label--cons">CONS</p>
-          {(ai.cons ?? []).map((con, i) => (
-            <p key={i} className="verdict-pill verdict-pill--cons">{con}</p>
-          ))}
+      <div className={`section-content ${open ? 'open' : ''}`}>
+        <div className="section-content-inner">
+          <div className={`verdict-card-panel verdict-card-panel--${rec.toLowerCase()}`}>
+            <p className="verdict-panel-label">Overall Take</p>
+            <p className="verdict-summary">{ai.verdict}</p>
+          </div>
+          <div className="verdict-columns">
+            <div className="verdict-column verdict-column--pros">
+              <p className="verdict-list-label verdict-list-label--pros">PROS</p>
+              {(ai.pros ?? []).map((pro, i) => (
+                <p key={i} className="verdict-pill verdict-pill--pros">{pro}</p>
+              ))}
+            </div>
+            <div className="verdict-column verdict-column--cons">
+              <p className="verdict-list-label verdict-list-label--cons">CONS</p>
+              {(ai.cons ?? []).map((con, i) => (
+                <p key={i} className="verdict-pill verdict-pill--cons">{con}</p>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </section>
