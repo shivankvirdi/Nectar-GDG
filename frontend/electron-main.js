@@ -109,7 +109,6 @@ function createWindow() {
   })
 
   if (isMac) {
-    mainWindow.setContentProtection(true)
     mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
     mainWindow.setAlwaysOnTop(true, 'floating')
     // 'under-window' vibrancy gives native macOS frosted-glass
