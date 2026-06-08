@@ -64,8 +64,8 @@ html, body, #root {
   padding: 0px;
   width:  100%;
   min-width: 340px;
-  height: auto;
-  overflow-x: hidden;
+  height: 100%;
+  overflow: hidden;
   background: transparent !important;
   color: var(--text);
   font-family: var(--font-body);

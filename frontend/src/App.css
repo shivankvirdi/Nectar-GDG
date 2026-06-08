@@ -25,7 +25,8 @@ button:focus, button:focus-visible {
 ──────────────────────────────────────────────────────────────── */
 .app-shell {
   width: 100%;
-  height: auto;
+  height: 100vh;
+  min-height: 100vh;
   background: transparent;
   -webkit-app-region: no-drag;
   display: flex;
@@ -45,10 +46,12 @@ button:focus, button:focus-visible {
   display: flex;
   flex-direction: column;
 
-  /* Height driven entirely by content — Electron window will match via fit-to-content IPC */
-  height: fit-content;
-  min-height: 160px;
-  /* NO max-height here: the main process caps at 90vh */
+  /* Height follows the Electron viewport; the main process fits that viewport to content. */
+  height: 100%;
+  min-height: 100%;
+  max-height: 100vh;
+  overflow: hidden;
+  /* The main process caps the viewport at twice the launch height. */
 
   position: relative;    /* needed so border-radius clips children */
 
@@ -574,11 +577,6 @@ button:focus, button:focus-visible {
 .similar-scroll-shell .similar-scroll-arrow:hover,
 .similar-scroll-shell:hover .similar-scroll-arrow:hover { opacity: 1; background: rgba(255, 246, 239, 0.92); border-color: rgba(249, 115, 22, 0.32); color: var(--brand-deep); transform: translateY(-50%) scale(1.06); }
 .similar-scroll-arrow:active { opacity: 0.84; transform: translateY(-50%) scale(0.96); }
-
-.similar-fade-left, .similar-fade-right { position: absolute; top: 0; bottom: 0; pointer-events: none; z-index: 2; opacity: 0; transition: opacity 0.36s ease; }
-.similar-fade-left  { left: 0; width: 20px; background: linear-gradient(to right, rgba(255,255,255,0.8), transparent); }
-.similar-fade-right { right: 0; width: 50px; background: linear-gradient(to left, rgba(255,255,255,0.8), transparent); }
-.similar-fade-left--visible, .similar-fade-right--visible { opacity: 1; }
 
 .similar-card {
   min-width: 170px;

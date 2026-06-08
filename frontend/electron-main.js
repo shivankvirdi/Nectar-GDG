@@ -11,22 +11,91 @@ let mainWindow
 const ICON_PATH = path.join(__dirname, 'dist', 'icons', 'icon128.png')
 const DEFAULT_WIDTH = 420
 const DEFAULT_HEIGHT = 390
-const WINDOW_PADDING = 14
+const MIN_WINDOW_HEIGHT = DEFAULT_HEIGHT
+const MAX_WINDOW_HEIGHT = DEFAULT_HEIGHT * 2
+const AUTO_RESIZE_FRAME_MS = 16
+const AUTO_RESIZE_EASE = 0.28
+
+let autoResizeTimer = null
+let autoResizeTargetHeight = DEFAULT_HEIGHT
+
+function clampWindowHeight(height) {
+  return Math.min(MAX_WINDOW_HEIGHT, Math.max(MIN_WINDOW_HEIGHT, Math.ceil(height)))
+}
+
+function stopAutoResizeAnimation() {
+  if (autoResizeTimer) clearTimeout(autoResizeTimer)
+  autoResizeTimer = null
+}
+
+function setPinnedWindowHeight(height) {
+  if (!mainWindow) return
+  const { width: screenWidth } = screen.getPrimaryDisplay().workAreaSize
+  const [, y] = mainWindow.getPosition()
+  mainWindow.setBounds({
+    x: screenWidth - DEFAULT_WIDTH - 24,
+    y,
+    width: DEFAULT_WIDTH,
+    height,
+  })
+}
+
+function animateWindowToContentHeight(contentHeight) {
+  if (!mainWindow) return
+
+  const targetHeight = clampWindowHeight(contentHeight)
+  const [curW, curH] = mainWindow.getSize()
+
+  autoResizeTargetHeight = targetHeight
+
+  if (Math.abs(curH - targetHeight) <= 2 && curW === DEFAULT_WIDTH) {
+    setPinnedWindowHeight(targetHeight)
+    return
+  }
+
+  if (autoResizeTimer) return
+
+  const tick = () => {
+    if (!mainWindow) {
+      stopAutoResizeAnimation()
+      return
+    }
+
+    const [, currentHeight] = mainWindow.getSize()
+    const diff = autoResizeTargetHeight - currentHeight
+    const nextHeight = Math.round(currentHeight + diff * AUTO_RESIZE_EASE)
+
+    setPinnedWindowHeight(nextHeight)
+
+    if (Math.abs(diff) > 1) {
+      autoResizeTimer = setTimeout(tick, AUTO_RESIZE_FRAME_MS)
+      return
+    }
+
+    setPinnedWindowHeight(autoResizeTargetHeight)
+    autoResizeTimer = null
+  }
+
+  tick()
+}
 
 function createWindow() {
-  const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize
+  const { width: screenWidth } = screen.getPrimaryDisplay().workAreaSize
   const isMac = process.platform === 'darwin'
   const isWin = process.platform === 'win32'
 
   mainWindow = new BrowserWindow({
     width:  DEFAULT_WIDTH,
     height: DEFAULT_HEIGHT,
-    minWidth:  340,
-    minHeight: 100,
+    minWidth:  DEFAULT_WIDTH,
+    maxWidth:  DEFAULT_WIDTH,
+    minHeight: MIN_WINDOW_HEIGHT,
+    maxHeight: MAX_WINDOW_HEIGHT,
     frame: false,
     transparent: process.platform==='darwin',        
     alwaysOnTop: true,
-    resizable:   false,
+    resizable:   true,
+    maximizable: false,
     hasShadow:   false,         // we draw our own shadow via CSS box-shadow
     x: screenWidth - DEFAULT_WIDTH - 24,
     y: 40,
@@ -63,7 +132,10 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'))
   }
 
-  mainWindow.on('closed', () => { mainWindow = null })
+  mainWindow.on('closed', () => {
+    stopAutoResizeAnimation()
+    mainWindow = null
+  })
 }
 
 app.whenReady().then(() => {
@@ -82,30 +154,19 @@ ipcMain.handle('minimize-window', () => { if (mainWindow) mainWindow.minimize() 
 
 // ── Auto-fit: renderer reports content height, we resize the window ──────────
 // Called from App.tsx after every render that might change height.
-ipcMain.handle('fit-to-content', async (_event, { contentHeight, contentWidth }) => {
+ipcMain.handle('fit-to-content', async (_event, { contentHeight }) => {
   if (!mainWindow) return
-  const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize
+  animateWindowToContentHeight(contentHeight)
 
-  // Clamp: never smaller than 200px, never bigger than 90% of screen height
-  const maxH   = Math.floor(screenHeight * 0.90)
-  const newH   = Math.min(maxH, Math.max(200, Math.ceil(contentHeight) + WINDOW_PADDING))
-  const newW = Math.ceil(contentWidth)
-  const [curW, curH] = mainWindow.getSize()
-
-  if (Math.abs(curH - newH) > 2) {           // skip trivial sub-pixel changes
-    mainWindow.setSize(newW, newH, false)     // no animation — instant snap
-    // Re-pin to right edge in case width changed
-    const [, y] = mainWindow.getPosition()
-    mainWindow.setPosition(screenWidth - newW - 24, y)
-  }
 })
 
 // ── Manual resize (e.g. when content area scrolls) ────────────────────────────
-ipcMain.handle('resize-window', async (_event, { height, width }) => {
+ipcMain.handle('resize-window', async (_event, { height }) => {
   if (!mainWindow) return
+  stopAutoResizeAnimation()
   const { width: screenWidth } = screen.getPrimaryDisplay().workAreaSize
-  const targetWidth  = width  || DEFAULT_WIDTH
-  const targetHeight = height || DEFAULT_HEIGHT
+  const targetWidth  = DEFAULT_WIDTH
+  const targetHeight = clampWindowHeight(height || DEFAULT_HEIGHT)
   mainWindow.setSize(targetWidth, targetHeight, true)
   const [, y] = mainWindow.getPosition()
   mainWindow.setPosition(screenWidth - targetWidth - 24, y, true)

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import './App.css'
 import PremiumScreen from './PremiumScreen'
 import logoSrc from '/icons/logo.png'
@@ -9,6 +10,7 @@ declare global {
   interface Window {
     electronAPI?: {
       getActiveTabUrl: () => Promise<string | null>
+      fitToContent: (opts: { contentHeight: number }) => Promise<void>
       resizeWindow: (opts: { width?: number; height: number }) => Promise<void>
       minimizeWindow: () => void
       closeWindow: () => void
@@ -120,6 +122,68 @@ type Analysis = {
 type Recommendation = NonNullable<NonNullable<Analysis['aiAnalysis']>['recommendation']>
 type RecommenderFilter = typeof RECOMMENDER_FILTERS[number]
 
+function AutoSizingWindow({ children }: { children: ReactNode }) {
+  const panelRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const panel = panelRef.current
+    const fitToContent = window.electronAPI?.fitToContent
+    if (!panel || !fitToContent) return
+
+    let frame = 0
+    let lastMeasuredHeight = 0
+
+    const measureAndFit = () => {
+      window.cancelAnimationFrame(frame)
+      frame = window.requestAnimationFrame(() => {
+        const header = panel.querySelector<HTMLElement>('.top-header')
+        const content = panel.querySelector<HTMLElement>('.content')
+        const panelStyles = window.getComputedStyle(panel)
+        const borderHeight =
+          parseFloat(panelStyles.borderTopWidth || '0') +
+          parseFloat(panelStyles.borderBottomWidth || '0')
+        const headerHeight = header?.getBoundingClientRect().height ?? 0
+        const contentHeight = content?.scrollHeight ?? panel.scrollHeight
+        const nextHeight = Math.ceil(headerHeight + contentHeight + borderHeight)
+
+        if (Math.abs(nextHeight - lastMeasuredHeight) <= 1) return
+        lastMeasuredHeight = nextHeight
+        fitToContent({ contentHeight: nextHeight })
+      })
+    }
+
+    measureAndFit()
+
+    const observer = new MutationObserver(measureAndFit)
+    observer.observe(panel, {
+      attributes: true,
+      childList: true,
+      characterData: true,
+      subtree: true,
+    })
+
+    panel.addEventListener('load', measureAndFit, true)
+    panel.addEventListener('transitionend', measureAndFit)
+    panel.addEventListener('animationend', measureAndFit)
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+      observer.disconnect()
+      panel.removeEventListener('load', measureAndFit, true)
+      panel.removeEventListener('transitionend', measureAndFit)
+      panel.removeEventListener('animationend', measureAndFit)
+    }
+  }, [])
+
+  return (
+    <main className="app-shell">
+      <div className="popup-shell" ref={panelRef}>
+        {children}
+      </div>
+    </main>
+  )
+}
+
 type ScanRecord = {
   id: string
   scannedAt: string
@@ -225,7 +289,7 @@ function getCommerceUrl(item?: Pick<SimilarProduct, 'listingUrl' | 'productUrl' 
   return item?.listingUrl || item?.productUrl || item?.amazonUrl || '#'
 }
 
-function compareProductAgainstCurrent(current: Analysis | null, product?: SimilarProduct) {
+function compareProductAgainstCurrent(current: Analysis | null | undefined, product?: SimilarProduct) {
   const currentPrice = getNumericValue(current?.price)
   const otherPrice = getNumericValue(product?.price)
   const currentRating = getNumericValue(current?.rating)
@@ -685,8 +749,6 @@ export function ProductRecommendationScroller({ analysis, products }: { analysis
 
   return (
     <div className="similar-scroll-shell">
-      <div className={`similar-fade-left ${canScrollLeft ? 'similar-fade-left--visible' : ''}`} />
-      <div className={`similar-fade-right ${canScrollRight ? 'similar-fade-right--visible' : ''}`} />
       {canScrollLeft && (
         <button type="button" className="similar-scroll-arrow similar-scroll-arrow--left" aria-label="Scroll left" onClick={() => scrollByCard('left')}>
           <span />
@@ -1254,8 +1316,7 @@ function CompareView({ records, onBack }: { records: [ScanRecord, ScanRecord]; o
   ]
 
   return (
-    <main className="app-shell">
-      <div className="popup-shell">
+    <AutoSizingWindow>
         <header className="top-header">
           <div className="brand-row">
             <img src={logoSrc} alt="Nectar logo" className="brand-logo" />
@@ -1381,8 +1442,7 @@ function CompareView({ records, onBack }: { records: [ScanRecord, ScanRecord]; o
             </SectionCard>
           </div>
         </div>
-      </div>
-    </main>
+    </AutoSizingWindow>
   )
 }
 
@@ -1773,11 +1833,9 @@ export default function App() {
 
   if (view === 'premium') {
     return (
-      <main className="app-shell">
-        <div className="popup-shell">
-          <PremiumScreen key="premium-screen" onBack={() => setView('home')} />
-        </div>
-      </main>
+      <AutoSizingWindow>
+        <PremiumScreen key="premium-screen" onBack={() => setView('home')} />
+      </AutoSizingWindow>
     )
   }
 
@@ -1817,8 +1875,7 @@ export default function App() {
   )
 
   return (
-    <main className="app-shell">
-      <div className="popup-shell">
+    <AutoSizingWindow>
         <header
           className="top-header"
           onMouseEnter={() => setWindowControlsVisible(true)}
@@ -1892,7 +1949,6 @@ export default function App() {
             </>
           )}
         </div>
-      </div>
-    </main>
+    </AutoSizingWindow>
   )
 }
