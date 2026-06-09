@@ -30,6 +30,9 @@ CONNECT_TIMEOUT = 10   # seconds to establish TCP connection
 READ_TIMEOUT    = 45   # seconds to wait for the server to send data
 MAX_RETRIES     = 3    # number of automatic retries on transient failures
 RETRY_BACKOFF   = 1.5  # exponential back-off factor (1.5s, 3s, 4.5s …)
+SEARCH_CONNECT_TIMEOUT = 3
+SEARCH_READ_TIMEOUT = 9
+SEARCH_MAX_RETRIES = 0
 
 ASIN_PATH_PATTERNS = (
     r"/(?:dp|gp/product|gp/aw/d|gp/aw/dp|gp/-/product|gp/offer-listing|product-reviews|review/product)/([A-Z0-9]{10})(?:[/?]|$)",
@@ -39,21 +42,24 @@ ASIN_PATH_PATTERNS = (
 ASIN_QUERY_KEYS = ("asin", "ASIN", "pd_rd_i", "creativeASIN")
 
 
-def _make_session() -> requests.Session:
+def _make_session(max_retries: int = MAX_RETRIES) -> requests.Session:
     """
     Build a requests.Session with automatic retry on connection/read errors.
     Retries are applied to the underlying urllib3 pool; they fire BEFORE
     Python sees an exception, so they handle transient socket issues
     transparently.
     """
-    retry_strategy = Retry(
-        total=MAX_RETRIES,
-        backoff_factor=RETRY_BACKOFF,
-        status_forcelist=[429, 500, 502, 503, 504],
-        allowed_methods=["POST", "GET"],
-        raise_on_status=False,
-    )
-    adapter = HTTPAdapter(max_retries=retry_strategy)
+    if max_retries <= 0:
+        adapter = HTTPAdapter(max_retries=0)
+    else:
+        retry_strategy = Retry(
+            total=max_retries,
+            backoff_factor=RETRY_BACKOFF,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["POST", "GET"],
+            raise_on_status=False,
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
     session = requests.Session()
     session.mount("https://", adapter)
     session.mount("http://", adapter)
@@ -139,7 +145,7 @@ class AmazonCanopyAdapter(MarketplaceAdapter):
         query = """
         query SearchProducts($input: AmazonProductSearchResultsInput!) {
         amazonProductSearchResults(input: $input) {
-            productResults(input: { page: 1, sort: AVERAGE_CUSTOMER_REVIEW }) {
+            productResults(input: { page: 1 }) {
             results {
                 title
                 asin
@@ -152,7 +158,6 @@ class AmazonCanopyAdapter(MarketplaceAdapter):
                 display
                 value
                 }
-                featureBullets
             }
             }
         }
@@ -177,13 +182,13 @@ class AmazonCanopyAdapter(MarketplaceAdapter):
             "variables": {"input": search_input},
         }
 
-        session = _make_session()
+        session = _make_session(max_retries=SEARCH_MAX_RETRIES)
         try:
             response = session.post(
                 CANOPY_URL,
                 json=payload,
                 headers=HEADERS,
-                timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
+                timeout=(SEARCH_CONNECT_TIMEOUT, SEARCH_READ_TIMEOUT),
             )
         except requests.exceptions.Timeout:
             print(f"[Canopy] Search timed out for term: '{search_term}'")

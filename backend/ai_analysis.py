@@ -21,9 +21,12 @@ UNRELATED_RECOMMENDATION_MESSAGE = "Sorry, I cannot help you with that"
 
 _SHOPPING_GUARD_TERMS = {
     "amazon", "ebay", "buy", "deal", "deals", "price", "prices", "cheap", "budget",
+    "discount", "discounts", "sale", "sales", "coupon", "coupons", "clearance",
+    "markdown", "savings", "save", "promo", "promotion",
     "expensive", "affordable", "recommend", "recommendation", "alternative", "compare",
     "similar", "brand", "product", "products", "quality", "durable", "durability",
     "rating", "reviews", "under", "over", "headphones", "earbuds", "speaker", "laptop",
+    "airpods", "apple", "sony", "bose", "jbl", "anker", "soundcore", "samsung",
     "keyboard", "mouse", "monitor", "camera", "charger", "case", "watch", "phone",
     "tablet", "vacuum", "air fryer", "coffee", "backpack", "bottle",
 }
@@ -84,14 +87,6 @@ def build_recommendation_query(
         if fallback_term and fallback_term != "unknown":
             break
 
-    if not image_data_url and not _looks_like_shopping_prompt(refinement_prompt, recent_items):
-        return {
-            "rejected": True,
-            "message": UNRELATED_RECOMMENDATION_MESSAGE,
-            "query": "",
-            "reason": "Prompt is outside Nectar's product recommendation scope.",
-        }
-
     prompt = f"""You are Nectar's smart shopping recommender.
 
 Return JSON only.
@@ -111,6 +106,8 @@ Task:
 - Infer what product category the user is currently interested in.
 - If a photo is included, use its visible product style/brand/category as a refinement.
 - Create one concise marketplace search query that should return 5 products the user would like.
+- Prefer cross-brand alternatives by default. Do not include a brand from scan memory in the query unless the user explicitly asks for that brand or same-brand products.
+- If the user asks for a specific brand, honor it.
 - Tune the query for the filter:
   overall = balanced value, reviews, trust
   durability = reliable, long-lasting, sturdy, reputable
@@ -155,6 +152,12 @@ Schema:
 
         result = json.loads((response.text or "").strip())
         if result.get("allowed") is False:
+            if image_data_url or _looks_like_shopping_prompt(refinement_prompt, recent_items):
+                fallback_query = refinement_prompt or fallback_term
+                return {
+                    "query": fallback_query[:120],
+                    "reason": "Using the product request directly.",
+                }
             return {
                 "rejected": True,
                 "message": UNRELATED_RECOMMENDATION_MESSAGE,
@@ -171,12 +174,12 @@ Schema:
         }
     except Exception as e:
         print(f"[Recommendations] Gemini query build failed: {e}")
-        if refinement_prompt and not image_data_url and not _looks_like_shopping_prompt(refinement_prompt, recent_items):
+        if image_data_url and not refinement_prompt:
             return {
                 "rejected": True,
-                "message": UNRELATED_RECOMMENDATION_MESSAGE,
+                "message": "Could not identify the uploaded product. Try adding a short prompt.",
                 "query": "",
-                "reason": "Prompt is outside Nectar's product recommendation scope.",
+                "reason": "Image refinement could not be processed.",
             }
         suffix_by_filter = {
             "overall": "best value",
@@ -187,7 +190,7 @@ Schema:
         prompt_term = refinement_prompt if refinement_prompt else fallback_term
         return {
             "query": f"{prompt_term} {suffix_by_filter[filter_mode]}".strip()[:120],
-            "reason": "Using scan history and the selected filter.",
+            "reason": "Using the product request and selected filter.",
         }
 
 

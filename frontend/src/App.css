@@ -620,7 +620,7 @@ button:focus, button:focus-visible {
 
 .keyword-pills, .similar-card-badges, .compare-summary-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
 
-.keyword-pill, .comparison-badge, .prime-badge, .best-alt-badge,
+.keyword-pill, .comparison-badge, .prime-badge,
 .history-score, .compare-chip, .compare-summary-badge,
 .compare-side-badge, .compare-winner-badge, .price-diff {
   display: inline-flex;
@@ -633,19 +633,23 @@ button:focus, button:focus-visible {
 .keyword-pill { gap: 3px; padding: 2px 7px; font-size: 11px; font-weight: 500; }
 .keyword-pill em { font-style: normal; opacity: 0.65; font-size: 10px; }
 
-.keyword-pill--positive, .comparison-badge--better, .price-diff--down { background: rgba(220, 252, 231, 0.85); color: #166534; }
-.keyword-pill--negative, .comparison-badge--worse,  .price-diff--up   { background: rgba(254, 226, 226, 0.85); color: #991b1b; }
+.keyword-pill--positive, .comparison-badge--better, .comparison-badge--savings, .price-diff--down { background: rgba(220, 252, 231, 0.88); color: #166534; border: 1px solid rgba(34, 197, 94, 0.22); }
+.keyword-pill--negative, .comparison-badge--worse, .price-diff--up { background: rgba(254, 226, 226, 0.88); color: #991b1b; border: 1px solid rgba(239, 68, 68, 0.20); }
 .keyword-pill--neutral  { background: rgba(254, 249, 195, 0.85); color: #7d7317; }
 
-.comparison-badge, .prime-badge, .best-alt-badge, .compare-side-badge, .compare-winner-badge { padding: 3px 7px; font-size: 9.5px; font-weight: 800; letter-spacing: 0.04em; }
+.comparison-badge, .prime-badge, .compare-side-badge, .compare-winner-badge { padding: 3px 7px; font-size: 9.5px; font-weight: 800; letter-spacing: 0.04em; }
 .comparison-badge--similar { background: rgba(243, 244, 246, 0.85); color: #4b5563; }
+.comparison-badge--top { background: rgba(255, 247, 237, 0.92); color: #c2410c; border: 1px solid rgba(253, 186, 116, 0.70); }
+.comparison-badge--popular { background: rgba(239, 246, 255, 0.88); color: #1d4ed8; border: 1px solid rgba(96, 165, 250, 0.24); }
+.comparison-badge--tradeoff { background: rgba(254, 249, 195, 0.88); color: #854d0e; border: 1px solid rgba(234, 179, 8, 0.24); }
 .prime-badge { background: rgba(239, 246, 255, 0.85); color: #1d4ed8; }
-.best-alt-badge, .compare-summary-badge, .compare-winner-badge { background: rgba(255, 247, 237, 0.90); color: #c2410c; border: 1px solid rgba(253, 186, 116, 0.70); }
+.compare-summary-badge, .compare-winner-badge { background: rgba(255, 247, 237, 0.90); color: #c2410c; border: 1px solid rgba(253, 186, 116, 0.70); }
 
 .similar-card--best, .history-item--selected { border-color: rgba(253, 186, 116, 0.70) !important; }
 
 .similar-card-price-row, .similar-card-top, .compare-product-card-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-.price-diff { font-size: 10.5px; font-weight: 700; padding: 2px 6px; }
+.price-diff { flex-shrink: 0; font-size: 10px; font-weight: 850; padding: 3px 7px; letter-spacing: 0.01em; }
+.price-diff--same { background: rgba(243, 244, 246, 0.88); color: #4b5563; border: 1px solid rgba(156, 163, 175, 0.20); }
 
 /* ── Premium screen ──────────────────────────────────────────── */
 .premium-hero { text-align: left; padding: 12px 14px; border-radius: var(--radius-lg); border: 1px solid rgba(243, 223, 207, 0.50); background: rgba(255, 252, 248, 0.65); backdrop-filter: blur(10px); }
@@ -1136,12 +1140,18 @@ button:focus, button:focus-visible {
   background: rgba(255, 246, 239, 0.92);
   color: var(--brand-deep);
 }
-.recommendation-carousel-wrap { border: 1px solid rgba(255, 255, 255, 0.74); background: rgba(255, 255, 255, 0.42); border-radius: 18px; padding: 9px 7px 3px; margin-bottom: 10px; min-height: 168px; overflow: hidden; }
+.recommendation-carousel-wrap { border: 1px solid rgba(255, 255, 255, 0.74); background: rgba(255, 255, 255, 0.42); border-radius: 18px; padding: 9px 7px 3px; margin-bottom: 10px; min-height: 168px; overflow: hidden; transition: opacity 0.18s ease, filter 0.18s ease, transform 0.18s var(--motion-control); }
+.recommendation-carousel-wrap--fading { opacity: 0; filter: blur(3px); transform: translateY(4px) scale(0.992); }
 .recommendation-loading { display: flex; gap: 10px; overflow: hidden; padding: 4px 1px 8px; }
 .recommendation-empty { min-height: 148px; display: grid; place-items: center; text-align: center; padding: 14px; color: #8a8178; font-size: 12px; font-weight: 720; line-height: 1.35; }
 .recommendation-empty--blocked { color: #991b1b; }
-.comparison-badge--recommended { background: rgba(255, 247, 237, 0.90); color: #c2410c; border: 1px solid rgba(253, 186, 116, 0.62); }
 .recommendation-refine { position: relative; border: 1px solid rgba(220, 210, 200, 0.58); border-radius: 15px; background: rgba(255, 255, 255, 0.78); min-height: 76px; padding: 10px 10px 38px; }
+.recommendation-inline-message { margin: 0 0 7px; color: #9a3412; font-size: 10.5px; font-weight: 780; line-height: 1.25; }
+.recommendation-image-preview { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; min-height: 30px; margin-bottom: 7px; padding: 4px 7px 4px 4px; border: 1px solid rgba(220, 210, 200, 0.56); border-radius: 10px; background: rgba(255, 252, 248, 0.72); color: #5f554d; }
+.recommendation-image-preview-thumb { width: 22px; height: 22px; flex: 0 0 22px; border-radius: 7px; object-fit: cover; background: rgba(250, 248, 245, 0.86); }
+.recommendation-image-preview-name { min-width: 0; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; font-weight: 760; color: #6b625c; }
+.recommendation-image-preview-remove { width: 18px; height: 18px; flex: 0 0 18px; border: 0; border-radius: var(--radius-pill); display: inline-flex; align-items: center; justify-content: center; background: rgba(231, 229, 228, 0.84); color: #7c2d12; font-size: 13px; line-height: 1; font-weight: 850; cursor: pointer; pointer-events: auto; }
+.recommendation-image-preview-remove:hover { background: rgba(254, 226, 226, 0.9); color: #991b1b; }
 .recommendation-prompt { width: 100%; min-height: 36px; max-height: 74px; resize: vertical; border: 0; outline: 0; background: transparent; color: #1f1f1f; font: inherit; font-size: 12.5px; line-height: 1.35; }
 .recommendation-prompt::placeholder { color: #b5aca4; }
 .recommendation-refine-actions { position: absolute; left: 9px; right: 9px; bottom: 8px; display: flex; align-items: center; justify-content: space-between; pointer-events: none; }

@@ -29,6 +29,10 @@ const EXIT_ANIMATION_MS = 720
 const DELETE_ENTRY_DELAY_MS = 240
 const CLEAR_ALL_ENTRY_DELAY_MS = 260
 const SCAN_CANCEL_WINDOW_MS = 3000
+const AUTO_FIT_DELTA_THRESHOLD = 2
+const RECOMMENDATION_TIMEOUT_MS = 12000
+const RECOMMENDATION_REFINEMENT_TIMEOUT_MS = 26000
+const RECOMMENDATION_FADE_MS = 180
 
 const CURRENT_SCAN_KEY = 'nectar_current_scan'
 const PREVIOUS_SCAN_KEY = 'nectar_previous_scan'
@@ -143,13 +147,28 @@ function AutoSizingWindow({ children }: { children: ReactNode }) {
           parseFloat(panelStyles.borderTopWidth || '0') +
           parseFloat(panelStyles.borderBottomWidth || '0')
         const headerHeight = header?.getBoundingClientRect().height ?? 0
-        const contentHeight = content?.scrollHeight ?? panel.scrollHeight
-        const nextHeight = Math.ceil(headerHeight + contentHeight + borderHeight)
+        const fitStop = panel.querySelector<HTMLElement>('.popup-fit-stop')
+        const historyIsOpen = Boolean(panel.querySelector('.section-card--history.section-card--open'))
+        const shouldUseFitStop = Boolean(fitStop && !historyIsOpen)
+        const contentStyles = content ? window.getComputedStyle(content) : null
+        const contentBottomPadding = contentStyles ? parseFloat(contentStyles.paddingBottom || '0') : 0
+        const stopHeight = content && fitStop && shouldUseFitStop
+          ? headerHeight + fitStop.offsetTop + fitStop.offsetHeight + contentBottomPadding + borderHeight
+          : null
+        const contentHeight = shouldUseFitStop
+          ? stopHeight ?? panel.scrollHeight
+          : headerHeight + (content?.scrollHeight ?? panel.scrollHeight) + borderHeight
+        const nextHeight = Math.ceil(contentHeight)
 
-        if (Math.abs(nextHeight - lastMeasuredHeight) <= 1) return
+        if (Math.abs(nextHeight - lastMeasuredHeight) < AUTO_FIT_DELTA_THRESHOLD) return
         lastMeasuredHeight = nextHeight
         fitToContent({ contentHeight: nextHeight })
       })
+    }
+
+    const measureAfterLayoutTransition = (event: TransitionEvent) => {
+      if (event.propertyName !== 'grid-template-rows') return
+      measureAndFit()
     }
 
     measureAndFit()
@@ -163,14 +182,14 @@ function AutoSizingWindow({ children }: { children: ReactNode }) {
     })
 
     panel.addEventListener('load', measureAndFit, true)
-    panel.addEventListener('transitionend', measureAndFit)
+    panel.addEventListener('transitionend', measureAfterLayoutTransition)
     panel.addEventListener('animationend', measureAndFit)
 
     return () => {
       window.cancelAnimationFrame(frame)
       observer.disconnect()
       panel.removeEventListener('load', measureAndFit, true)
-      panel.removeEventListener('transitionend', measureAndFit)
+      panel.removeEventListener('transitionend', measureAfterLayoutTransition)
       panel.removeEventListener('animationend', measureAndFit)
     }
   }, [])
@@ -236,6 +255,24 @@ const loadCurrentSavedScan = () => storageGet<ScanRecord>(CURRENT_SCAN_KEY)
 const loadPreviousSavedScan = () => storageGet<ScanRecord>(PREVIOUS_SCAN_KEY)
 const loadScanHistory = () => storageGet<ScanRecord[]>(SCAN_HISTORY_KEY).then((r) => r ?? [])
 
+function getRecommendationHistoryKey(history: ScanRecord[]): string {
+  return history
+    .slice(0, 8)
+    .map((item) => {
+      const analysis = item.analysis ?? {}
+      return [
+        item.id,
+        item.scannedAt,
+        analysis.title,
+        analysis.brand,
+        analysis.productKeyword,
+        analysis.marketplace,
+        analysis.price,
+      ].filter(Boolean).join('~')
+    })
+    .join('|')
+}
+
 // ─── Pure Utilities ───────────────────────────────────────────────────────────
 
 function isSupportedUrl(url: string): boolean {
@@ -265,8 +302,8 @@ function getScoreColor(score?: number): string {
 
 function formatPriceDifference(diff: number): string {
   const abs = Math.abs(diff).toFixed(2)
-  if (diff === 0) return '$0.00'
-  return diff > 0 ? `+$${abs}` : `-$${abs}`
+  if (diff === 0) return 'Same price'
+  return diff > 0 ? `+$${abs}` : `Save $${abs}`
 }
 
 function formatFlagLabel(flag: string): string {
@@ -348,8 +385,39 @@ function getMetricWinner(
   return l < r ? 'left' : 'right'
 }
 
-function getTagClassName(tag: 'BETTER' | 'SIMILAR' | 'WORSE'): string {
-  return `comparison-badge comparison-badge--${tag.toLowerCase()}`
+function getRecommendationBadge(
+  product: SimilarProduct,
+  comparison: ReturnType<typeof compareProductAgainstCurrent>,
+  index: number,
+  isBest: boolean,
+  hasBaseline: boolean
+): { label: string; className: string } {
+  const rating = getNumericValue(product.rating)
+  const reviews = getNumericValue(product.reviewCount)
+
+  if (isBest) return { label: 'TOP PICK', className: 'comparison-badge comparison-badge--top' }
+
+  if (hasBaseline) {
+    if (comparison.score >= 2) return { label: 'SMART SWAP', className: 'comparison-badge comparison-badge--better' }
+    if (comparison.priceDiff !== null && comparison.priceDiff < 0 && comparison.tag !== 'WORSE') {
+      return { label: 'SAVES MONEY', className: 'comparison-badge comparison-badge--savings' }
+    }
+    if (comparison.tag === 'BETTER') return { label: 'UPGRADE', className: 'comparison-badge comparison-badge--better' }
+    if (comparison.tag === 'WORSE') return { label: 'TRADEOFF', className: 'comparison-badge comparison-badge--tradeoff' }
+    if (reviews !== null && reviews >= 1000) return { label: 'POPULAR', className: 'comparison-badge comparison-badge--popular' }
+    return { label: 'SOLID PICK', className: 'comparison-badge comparison-badge--similar' }
+  }
+
+  if (index === 0) return { label: 'TOP PICK', className: 'comparison-badge comparison-badge--top' }
+  if (rating !== null && rating >= 4.6) return { label: 'HIGHLY RATED', className: 'comparison-badge comparison-badge--better' }
+  if (reviews !== null && reviews >= 1000) return { label: 'POPULAR', className: 'comparison-badge comparison-badge--popular' }
+  if (getNumericValue(product.price) !== null) return { label: 'GOOD VALUE', className: 'comparison-badge comparison-badge--savings' }
+  return { label: 'WORTH A LOOK', className: 'comparison-badge comparison-badge--similar' }
+}
+
+function getPriceDiffClassName(diff: number): string {
+  if (diff === 0) return 'price-diff price-diff--same'
+  return `price-diff ${diff < 0 ? 'price-diff--down' : 'price-diff--up'}`
 }
 
 function getRecommendationClass(rec?: Recommendation): string {
@@ -772,6 +840,7 @@ export function ProductRecommendationScroller({ analysis, products }: { analysis
         {products.map((product, i) => {
           const comparison = compareProductAgainstCurrent(analysis, product)
           const isBest = i === bestIndex
+          const badge = getRecommendationBadge(product, comparison, i, isBest, Boolean(analysis))
           return (
             <a
               key={product.listingId ?? product.asin ?? i}
@@ -789,12 +858,7 @@ export function ProductRecommendationScroller({ analysis, products }: { analysis
             >
               <div className="similar-card-top">
                 <div className="similar-card-badges">
-                  {isBest && <span className="best-alt-badge">BEST ALT</span>}
-                  {analysis ? (
-                    <span className={getTagClassName(comparison.tag)}>{comparison.tag}</span>
-                  ) : (
-                    <span className="comparison-badge comparison-badge--recommended">MATCH</span>
-                  )}
+                  <span className={badge.className}>{badge.label}</span>
                 </div>
                 {product.isPrime && <span className="prime-badge">Prime</span>}
               </div>
@@ -806,7 +870,7 @@ export function ProductRecommendationScroller({ analysis, products }: { analysis
               <div className="similar-card-price-row">
                 <p className="similar-card-price">{product.price ?? 'No price'}</p>
                 {analysis && comparison.priceDiff !== null && (
-                  <span className={`price-diff ${comparison.priceDiff <= 0 ? 'price-diff--down' : 'price-diff--up'}`}>
+                  <span className={getPriceDiffClassName(comparison.priceDiff)}>
                     {formatPriceDifference(comparison.priceDiff)}
                   </span>
                 )}
@@ -829,30 +893,38 @@ export function ProductRecommendationScroller({ analysis, products }: { analysis
 }
 
 function SmartRecommendationsSection({
+  analysis,
   products,
   filter,
   prompt,
+  imageDataUrl,
   imageName,
   isLoading,
+  isFading,
   hasMemory,
   message,
   defaultOpen,
   onFilterChange,
   onPromptChange,
   onImageUpload,
+  onClearImage,
   onSubmit,
 }: {
+  analysis?: Analysis | null
   products: SimilarProduct[]
   filter: RecommenderFilter
   prompt: string
+  imageDataUrl: string
   imageName: string
   isLoading: boolean
+  isFading: boolean
   hasMemory: boolean
   message: string
   defaultOpen: boolean
   onFilterChange: (filter: RecommenderFilter) => void
   onPromptChange: (prompt: string) => void
   onImageUpload: (file: File | null) => void
+  onClearImage: () => void
   onSubmit: () => void
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -869,6 +941,15 @@ function SmartRecommendationsSection({
     document.addEventListener('mousedown', closeOnOutsideClick)
     return () => document.removeEventListener('mousedown', closeOnOutsideClick)
   }, [filterOpen])
+
+  const handlePromptPaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const imageItem = Array.from(event.clipboardData.items).find((item) => item.type.startsWith('image/'))
+    if (!imageItem) return
+    const file = imageItem.getAsFile()
+    if (!file) return
+    event.preventDefault()
+    onImageUpload(file)
+  }
 
   return (
     <SectionCard
@@ -919,8 +1000,10 @@ function SmartRecommendationsSection({
         </div>
       )}
     >
-      <div className="recommendation-carousel-wrap">
-        {isLoading ? (
+      <div className={`recommendation-carousel-wrap ${isFading ? 'recommendation-carousel-wrap--fading' : ''}`}>
+        {products.length > 0 ? (
+          <ProductRecommendationScroller analysis={analysis} products={products} />
+        ) : isLoading ? (
           <div className="recommendation-loading">
             <SkeletonLine width="160px" height={110} />
             <SkeletonLine width="160px" height={110} />
@@ -929,8 +1012,6 @@ function SmartRecommendationsSection({
           <div className="recommendation-empty recommendation-empty--blocked">
             {message}
           </div>
-        ) : products.length > 0 ? (
-          <ProductRecommendationScroller products={products} />
         ) : (
           <div className="recommendation-empty">
             {hasMemory ? 'Refine your search to refresh recommendations.' : 'start scanning to get recommendations!'}
@@ -939,11 +1020,30 @@ function SmartRecommendationsSection({
       </div>
 
       <div className="recommendation-refine">
+        {message && products.length > 0 && (
+          <p className="recommendation-inline-message">{message}</p>
+        )}
+        {imageDataUrl && (
+          <div className="recommendation-image-preview">
+            <img src={imageDataUrl} alt="" className="recommendation-image-preview-thumb" />
+            <span className="recommendation-image-preview-name">{imageName || 'Reference image'}</span>
+            <button
+              type="button"
+              className="recommendation-image-preview-remove"
+              onClick={onClearImage}
+              title="Remove image"
+              aria-label="Remove uploaded image"
+            >
+              x
+            </button>
+          </div>
+        )}
         <textarea
           className="recommendation-prompt"
           value={prompt}
           onChange={(e) => onPromptChange(e.target.value)}
-          placeholder="Refine your product selection..."
+          onPaste={handlePromptPaste}
+          placeholder={imageName ? 'Add details for this image...' : 'Refine your product selection...'}
           rows={2}
         />
         <div className="recommendation-refine-actions">
@@ -1490,19 +1590,28 @@ export default function App() {
   const [recommendedProducts, setRecommendedProducts] = useState<SimilarProduct[]>([])
   const [recommendationMessage, setRecommendationMessage] = useState('')
   const [recommendationsLoading, setRecommendationsLoading] = useState(false)
+  const [recommendationsFading, setRecommendationsFading] = useState(false)
 
   const scanAbortRef = useRef<AbortController | null>(null)
   const scanIdRef = useRef<string | null>(null)
   const cancelTimerRef = useRef<number | null>(null)
   const scanDelayResolveRef = useRef<(() => void) | null>(null)
   const scanWasCancelledRef = useRef(false)
+  const recommendationRequestIdRef = useRef(0)
+  const recommendationHistoryKey = getRecommendationHistoryKey(scanHistory)
 
-  const fetchRecommendations = async (opts?: { prompt?: string; imageDataUrl?: string; history?: ScanRecord[]; filter?: RecommenderFilter }) => {
+  const fetchRecommendations = async (opts?: { prompt?: string; imageDataUrl?: string; history?: ScanRecord[]; filter?: RecommenderFilter; forceLoadingSkeleton?: boolean }) => {
     const historyForRequest = opts?.history ?? scanHistory
     const promptForRequest = opts?.prompt ?? recommendationPrompt
     const imageForRequest = opts?.imageDataUrl ?? recommendationImageDataUrl
     const filterForRequest = opts?.filter ?? recommendationFilter
     const fallbackProducts = getHistoryRecommendationFallback(historyForRequest, filterForRequest)
+    const isExplicitRefinement = Boolean(opts?.forceLoadingSkeleton || promptForRequest.trim() || imageForRequest)
+    const previousProducts = recommendedProducts
+    const requestId = recommendationRequestIdRef.current + 1
+    recommendationRequestIdRef.current = requestId
+
+    const isLatestRecommendationRequest = () => recommendationRequestIdRef.current === requestId
 
     if (!historyForRequest.length && !promptForRequest.trim() && !imageForRequest) {
       setRecommendedProducts([])
@@ -1510,12 +1619,31 @@ export default function App() {
       return
     }
 
+    let timeoutId: number | null = null
+
     try {
       setRecommendationsLoading(true)
       setRecommendationMessage('')
+      if (isExplicitRefinement) {
+        if (previousProducts.length) {
+          setRecommendationsFading(true)
+          await new Promise((resolve) => window.setTimeout(resolve, RECOMMENDATION_FADE_MS))
+          if (!isLatestRecommendationRequest()) return
+        }
+        if (!previousProducts.length) setRecommendedProducts([])
+        setRecommendationsFading(false)
+      } else if (fallbackProducts.length) {
+        setRecommendedProducts(fallbackProducts)
+      }
+      const controller = new AbortController()
+      timeoutId = window.setTimeout(
+        () => controller.abort(),
+        isExplicitRefinement ? RECOMMENDATION_REFINEMENT_TIMEOUT_MS : RECOMMENDATION_TIMEOUT_MS
+      )
       const response = await fetch(`${API_BASE}/recommendations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Nectar-Secret': NECTAR_SECRET },
+        signal: controller.signal,
         body: JSON.stringify({
           history: historyForRequest,
           filter: filterForRequest,
@@ -1524,20 +1652,49 @@ export default function App() {
         }),
       })
       const data: RecommendationResponse = await response.json()
+      if (!isLatestRecommendationRequest()) return
       if (data.rejected) {
         setRecommendedProducts([])
         setRecommendationMessage(data.message || 'Sorry, I cannot help you with that')
         return
       }
       const apiProducts = Array.isArray(data.products) ? data.products.slice(0, 5) : []
-      setRecommendedProducts(apiProducts.length ? apiProducts : fallbackProducts)
-      setRecommendationMessage('')
-    } catch (err) {
-      console.error(err)
+      if (apiProducts.length) {
+        setRecommendedProducts(apiProducts)
+        setRecommendationMessage('')
+        return
+      }
+      if (isExplicitRefinement) {
+        setRecommendationMessage(
+          previousProducts.length
+            ? 'No fresh matches yet. Still showing your previous picks.'
+            : 'No products found yet. Try a broader phrase or a different marketplace.'
+        )
+        if (previousProducts.length) setRecommendedProducts(previousProducts)
+        return
+      }
       setRecommendedProducts(fallbackProducts)
       setRecommendationMessage('')
+    } catch (err) {
+      if (!isLatestRecommendationRequest()) return
+      console.error(err)
+      if (isExplicitRefinement) {
+        setRecommendationMessage(
+          previousProducts.length
+            ? 'Search timed out. Still showing your previous picks.'
+            : 'Search timed out. Try again or broaden the prompt.'
+        )
+        if (previousProducts.length) setRecommendedProducts(previousProducts)
+      } else {
+        setRecommendedProducts(fallbackProducts)
+        setRecommendationMessage('')
+      }
     } finally {
-      setRecommendationsLoading(false)
+      if (timeoutId !== null) window.clearTimeout(timeoutId)
+      if (isLatestRecommendationRequest()) {
+        setRecommendationsFading(false)
+        setRecommendationsLoading(false)
+      }
     }
   }
 
@@ -1555,7 +1712,7 @@ export default function App() {
 
   useEffect(() => {
     fetchRecommendations({ history: scanHistory, filter: recommendationFilter })
-  }, [recommendationFilter, scanHistory.length])
+  }, [recommendationFilter, recommendationHistoryKey])
 
   // ── URL Detection ──
 
@@ -1707,7 +1864,6 @@ export default function App() {
       setRecommendationMessage('')
       setScanHistory(nextHistory)
       setRecommendedProducts(getHistoryRecommendationFallback(nextHistory, recommendationFilter))
-      fetchRecommendations({ history: nextHistory, prompt: '', imageDataUrl: '', filter: recommendationFilter })
     } catch (err) {
       if (scanWasCancelledRef.current || (err instanceof DOMException && err.name === 'AbortError')) {
         setBackendStatus('Scan has been cancelled successfully')
@@ -1835,8 +1991,13 @@ export default function App() {
     }
   }
 
+  const handleRecommendationImageClear = () => {
+    setRecommendationImageDataUrl('')
+    setRecommendationImageName('')
+  }
+
   const handleRecommendationSubmit = () => {
-    fetchRecommendations()
+    fetchRecommendations({ forceLoadingSkeleton: true })
   }
 
   // ── Routing ──
@@ -1856,11 +2017,14 @@ export default function App() {
   const recommendationsSection = (
     <SmartRecommendationsSection
       key={`recommendations-${loading ? 'loading' : hasScanned ? 'post-scan' : 'launch'}`}
+      analysis={analysis}
       products={recommendedProducts}
       filter={recommendationFilter}
       prompt={recommendationPrompt}
+      imageDataUrl={recommendationImageDataUrl}
       imageName={recommendationImageName}
       isLoading={recommendationsLoading}
+      isFading={recommendationsFading}
       hasMemory={scanHistory.length > 0}
       message={recommendationMessage}
       defaultOpen={!loading && !hasScanned}
@@ -1870,6 +2034,7 @@ export default function App() {
         if (recommendationMessage) setRecommendationMessage('')
       }}
       onImageUpload={handleRecommendationImageUpload}
+      onClearImage={handleRecommendationImageClear}
       onSubmit={handleRecommendationSubmit}
     />
   )
@@ -1949,7 +2114,7 @@ export default function App() {
 
           {!hasScanned && (
             <>
-              <div className="cascade-item cascade-delay-2">{recommendationsSection}</div>
+              <div className="cascade-item cascade-delay-2 popup-fit-stop">{recommendationsSection}</div>
               <div className="cascade-item cascade-delay-3">{historySection}</div>
             </>
           )}

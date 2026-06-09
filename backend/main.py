@@ -2,6 +2,7 @@ import sys
 import os
 import asyncio
 import re
+import time
 
 if sys.platform.startswith("win"):
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -17,6 +18,54 @@ from .ai_analysis import build_recommendation_query, explain_score_with_ai
 from .marketplaces.registry import MARKETPLACE_ADAPTERS
 
 NECTAR_SECRET = os.getenv("NECTAR_API_SECRET", "")
+MAX_RECOMMENDATION_CANDIDATES = 24
+MAX_RECOMMENDATION_CANDIDATES_PER_TERM = 6
+RECOMMENDATION_SEARCH_TIMEOUT_SECONDS = 14.0
+RECOMMENDATION_REFINED_TERM_LIMIT = 2
+KNOWN_PROMPT_BRANDS = {
+    "apple", "sony", "bose", "jbl", "samsung", "anker", "soundcore", "beats",
+    "skullcandy", "google", "microsoft", "logitech", "razer", "steelseries",
+    "carhartt", "nike", "adidas", "levi", "levis", "stanley", "hydro flask",
+}
+PROMPT_PRODUCT_TERMS = {
+    "airpods", "earbuds", "headphones", "speaker", "laptop", "keyboard", "mouse",
+    "monitor", "camera", "charger", "case", "watch", "phone", "tablet", "vacuum",
+    "backpack", "bottle", "shirt", "t-shirt", "tee", "shoes", "shoe", "sneakers",
+    "running shoes", "hoodie", "jacket", "jeans", "air fryer", "coffee maker",
+    "espresso machine", "blender", "toaster", "microwave", "kettle", "projector",
+    "printer", "scanner", "router", "power bank", "cable", "drone", "microphone",
+    "soundbar", "controller", "chair", "toothbrush",
+}
+RELEVANCE_PROFILES = {
+    "headphones": {
+        "triggers": (
+            "headphone", "headphones", "headset", "headsets", "earbud", "earbuds",
+            "earphone", "earphones", "airpods", "over-ear", "over ear", "noise cancellation",
+            "noise cancelling",
+        ),
+        "required": (
+            "headphone", "headset", "earbud", "ear buds", "earphone",
+            "airpods", "buds", "noise cancelling", "noise cancellation",
+        ),
+        "blocked": (
+            "slipper", "slippers", "plush", "costume", "cosplay", "beanie",
+            "hat", "stand", "holder", "case", "cover", "earmuff", "earmuffs",
+        ),
+    },
+    "shoes": {
+        "triggers": ("shoe", "shoes", "sneaker", "sneakers", "running shoes", "trainers"),
+        "required": ("shoe", "shoes", "sneaker", "sneakers", "trainer", "trainers"),
+        "blocked": (
+            "slipper", "slippers", "sandal", "sandals", "sock", "socks",
+            "shirt", "t-shirt", "tee", "hoodie", "jacket", "shorts", "pants",
+        ),
+    },
+    "shirt": {
+        "triggers": ("shirt", "shirts", "t-shirt", "tee", "pocket shirt"),
+        "required": ("shirt", "t-shirt", "tee", "polo", "henley"),
+        "blocked": ("pants", "jeans", "shoes", "slippers", "hat"),
+    },
+}
 
 app = FastAPI()
 
@@ -50,7 +99,11 @@ active_scan_cancellations: dict[str, asyncio.Event] = {}
 def _price_display(item: dict[str, Any]) -> str | None:
     price = item.get("price")
     if isinstance(price, dict):
-        return price.get("display")
+        display = price.get("display") or price.get("text") or price.get("formatted")
+        if display:
+            return str(display)
+        value = price.get("value") or price.get("amount")
+        return f"${float(value):.2f}" if isinstance(value, (int, float)) else (str(value) if value else None)
     if isinstance(price, (str, int, float)):
         return str(price)
     return None
@@ -63,11 +116,11 @@ def _numeric_price(value: Any) -> float | None:
         return _numeric_price(raw)
     if isinstance(value, (int, float)):
         return float(value) if value > 0 else None
-    cleaned = re.sub(r"[^0-9.]", "", str(value))
-    if not cleaned:
+    match = re.search(r"\d+(?:,\d{3})*(?:\.\d{1,2})?", str(value))
+    if not match:
         return None
     try:
-        parsed = float(cleaned)
+        parsed = float(match.group(0).replace(",", ""))
         return parsed if parsed > 0 else None
     except ValueError:
         return None
@@ -115,6 +168,10 @@ def _is_available_recommendation(item: dict[str, Any]) -> bool:
 
 def _normalize_recommendation_product(item: dict[str, Any], adapter) -> dict[str, Any] | None:
     listing_id = item.get("asin") or item.get("listingId") or item.get("item_id")
+    listing_url = item.get("listingUrl") or item.get("productUrl") or item.get("url")
+    if not listing_id and listing_url and adapter.name == "ebay":
+        match = re.search(r"/itm/(?:[^/]+/)?(\d{10,13})", str(listing_url))
+        listing_id = match.group(1) if match else None
     title = (item.get("title") or "").strip()
     if not listing_id or not title:
         return None
@@ -123,7 +180,7 @@ def _normalize_recommendation_product(item: dict[str, Any], adapter) -> dict[str
     if price_value is None or not price_display or not _is_available_recommendation(item):
         return None
 
-    listing_url = adapter.product_url(str(listing_id))
+    listing_url = str(listing_url or adapter.product_url(str(listing_id)))
     return {
         "title": title,
         "asin": item.get("asin") or str(listing_id),
@@ -171,54 +228,338 @@ def _recommendation_rank(product: dict[str, Any], filter_mode: str) -> float:
         return (quality_score * 8) + (rating * 10) + (review_score * 8) + prime_bonus
     return (rating * 8) + (review_score * 8) + prime_bonus - (price / 500)
 
+def _source_term_bonus(product: dict[str, Any]) -> float:
+    index = product.get("_sourceTermIndex")
+    if not isinstance(index, int):
+        return 0.0
+    return max(0.0, 4.0 - index) * 4.0
+
 def _sort_recommendations(products: list[dict[str, Any]], filter_mode: str) -> list[dict[str, Any]]:
     if filter_mode == "price":
         return sorted(
             products,
             key=lambda product: (
+                product.get("_sourceTermIndex", 99),
                 _numeric_price(product.get("priceValue") or product.get("price")) or 999999.0,
                 -_numeric_rating(product.get("rating")),
                 -_numeric_count(product.get("reviewCount")),
             ),
         )
-    return sorted(products, key=lambda product: _recommendation_rank(product, filter_mode), reverse=True)
+    return sorted(
+        products,
+        key=lambda product: _recommendation_rank(product, filter_mode) + _source_term_bonus(product),
+        reverse=True,
+    )
+
+def _history_default_query(history: list[dict[str, Any]]) -> str:
+    for item in history[:8]:
+        analysis = item.get("analysis") if isinstance(item, dict) else {}
+        if not isinstance(analysis, dict):
+            continue
+        keyword = str(analysis.get("productKeyword") or "").strip()
+        if keyword and keyword != "unknown":
+            return keyword
+        title = str(analysis.get("title") or "").strip()
+        brand = str(analysis.get("brand") or "").strip()
+        title_terms = _simple_title_terms(title, brand, keyword, include_brand=False)
+        if title_terms:
+            return title_terms[0]
+    return "best value products"
+
+def _clean_recommendation_query_text(text: str) -> str:
+    cleaned = str(text or "").strip()
+    cleaned = cleaned.replace("’", "'")
+    cleaned = re.sub(r"\b(?:please|for me)\b", " ", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\b(?:at|with)\s+a\s+", " ", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(
+        r"\b(?:on|at|via|through)\s+(?:amazon(?:\.com)?|ebay(?:\.com)?)\b",
+        " ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"\b(?:amazon(?:\.com)?|ebay(?:\.com)?)\b", " ", cleaned, flags=re.IGNORECASE)
+
+    matched_brand = ""
+    for brand in sorted(KNOWN_PROMPT_BRANDS, key=len, reverse=True):
+        if re.search(rf"\b{re.escape(brand)}\b", cleaned, flags=re.IGNORECASE):
+            matched_brand = brand
+            cleaned = re.sub(
+                rf"\b(?:from|by|made\s+by)\s+{re.escape(brand)}\b",
+                " ",
+                cleaned,
+                flags=re.IGNORECASE,
+            )
+            cleaned = re.sub(rf"\b{re.escape(brand)}\b", " ", cleaned, flags=re.IGNORECASE)
+            break
+
+    cleaned = re.sub(r"\b(?:from|by|made\s+by)\b", " ", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
+    if matched_brand:
+        cleaned = f"{matched_brand} {cleaned}".strip()
+
+    return cleaned
+
+def _text_prompt_query(prompt: str, filter_mode: str) -> str:
+    query = str(prompt or "").strip()
+    query = re.sub(
+        r"^\s*(show|find|get|search|recommend|give)\s+(me\s+)?",
+        "",
+        query,
+        flags=re.IGNORECASE,
+    )
+    query = re.sub(r"\b(products?|items?|options?|suggestions?)\b", " ", query, flags=re.IGNORECASE)
+    query = _clean_recommendation_query_text(query)
+
+    suffix_by_filter = {
+        "overall": "",
+        "durability": "durable reliable",
+        "price": "deals discounts best value",
+        "quality": "top rated premium",
+    }
+    suffix = suffix_by_filter.get(filter_mode, "")
+    if suffix and not re.search(r"\b(deal|deals|discount|discounts|discounted|sale|budget|cheap|premium|durable|reliable|top rated)\b", query, re.IGNORECASE):
+        query = f"{query} {suffix}".strip()
+
+    return query[:120] or "best value products"
+
+def _prompt_has_product_target(prompt: str) -> bool:
+    text = str(prompt or "").lower()
+    if any(re.search(rf"\b{re.escape(brand)}\b", text) for brand in KNOWN_PROMPT_BRANDS):
+        return True
+    if any(re.search(rf"\b{re.escape(term)}\b", text) for term in PROMPT_PRODUCT_TERMS):
+        return True
+    return False
+
+def _target_relevance_profile(query: str, prompt: str) -> dict[str, tuple[str, ...]] | None:
+    text = f"{query} {prompt}".lower()
+    for profile in RELEVANCE_PROFILES.values():
+        if any(trigger in text for trigger in profile["triggers"]):
+            return profile
+    return None
+
+def _product_matches_relevance(
+    product: dict[str, Any],
+    *,
+    query: str,
+    prompt: str,
+    has_image_refinement: bool,
+) -> bool:
+    profile = _target_relevance_profile(query, prompt)
+    if not profile:
+        return True
+
+    title = str(product.get("title") or "").lower()
+    brand = str(product.get("brand") or "").lower()
+    product_text = f"{title} {brand}"
+    request_text = f"{query} {prompt}".lower()
+
+    for blocked in profile["blocked"]:
+        if blocked in product_text and blocked not in request_text:
+            return False
+
+    if any(required in product_text for required in profile["required"]):
+        return True
+
+    # Image searches should be strict because bad visual fallbacks look especially jarring.
+    return not has_image_refinement
+
+def _requested_marketplace_names(prompt: str) -> set[str]:
+    text = str(prompt or "").lower()
+    requested: set[str] = set()
+    if re.search(r"\bamazon\b", text):
+        requested.add("amazon")
+    if re.search(r"\bebay\b", text):
+        requested.add("ebay")
+    return requested
+
+def _prompt_requires_marketplace_lock(prompt: str) -> bool:
+    text = str(prompt or "").lower()
+    return bool(
+        re.search(r"\b(?:only|just|exclusively)\s+(?:on|from|at|via)?\s*(?:amazon|ebay)\b", text)
+        or re.search(r"\b(?:amazon|ebay)\s+only\b", text)
+    )
+
+def _ordered_recommendation_adapters(prompt: str, preferred_marketplace: str):
+    requested = _requested_marketplace_names(prompt)
+    adapters = list(MARKETPLACE_ADAPTERS)
+    if requested and _prompt_requires_marketplace_lock(prompt):
+        adapters = [adapter for adapter in adapters if adapter.name in requested]
+    return sorted(
+        adapters,
+        key=lambda adapter: (
+            0 if adapter.name == preferred_marketplace else 1,
+            0 if adapter.name in requested else 1,
+        ),
+    )
+
+async def _search_adapter_for_recommendations(adapter, term: str) -> list:
+    started = time.perf_counter()
+    try:
+        results = await asyncio.wait_for(
+            asyncio.to_thread(adapter.search_similar_products, term),
+            timeout=RECOMMENDATION_SEARCH_TIMEOUT_SECONDS,
+        )
+        elapsed = time.perf_counter() - started
+        print(f"[Recommendations] {adapter.name} search '{term}' returned {len(results or [])} items in {elapsed:.1f}s")
+        return results if isinstance(results, list) else []
+    except asyncio.TimeoutError:
+        elapsed = time.perf_counter() - started
+        print(f"[Recommendations] {adapter.name} search '{term}' timed out after {elapsed:.1f}s")
+        return []
+    except Exception as exc:
+        elapsed = time.perf_counter() - started
+        print(f"[Recommendations] {adapter.name} search '{term}' failed after {elapsed:.1f}s: {exc}")
+        return []
+
+async def _recommendation_search_job(term_index: int, term: str, adapter):
+    results = await _search_adapter_for_recommendations(adapter, term)
+    return term_index, term, adapter, results
+
+def _brand_key(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+def _prompt_requests_brand_lock(prompt: str, history: list[dict[str, Any]]) -> bool:
+    text = str(prompt or "").lower()
+    if not text.strip():
+        return False
+
+    explicit_brand_terms = (
+        "same brand",
+        "this brand",
+        "that brand",
+        "specific brand",
+        "only brand",
+        "only from",
+        "just from",
+    )
+    if any(term in text for term in explicit_brand_terms):
+        return True
+
+    if any(re.search(rf"\b{re.escape(brand)}\b", text) for brand in KNOWN_PROMPT_BRANDS):
+        return True
+
+    for item in history[:8]:
+        analysis = item.get("analysis") if isinstance(item, dict) else {}
+        if not isinstance(analysis, dict):
+            continue
+        brand = str(analysis.get("brand") or "").strip()
+        if brand and re.search(rf"\b{re.escape(brand.lower())}\b", text):
+            return True
+
+    return False
+
+def _prompt_requests_history_brand_lock(prompt: str, history: list[dict[str, Any]]) -> bool:
+    text = str(prompt or "").lower()
+    if not text.strip():
+        return False
+
+    if any(term in text for term in ("same brand", "this brand", "that brand")):
+        return True
+
+    for item in history[:8]:
+        analysis = item.get("analysis") if isinstance(item, dict) else {}
+        if not isinstance(analysis, dict):
+            continue
+        brand = str(analysis.get("brand") or "").strip()
+        if brand and re.search(rf"\b{re.escape(brand.lower())}\b", text):
+            return True
+
+    return False
+
+def _strip_history_brands(text: str, history: list[dict[str, Any]]) -> str:
+    cleaned = str(text or "")
+
+    for item in history[:8]:
+        analysis = item.get("analysis") if isinstance(item, dict) else {}
+        if not isinstance(analysis, dict):
+            continue
+        brand = str(analysis.get("brand") or "").strip()
+        if brand:
+            cleaned = re.sub(rf"\b{re.escape(brand)}\b", " ", cleaned, flags=re.IGNORECASE)
+
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+def _diversify_recommendations(
+    ranked_products: list[dict[str, Any]],
+    *,
+    limit: int = 5,
+    max_per_brand: int = 2,
+) -> list[dict[str, Any]]:
+    selected: list[dict[str, Any]] = []
+    deferred: list[dict[str, Any]] = []
+    brand_counts: dict[str, int] = {}
+
+    for product in ranked_products:
+        brand = _brand_key(product.get("brand"))
+        if not brand or brand_counts.get(brand, 0) < max_per_brand:
+            selected.append(product)
+            if brand:
+                brand_counts[brand] = brand_counts.get(brand, 0) + 1
+        else:
+            deferred.append(product)
+
+        if len(selected) >= limit:
+            break
+
+    if len(selected) < limit:
+        for product in deferred:
+            selected.append(product)
+            if len(selected) >= limit:
+                break
+
+    return selected[:limit]
+
+def _has_enough_diverse_candidates(products: list[dict[str, Any]], filter_mode: str) -> bool:
+    if len(products) < 8:
+        return False
+    ranked = _sort_recommendations(products, filter_mode)
+    diversified = _diversify_recommendations(ranked, limit=5)
+    brands = {_brand_key(product.get("brand")) for product in diversified if _brand_key(product.get("brand"))}
+    return len(diversified) >= 5 and len(brands) >= 3
+
+def _public_recommendation_product(product: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in product.items() if not str(key).startswith("_")}
 
 def _recommendation_search_terms(
     query: str,
     prompt: str,
     history: list[dict[str, Any]],
     has_image_refinement: bool = False,
+    include_history_terms: bool = True,
 ) -> list[str]:
     terms: list[str] = []
     history_terms: list[str] = []
+    allow_brand_terms = _prompt_requests_history_brand_lock(prompt, history)
+    query = query if allow_brand_terms else _strip_history_brands(query, history)
 
     def add_to(target: list[str], term: Any) -> None:
         text = str(term or "").strip()
         if text and text.lower() not in {t.lower() for t in target}:
             target.append(text)
 
-    for item in history[:5]:
-        analysis = item.get("analysis") if isinstance(item, dict) else {}
-        if not isinstance(analysis, dict):
-            continue
+    if include_history_terms:
+        for item in history[:5]:
+            analysis = item.get("analysis") if isinstance(item, dict) else {}
+            if not isinstance(analysis, dict):
+                continue
 
-        title = analysis.get("title") or ""
-        brand = analysis.get("brand") or ""
-        keyword = analysis.get("productKeyword") or ""
+            title = analysis.get("title") or ""
+            brand = analysis.get("brand") or ""
+            keyword = analysis.get("productKeyword") or ""
 
-        if keyword and keyword != "unknown":
-            add_to(history_terms, keyword)
-            if brand:
-                add_to(history_terms, f"{brand} {keyword}")
+            if keyword and keyword != "unknown":
+                add_to(history_terms, keyword)
+                if allow_brand_terms and brand:
+                    add_to(history_terms, f"{brand} {keyword}")
 
-        for term in _simple_title_terms(str(title), str(brand), str(keyword)):
-            add_to(history_terms, term)
+            for term in _simple_title_terms(str(title), str(brand), str(keyword), include_brand=allow_brand_terms):
+                add_to(history_terms, term)
 
     has_refinement = bool(str(prompt or "").strip()) or has_image_refinement
 
     if has_refinement:
         add_to(terms, query)
-        add_to(terms, prompt)
         for term in history_terms:
             add_to(terms, term)
     else:
@@ -228,7 +569,7 @@ def _recommendation_search_terms(
 
     return terms[:8]
 
-def _simple_title_terms(title: str, brand: str, keyword: str) -> list[str]:
+def _simple_title_terms(title: str, brand: str, keyword: str, *, include_brand: bool = False) -> list[str]:
     title = str(title or "").strip()
     brand = str(brand or "").strip()
     keyword = str(keyword or "").strip()
@@ -236,7 +577,7 @@ def _simple_title_terms(title: str, brand: str, keyword: str) -> list[str]:
 
     if keyword and keyword != "unknown":
         terms.append(keyword)
-        if brand:
+        if include_brand and brand:
             terms.append(f"{brand} {keyword}")
 
     if title:
@@ -250,7 +591,7 @@ def _simple_title_terms(title: str, brand: str, keyword: str) -> list[str]:
         ]
         if brand:
             useful = [word for word in useful if word.lower() != brand.lower()]
-        if brand and useful:
+        if include_brand and brand and useful:
             terms.append(f"{brand} {' '.join(useful[:4])}")
         terms.append(" ".join(useful[:5]) or title)
 
@@ -328,14 +669,32 @@ async def explain_score(payload: ExplainScorePayload):
 async def recommendations(payload: RecommendationsPayload):
     try:
         filter_mode = payload.filter if payload.filter in {"overall", "durability", "price", "quality"} else "overall"
-        query_result = await asyncio.to_thread(
-            build_recommendation_query,
-            payload.history,
-            filter_mode,
-            payload.prompt,
-            payload.imageDataUrl,
-        )
+        has_text_refinement = bool(payload.prompt.strip())
+        has_image_refinement = bool(payload.imageDataUrl)
+        has_refinement = has_text_refinement or has_image_refinement
+        if has_image_refinement:
+            query_result = await asyncio.to_thread(
+                build_recommendation_query,
+                payload.history,
+                filter_mode,
+                payload.prompt,
+                payload.imageDataUrl,
+            )
+        elif has_text_refinement:
+            query_result = {
+                "query": _text_prompt_query(payload.prompt, filter_mode),
+                "reason": "Using the product request directly.",
+            }
+        else:
+            query_result = {
+                "query": _history_default_query(payload.history),
+                "reason": "Using recent scan history and the selected filter.",
+            }
         query = query_result.get("query") or "best value products"
+        brand_locked = _prompt_requests_brand_lock(payload.prompt, payload.history)
+        history_brand_locked = _prompt_requests_history_brand_lock(payload.prompt, payload.history)
+        raw_search_query = query if history_brand_locked else _strip_history_brands(query, payload.history)
+        search_query = _clean_recommendation_query_text(raw_search_query) or "best value products"
 
         if query_result.get("rejected"):
             return {
@@ -357,48 +716,129 @@ async def recommendations(payload: RecommendationsPayload):
                     marketplace_counts[marketplace] = marketplace_counts.get(marketplace, 0) + 1
 
         preferred_marketplace = max(marketplace_counts, key=marketplace_counts.get) if marketplace_counts else "amazon"
-        adapters = sorted(
-            MARKETPLACE_ADAPTERS,
-            key=lambda adapter: 0 if adapter.name == preferred_marketplace else 1,
+        requested_marketplaces = _requested_marketplace_names(payload.prompt)
+        if requested_marketplaces:
+            preferred_marketplace = next(iter(requested_marketplaces))
+        elif has_text_refinement and _prompt_has_product_target(payload.prompt):
+            preferred_marketplace = "amazon"
+        adapters = _ordered_recommendation_adapters(payload.prompt, preferred_marketplace)
+
+        if not adapters:
+            return {
+                "ok": True,
+                "query": search_query,
+                "reason": "No supported marketplace matched that request.",
+                "filter": filter_mode,
+                "products": [],
+            }
+
+        include_history_terms = not (
+            has_image_refinement
+            or (has_text_refinement and _prompt_has_product_target(payload.prompt))
         )
 
         search_terms = _recommendation_search_terms(
-            query,
+            search_query,
             payload.prompt,
             payload.history,
             bool(payload.imageDataUrl),
+            include_history_terms=include_history_terms,
         )
+        if has_refinement:
+            search_terms = search_terms[:RECOMMENDATION_REFINED_TERM_LIMIT]
+
+        print(
+            f"[Recommendations] query='{search_query}' filter='{filter_mode}' "
+            f"terms={search_terms} marketplaces={[adapter.name for adapter in adapters]}"
+        )
+
         seen: set[str] = set()
         products: list[dict[str, Any]] = []
-        for term in search_terms:
-            for adapter in adapters:
-                results = await asyncio.to_thread(adapter.search_similar_products, term)
-                for raw in results:
-                    if not isinstance(raw, dict):
-                        continue
-                    product = _normalize_recommendation_product(raw, adapter)
-                    if not product:
-                        continue
-                    key = product["listingId"]
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    products.append(product)
-                    if len(products) >= 24:
-                        break
-                if len(products) >= 24:
+        raw_count = 0
+        normalized_count = 0
+        relevance_drop_count = 0
+        duplicate_drop_count = 0
+        search_jobs = [
+            (term_index, term, adapter)
+            for term_index, term in enumerate(search_terms)
+            for adapter in adapters
+        ]
+
+        term_counts: dict[int, int] = {}
+        search_tasks = [
+            asyncio.create_task(_recommendation_search_job(term_index, term, adapter))
+            for term_index, term, adapter in search_jobs
+        ]
+
+        for completed in asyncio.as_completed(search_tasks):
+            term_index, term, adapter, results = await completed
+            term_added = term_counts.get(term_index, 0)
+            if (
+                term_added >= MAX_RECOMMENDATION_CANDIDATES_PER_TERM
+                or len(products) >= MAX_RECOMMENDATION_CANDIDATES
+            ):
+                continue
+
+            for raw in results:
+                raw_count += 1
+                if not isinstance(raw, dict):
+                    continue
+                product = _normalize_recommendation_product(raw, adapter)
+                if not product:
+                    continue
+                normalized_count += 1
+                if not _product_matches_relevance(
+                    product,
+                    query=search_query,
+                    prompt=payload.prompt,
+                    has_image_refinement=has_image_refinement,
+                ):
+                    relevance_drop_count += 1
+                    continue
+                key = product["listingId"]
+                if key in seen:
+                    duplicate_drop_count += 1
+                    continue
+                product["_sourceTerm"] = term
+                product["_sourceTermIndex"] = term_index
+                seen.add(key)
+                products.append(product)
+                term_added += 1
+                term_counts[term_index] = term_added
+                if (
+                    term_added >= MAX_RECOMMENDATION_CANDIDATES_PER_TERM
+                    or len(products) >= MAX_RECOMMENDATION_CANDIDATES
+                ):
                     break
-            if len(products) >= 24:
+
+            if len(products) >= MAX_RECOMMENDATION_CANDIDATES:
+                break
+            if not brand_locked and _has_enough_diverse_candidates(products, filter_mode):
                 break
 
+        for task in search_tasks:
+            if not task.done():
+                task.cancel()
+
         ranked_products = _sort_recommendations(products, filter_mode)
+        final_products = (
+            ranked_products[:5]
+            if brand_locked
+            else _diversify_recommendations(ranked_products, limit=5)
+        )
+        print(
+            "[Recommendations] pipeline "
+            f"raw={raw_count} normalized={normalized_count} "
+            f"relevance_dropped={relevance_drop_count} duplicates={duplicate_drop_count} "
+            f"ranked={len(ranked_products)} final={len(final_products)}"
+        )
 
         return {
             "ok": True,
-            "query": query,
+            "query": search_query,
             "reason": query_result.get("reason"),
             "filter": filter_mode,
-            "products": ranked_products[:5],
+            "products": [_public_recommendation_product(product) for product in final_products],
         }
     except Exception:
         import traceback

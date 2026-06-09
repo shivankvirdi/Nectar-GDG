@@ -438,32 +438,49 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
         vision_model.clean_similar_products() and the frontend expect.
         """
         price_val = None
-        price_raw = _ensure_dict(r.get("price"))
+        price_source = (
+            r.get("price")
+            or r.get("current_price")
+            or r.get("currentPrice")
+            or r.get("sale_price")
+            or r.get("salePrice")
+            or r.get("item_price")
+            or r.get("itemPrice")
+        )
+        price_raw = _ensure_dict(price_source)
         if price_raw:
-            v = price_raw.get("value")
+            v = price_raw.get("value") or price_raw.get("amount") or price_raw.get("raw")
             if v is not None:
                 try:
-                    fv = float(v)
+                    match = re.search(r"\d+(?:,\d{3})*(?:\.\d{1,2})?", str(v))
+                    fv = float(match.group(0).replace(",", "")) if match else float(v)
                     price_val = {"display": f"${fv:.2f}", "value": fv}
                 except (TypeError, ValueError):
                     pass
         else:
-            p = r.get("price")
+            p = price_source
             if isinstance(p, (int, float)):
                 price_val = {"display": f"${float(p):.2f}", "value": float(p)}
             elif isinstance(p, str):
-                cleaned = re.sub(r"[^\d.]", "", p)
-                if cleaned:
+                match = re.search(r"\d+(?:,\d{3})*(?:\.\d{1,2})?", p)
+                if match:
                     try:
-                        fv = float(cleaned)
+                        fv = float(match.group(0).replace(",", ""))
                         price_val = {"display": f"${fv:.2f}", "value": fv}
                     except ValueError:
                         pass
 
-        asin = _safe_str(r.get("item_id") or r.get("asin"), "")
+        listing_url = _safe_str(
+            r.get("url")
+            or r.get("link")
+            or r.get("item_url")
+            or r.get("itemUrl")
+            or r.get("productUrl"),
+            "",
+        )
+        asin = _safe_str(r.get("item_id") or r.get("itemId") or r.get("listingId") or r.get("asin"), "")
         if not asin:
-            url = _safe_str(r.get("url"), "")
-            m = re.search(r"/itm/(?:[^/]+/)?(\d{10,13})", url)
+            m = re.search(r"/itm/(?:[^/]+/)?(\d{10,13})", listing_url)
             if m:
                 asin = m.group(1)
 
@@ -472,17 +489,36 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
         if not brand_name:
             brand_name = _safe_str(r.get("brand") or r.get("store_name") or r.get("seller_name"), "")
 
-        image = _safe_str(r.get("image_url") or r.get("image") or r.get("thumbnail"), "")
+        image = _safe_str(
+            r.get("image_url")
+            or r.get("imageUrl")
+            or r.get("image")
+            or r.get("thumbnail")
+            or r.get("thumbnail_url")
+            or r.get("thumbnailUrl"),
+            "",
+        )
+        if not image:
+            for img in _ensure_list(r.get("images")):
+                if isinstance(img, str) and img:
+                    image = img
+                    break
+                if isinstance(img, dict):
+                    image = _safe_str(img.get("url") or img.get("src") or img.get("link"), "")
+                    if image:
+                        break
 
         return {
             "title":        _safe_str(r.get("title")),
             "asin":         asin,
+            "listingId":    asin,
             "brand":        brand_name,
             "rating":       r.get("rating"),
-            "ratingsTotal": r.get("review_count"),
+            "ratingsTotal": r.get("review_count") or r.get("reviewCount") or r.get("reviews"),
             "mainImageUrl": image or None,
             "isPrime":      False,
             "price":        price_val,
+            "listingUrl":   listing_url or None,
         }
 
     @staticmethod

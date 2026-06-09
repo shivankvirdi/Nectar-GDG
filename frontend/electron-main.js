@@ -10,9 +10,9 @@ let mainWindow
 
 const ICON_PATH = path.join(__dirname, 'dist', 'icons', 'icon128.png')
 const DEFAULT_WIDTH = 375
-const DEFAULT_HEIGHT = 420
+const DEFAULT_HEIGHT = 358
 const MIN_WINDOW_HEIGHT = DEFAULT_HEIGHT
-const MAX_WINDOW_HEIGHT = DEFAULT_HEIGHT * 1.75
+const MAX_WINDOW_HEIGHT = 735
 const AUTO_RESIZE_FRAME_MS = 8
 const AUTO_RESIZE_EASE = 0.40
 
