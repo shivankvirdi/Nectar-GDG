@@ -9,7 +9,7 @@ E-commerce lacks trustworthy product intelligence, with consumers losing billion
 - AI-powered product analysis
 - Review integrity detection
 - Brand and seller reputation scoring
-- Similar product recommendations
+- Personalized product recommendations
 - Product comparison tools
 - Scan history and recommendation memory
 - Amazon and eBay support
