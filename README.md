@@ -29,90 +29,51 @@ E-commerce lacks trustworthy product intelligence, with consumers losing billion
 
 ## Architecture Diagram
 ```mermaid
-%%{init: {'theme': 'redux-dark', 'themeVariables': {'fontSize': '15px', 'fontFamily': 'ui-monospace, monospace'}}}%%
-
-flowchart TD
-
-    USER(["🛒 User browses Amazon or eBay"])
-
-    subgraph SHELL["Electron Desktop Overlay"]
-        direction LR
-        DET["Active URL detection\nAppleScript · PowerShell · xdotool"]
-        WIN["Frameless always-on-top window\nFrosted glass · IPC fit-to-content"]
-    end
-
-    subgraph UI["React + TypeScript Frontend"]
-        direction LR
-        SCAN["Scan module\nPaste or auto-detect URL\nCancel mid-scan"]
-        RESULTS["Results view\nScore · verdict · keywords\nreputation insights"]
-        REC["Recommendations\nPrompt · image upload\nfilter · marketplace"]
-        HIST["Scan history\nCompare two products\nside-by-side metrics"]
-    end
-
-    subgraph API["FastAPI Backend — Cloud Run · GCP Secret Manager"]
-        direction LR
-        EP1["/current-url\nRun full scan\naccepts scanId"]
-        EP2["/cancel-scan\nasyncio Event\nflag abort"]
-        EP3["/explain-score\nGemini narrative\nper metric"]
-        EP4["/recommendations\nGemini query builder\nrank · dedupe · top 5"]
-    end
-
-    subgraph PIPE["Analysis Pipeline — vision_model.py"]
-        direction TB
-        ADAPT["Marketplace adapter registry\nAmazonCanopyAdapter  amazon.*\nEbayScraperAPIAdapter  ebay.*"]
-        FETCH["fetch_product_profile\nTitle · price · rating · images\nReviews normalised to shared shape\nAmazon: brand  ·  eBay: seller dict"]
-        POST["Keyword + accessory inference\nURL slug + title → product keyword\nFilter out cases · cables · chargers\nbuild_similar_search_terms → adapter"]
-        ADAPT --> FETCH --> POST
-    end
-
-    subgraph NLP["NLP Scoring Engine — NLTK"]
-        direction LR
-
-        subgraph INTEG["Review Integrity  review_integrity.py"]
-            RI["VADER scored per sentence not whole review\n'Battery is terrible' scores negative\neven inside a 4-star review\nIntegrity = 60% verified ratio + 40% star-sentiment agreement\nFlags: low_verified · star_text_mismatch · inflated_ratings"]
-        end
-
-        subgraph KWDS["Keyword Extraction  nlp_utils.py"]
-            KW["WordNet lemmatisation  batteries → battery\nTF-IDF: count × log(N/df) × domain boost\n  boost words  quality · durable          ×2\n  curated bigrams  battery life           ×3\n  negation pairs  not working             ×4\nSentence-level VADER sentiment per term"]
-        end
-
-        subgraph REPUT["Reputation Scoring  brand_reputation.py"]
-            BR["Amazon: fuzzy brand → Google Places\n  aggregate rating + NLP on reviews\n  Bayesian blend  score = prior×(1−c) + signal×c  prior = 68\n  Insights: Support · Shipping · Build Quality\neBay: seller positive-% + top-rated flag\n  Insights: Trust · Shipping · Condition · Returns"]
-        end
-
-        subgraph SCORE["Overall Score"]
-            SC["Amazon  40% star + 35% integrity + 25% brand\neBay    30% star + 25% integrity + 45% seller\n        blended 70/30 with seller positive-%"]
-        end
-    end
-
-    subgraph AILAY["Gemini AI Layer — ai_analysis.py\ngemini-2.5-flash → gemini-2.5-flash-lite fallback · structured JSON output · 3 retries"]
-        direction LR
-        VER["Verdict\n3 pros + 3 cons from reviews\nBUY / COMPARE / SKIP\nthreshold 75 / 50"]
-        EXP["Score explainer\n3–5 sentence narrative\nper metric on demand"]
-        QRY["Rec query builder\nHistory + filter + image\n→ search term + scope"]
-    end
-
-    subgraph EXT["External Data Sources"]
-        direction LR
-        CANOPY["Canopy API\nAmazon GraphQL\nproducts · reviews\nsearch · retry+backoff"]
-        SCRAPER["ScraperAPI\neBay structured\nproduct + search\nnormalised shape"]
-        PLACES["Google Places API\nBrand fuzzy match\naggregate rating\n+ review text · 1hr cache"]
-        GAPI["Gemini API\ngoogle-genai client\nkeys via\nSecret Manager"]
-    end
-
-    USER --> SHELL
-    SHELL -->|"detected URL"| UI
-    UI -->|"HTTP/JSON · X-Nectar-Secret"| API
-    API --> PIPE
-    PIPE --> NLP
-    NLP --> AILAY
-    AILAY -->|"verdict + pros/cons + rec"| UI
-    PIPE -->|"product fetch"| CANOPY
-    PIPE -->|"product fetch"| SCRAPER
-    REPUT -->|"brand lookup"| PLACES
-    AILAY -->|"LLM calls"| GAPI
-    EP4 -->|"rec searches"| CANOPY
-    EP4 -->|"rec searches"| SCRAPER
+---
+config:
+  layout: dagre
+  theme: redux-dark-color
+  look: redux
+  fontFamily: '''Source Code Pro Variable'', monospace'
+  themeVariables:
+    fontFamily: '''Source Code Pro Variable'', monospace'
+---
+flowchart LR
+ subgraph ELECTRON["⚡  Electron Shell"]
+        E1["Frameless glass overlay\nalways-on-top · IPC resize"]
+        E2["URL detection\nAppleScript · PS · xdotool"]
+  end
+ subgraph REACT["React + TypeScript"]
+        R1["Scan · Results · Compare"]
+        R2["Recommendations · History"]
+  end
+ subgraph API["FastAPI · Cloud Run · Secret Manager"]
+        A1["/current-url · /cancel-scan"]
+        A2["/explain-score\n/recommendations"]
+  end
+ subgraph PIPELINE[" Analysis Pipeline"]
+        P1["Marketplace adapter registry\namazon · ebay"]
+        P2["Fetch · normalise\nKeyword inference"]
+  end
+ subgraph NLP[" NLP Engine"]
+        N1["Review integrity\nVADER scoring · flags"]
+        N2["Reputation scoring\nBayesian blend · prior = 68"]
+        N3["Overall score\namazon 40/35/25\nebay  30/25/45"]
+  end
+ subgraph AILAY["✨  Gemini AI · gemini-2.5-flash"]
+        G1["Verdict · BUY / COMPARE / SKIP"]
+        G2["Score explainer\nRec query builder"]
+  end
+    USER([" Amazon / eBay"]) --> E1
+    E1 --> R1
+    A1 --> P1
+    P1 --> N1 & CANOPY["Canopy API\nAmazon GraphQL"] & SCRAPER["ScraperAPI\neBay structured"]
+    N1 --> G1
+    G1 -- verdict · scores --> R1
+    N2 --> PLACES["Google Places\nBrand lookup · 1hr cache"]
+    G1 --> G2
+    G2 --> GAPI["Gemini API\ngemini-2.5-flash-lite fallback"]
+    R1 -- "HTTP · X-Nectar-Secret" --> A1
 ```
 
 # How to Use
