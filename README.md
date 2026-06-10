@@ -1,4 +1,4 @@
-# Nectar
+# Nectar - Top 10 Finalist GDG on Campus Solutions Challenge, North America
 
 https://github.com/user-attachments/assets/503b7d96-bcd8-418d-aa47-0589f6e007b4
 
