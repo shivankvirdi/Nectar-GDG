@@ -34,6 +34,13 @@ load_dotenv()
 SCRAPERAPI_KEY = os.getenv("SCRAPERAPI_KEY")
 PRODUCT_URL   = "https://api.scraperapi.com/structured/ebay/product"
 SEARCH_URL    = "https://api.scraperapi.com/structured/ebay/search"
+BRAND_HINTS = {
+    "apple", "sony", "bose", "jbl", "samsung", "anker", "soundcore", "beats",
+    "skullcandy", "google", "microsoft", "logitech", "razer", "steelseries",
+    "carhartt", "nike", "adidas", "levi", "levis", "stanley", "hydro flask",
+    "anua", "owala", "reebok", "under armour", "new balance", "asics", "puma",
+    "brooks", "saucony", "hoka", "topo", "aeropostale",
+}
 
 
 def _ensure_dict(value, fallback: dict | None = None) -> dict:
@@ -74,6 +81,17 @@ def _safe_str(value, default: str = "") -> str:
     if value is not None:
         return str(value)
     return default
+
+
+def _infer_brand_from_title(title: str) -> str:
+    text = re.sub(r"[^a-z0-9]+", " ", str(title or "").lower()).strip()
+    if not text:
+        return ""
+    for brand in sorted(BRAND_HINTS, key=len, reverse=True):
+        normalized_brand = re.sub(r"[^a-z0-9]+", " ", brand.lower()).strip()
+        if re.search(rf"\b{re.escape(normalized_brand)}\b", text):
+            return brand.title()
+    return ""
 
 
 CONNECT_TIMEOUT = 10
@@ -449,7 +467,12 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
         )
         price_raw = _ensure_dict(price_source)
         if price_raw:
-            v = price_raw.get("value") or price_raw.get("amount") or price_raw.get("raw")
+            v = (
+                price_raw.get("value")
+                or price_raw.get("amount")
+                or price_raw.get("raw")
+                or price_raw.get("extracted")
+            )
             if v is not None:
                 try:
                     match = re.search(r"\d+(?:,\d{3})*(?:\.\d{1,2})?", str(v))
@@ -475,6 +498,7 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
             or r.get("link")
             or r.get("item_url")
             or r.get("itemUrl")
+            or r.get("product_url")
             or r.get("productUrl"),
             "",
         )
@@ -508,11 +532,13 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
                     if image:
                         break
 
+        title = _safe_str(r.get("title") or r.get("name") or r.get("product_title"))
+
         return {
-            "title":        _safe_str(r.get("title")),
+            "title":        title,
             "asin":         asin,
             "listingId":    asin,
-            "brand":        brand_name,
+            "brand":        brand_name or _infer_brand_from_title(title),
             "rating":       r.get("rating"),
             "ratingsTotal": r.get("review_count") or r.get("reviewCount") or r.get("reviews"),
             "mainImageUrl": image or None,

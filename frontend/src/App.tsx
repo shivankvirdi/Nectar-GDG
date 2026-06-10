@@ -30,7 +30,7 @@ const DELETE_ENTRY_DELAY_MS = 240
 const CLEAR_ALL_ENTRY_DELAY_MS = 260
 const SCAN_CANCEL_WINDOW_MS = 3000
 const AUTO_FIT_DELTA_THRESHOLD = 2
-const RECOMMENDATION_TIMEOUT_MS = 12000
+const RECOMMENDATION_TIMEOUT_MS = 24000
 const RECOMMENDATION_REFINEMENT_TIMEOUT_MS = 26000
 const RECOMMENDATION_FADE_MS = 180
 
@@ -40,6 +40,7 @@ const SCAN_HISTORY_KEY = 'nectar_scan_history'
 const MAX_SCAN_HISTORY = 10
 
 const RECOMMENDER_FILTERS = ['overall', 'durability', 'price', 'quality'] as const
+const RECOMMENDER_MARKETPLACES = ['all', 'amazon', 'ebay'] as const
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -125,6 +126,7 @@ type Analysis = {
 
 type Recommendation = NonNullable<NonNullable<Analysis['aiAnalysis']>['recommendation']>
 type RecommenderFilter = typeof RECOMMENDER_FILTERS[number]
+type RecommenderMarketplace = typeof RECOMMENDER_MARKETPLACES[number]
 
 function AutoSizingWindow({ children }: { children: ReactNode }) {
   const panelRef = useRef<HTMLDivElement | null>(null)
@@ -216,6 +218,7 @@ type RecommendationResponse = {
   message?: string
   query?: string
   reason?: string
+  marketplace?: RecommenderMarketplace
   products?: SimilarProduct[]
 }
 
@@ -471,13 +474,30 @@ function sortFallbackProducts(products: SimilarProduct[], filter: RecommenderFil
   return [...products].sort((a, b) => getFallbackProductRank(b, filter) - getFallbackProductRank(a, filter))
 }
 
-function getHistoryRecommendationFallback(history: ScanRecord[], filter: RecommenderFilter): SimilarProduct[] {
+function getProductMarketplace(product: SimilarProduct): RecommenderMarketplace {
+  if (product.marketplace === 'amazon' || product.marketplace === 'ebay') return product.marketplace
+  const url = `${product.listingUrl ?? ''} ${product.productUrl ?? ''} ${product.amazonUrl ?? ''}`.toLowerCase()
+  if (url.includes('ebay.')) return 'ebay'
+  if (url.includes('amazon.') || url.includes('/dp/')) return 'amazon'
+  return 'all'
+}
+
+function productMatchesMarketplace(product: SimilarProduct, marketplace: RecommenderMarketplace): boolean {
+  return marketplace === 'all' || getProductMarketplace(product) === marketplace
+}
+
+function getHistoryRecommendationFallback(
+  history: ScanRecord[],
+  filter: RecommenderFilter,
+  marketplace: RecommenderMarketplace,
+): SimilarProduct[] {
   const seen = new Set<string>()
   const products: SimilarProduct[] = []
 
   for (const record of history) {
     for (const product of record.analysis.similarProducts ?? []) {
       const key = product.listingId ?? product.asin ?? product.listingUrl ?? product.productUrl ?? product.title
+      if (!productMatchesMarketplace(product, marketplace)) continue
       if (!hasDisplayablePrice(product)) continue
       if (!key || seen.has(key)) continue
       seen.add(key)
@@ -841,6 +861,10 @@ export function ProductRecommendationScroller({ analysis, products }: { analysis
           const comparison = compareProductAgainstCurrent(analysis, product)
           const isBest = i === bestIndex
           const badge = getRecommendationBadge(product, comparison, i, isBest, Boolean(analysis))
+          const brandLabel = product.brand || (product.marketplace === 'ebay' ? 'eBay listing' : 'Unknown brand')
+          const hasRating = product.rating !== null && product.rating !== undefined && product.rating !== ''
+          const reviewText = product.reviewCount ? ` · ${product.reviewCount.toLocaleString()} reviews` : ''
+          const marketplaceLabel = product.marketplace === 'ebay' ? 'eBay listing' : 'Marketplace listing'
           return (
             <a
               key={product.listingId ?? product.asin ?? i}
@@ -866,7 +890,7 @@ export function ProductRecommendationScroller({ analysis, products }: { analysis
                 ? <img src={product.image} alt={product.title ?? 'Product'} className="similar-card-image" />
                 : <ProductImagePlaceholder />}
               <p className="similar-card-title">{product.title ?? 'Untitled Product'}</p>
-              <p className="similar-card-brand">{product.brand ?? 'Unknown brand'}</p>
+              <p className="similar-card-brand">{brandLabel}</p>
               <div className="similar-card-price-row">
                 <p className="similar-card-price">{product.price ?? 'No price'}</p>
                 {analysis && comparison.priceDiff !== null && (
@@ -876,8 +900,7 @@ export function ProductRecommendationScroller({ analysis, products }: { analysis
                 )}
               </div>
               <p className="similar-card-rating">
-                ⭐ {product.rating ?? 'N/A'}
-                {product.reviewCount ? ` · ${product.reviewCount.toLocaleString()} reviews` : ''}
+                {hasRating ? `Rating ${product.rating}${reviewText}` : marketplaceLabel}
               </p>
             </a>
           )
@@ -896,6 +919,7 @@ function SmartRecommendationsSection({
   analysis,
   products,
   filter,
+  marketplace,
   prompt,
   imageDataUrl,
   imageName,
@@ -905,6 +929,7 @@ function SmartRecommendationsSection({
   message,
   defaultOpen,
   onFilterChange,
+  onMarketplaceChange,
   onPromptChange,
   onImageUpload,
   onClearImage,
@@ -913,6 +938,7 @@ function SmartRecommendationsSection({
   analysis?: Analysis | null
   products: SimilarProduct[]
   filter: RecommenderFilter
+  marketplace: RecommenderMarketplace
   prompt: string
   imageDataUrl: string
   imageName: string
@@ -922,6 +948,7 @@ function SmartRecommendationsSection({
   message: string
   defaultOpen: boolean
   onFilterChange: (filter: RecommenderFilter) => void
+  onMarketplaceChange: (marketplace: RecommenderMarketplace) => void
   onPromptChange: (prompt: string) => void
   onImageUpload: (file: File | null) => void
   onClearImage: () => void
@@ -929,18 +956,22 @@ function SmartRecommendationsSection({
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const filterMenuRef = useRef<HTMLDivElement | null>(null)
+  const marketplaceMenuRef = useRef<HTMLDivElement | null>(null)
   const [filterOpen, setFilterOpen] = useState(false)
+  const [marketplaceOpen, setMarketplaceOpen] = useState(false)
 
   useEffect(() => {
-    if (!filterOpen) return
+    if (!filterOpen && !marketplaceOpen) return
     const closeOnOutsideClick = (event: MouseEvent) => {
-      if (!filterMenuRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node
+      if (!filterMenuRef.current?.contains(target)) {
         setFilterOpen(false)
       }
+      if (!marketplaceMenuRef.current?.contains(target)) setMarketplaceOpen(false)
     }
     document.addEventListener('mousedown', closeOnOutsideClick)
     return () => document.removeEventListener('mousedown', closeOnOutsideClick)
-  }, [filterOpen])
+  }, [filterOpen, marketplaceOpen])
 
   const handlePromptPaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const imageItem = Array.from(event.clipboardData.items).find((item) => item.type.startsWith('image/'))
@@ -963,7 +994,10 @@ function SmartRecommendationsSection({
           <button
             type="button"
             className="recommendation-filter-main"
-            onClick={() => setFilterOpen((prev) => !prev)}
+            onClick={() => {
+              setMarketplaceOpen(false)
+              setFilterOpen((prev) => !prev)
+            }}
             aria-haspopup="listbox"
             aria-expanded={filterOpen}
           >
@@ -973,7 +1007,10 @@ function SmartRecommendationsSection({
           <button
             type="button"
             className="recommendation-filter-chevron-btn"
-            onClick={() => setFilterOpen((prev) => !prev)}
+            onClick={() => {
+              setMarketplaceOpen(false)
+              setFilterOpen((prev) => !prev)
+            }}
             aria-label="Open recommendation filters"
           >
             <span className={`recommendation-filter-chevron ${filterOpen ? 'recommendation-filter-chevron--open' : ''}`} />
@@ -1047,26 +1084,72 @@ function SmartRecommendationsSection({
           rows={2}
         />
         <div className="recommendation-refine-actions">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="recommendation-file-input"
-            onChange={(e) => onImageUpload(e.target.files?.[0] ?? null)}
-          />
-          <button
-            type="button"
-            className={`recommendation-image-btn ${imageName ? 'recommendation-image-btn--active' : ''}`}
-            onClick={() => fileInputRef.current?.click()}
-            title={imageName ? `Using ${imageName}` : 'Upload reference photo'}
-            aria-label="Upload reference photo"
-          >
-            <svg className="recommendation-image-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <rect x="4" y="5" width="16" height="16" rx="2.5" />
-              <circle cx="9" cy="10" r="1.6" />
-              <path d="M6.5 18.5 11 14l3 3 1.8-1.8 2.7 3.3" />
-            </svg>
-          </button>
+          <div className="recommendation-refine-left">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="recommendation-file-input"
+              onChange={(e) => onImageUpload(e.target.files?.[0] ?? null)}
+            />
+            <button
+              type="button"
+              className={`recommendation-image-btn ${imageName ? 'recommendation-image-btn--active' : ''}`}
+              onClick={() => fileInputRef.current?.click()}
+              title={imageName ? `Using ${imageName}` : 'Upload reference photo'}
+              aria-label="Upload reference photo"
+            >
+              <svg className="recommendation-image-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="4" y="5" width="16" height="16" rx="2.5" />
+                <circle cx="9" cy="10" r="1.6" />
+                <path d="M6.5 18.5 11 14l3 3 1.8-1.8 2.7 3.3" />
+              </svg>
+            </button>
+            <div className="recommendation-marketplace-control" ref={marketplaceMenuRef}>
+              <button
+                type="button"
+                className="recommendation-marketplace-main"
+                onClick={() => {
+                  setFilterOpen(false)
+                  setMarketplaceOpen((prev) => !prev)
+                }}
+                aria-haspopup="listbox"
+                aria-expanded={marketplaceOpen}
+              >
+                Marketplace
+              </button>
+              <button
+                type="button"
+                className="recommendation-marketplace-chevron-btn"
+                onClick={() => {
+                  setFilterOpen(false)
+                  setMarketplaceOpen((prev) => !prev)
+                }}
+                aria-label="Open recommendation marketplaces"
+              >
+                <span className={`recommendation-marketplace-chevron ${marketplaceOpen ? 'recommendation-marketplace-chevron--open' : ''}`} />
+              </button>
+              {marketplaceOpen && (
+                <div className="recommendation-marketplace-menu" role="listbox" aria-label="Recommendation marketplace">
+                  {RECOMMENDER_MARKETPLACES.map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      className={`recommendation-marketplace-option ${marketplace === option ? 'recommendation-marketplace-option--selected' : ''}`}
+                      onClick={() => {
+                        onMarketplaceChange(option)
+                        setMarketplaceOpen(false)
+                      }}
+                      role="option"
+                      aria-selected={marketplace === option}
+                    >
+                      {option === 'all' ? 'All' : option === 'amazon' ? 'Amazon' : 'eBay'}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
           <button
             type="button"
             className="recommendation-send-btn"
@@ -1195,7 +1278,6 @@ function ResultsView({ analysis, isExiting }: { analysis: Analysis; isExiting: b
   const br = analysis.sellerReputation || analysis.brandReputation
   const isEbay = analysis.marketplace === 'ebay'
 
-  // Cast to access eBay-only fields that aren't in the base type
   const brEbay = br as (typeof br & {
     sellerName?: string
     sellerPositivePct?: number
@@ -1342,7 +1424,6 @@ function ResultsView({ analysis, isExiting }: { analysis: Analysis; isExiting: b
           ) : (
             <p className="body-text muted">{isEbay ? 'No seller insights yet.' : 'No brand insights yet.'}</p>
           )}
-          {/* Keywords only shown for Amazon — eBay NLP signal is lower quality */}
           {!isEbay && (
             <>
               <p className="keywords-label"><strong>Top Keywords:</strong></p>
@@ -1431,131 +1512,131 @@ function CompareView({ records, onBack }: { records: [ScanRecord, ScanRecord]; o
 
   return (
     <AutoSizingWindow>
-        <header className="top-header">
-          <div className="brand-row">
-            <img src={logoSrc} alt="Nectar logo" className="brand-logo" />
-            <div className="brand-block">
-              <h1>Nectar</h1>
-              <p>PRODUCT COMPARISON</p>
-            </div>
-          </div>
-          <button className="premium-btn" onClick={onBack}>← Back</button>
-        </header>
-
-        <div className="content" key="compare-view">
-          <div className="cascade-item cascade-delay-1">
-            <section className="section-card compare-hero">
-              <div className="compare-hero-top">
-                <div>
-                  <h3 className="compare-hero-title">Compare Products</h3>
-                  <p className="compare-hero-text">Side-by-side view of pricing, trust, ratings, and AI verdicts.</p>
-                </div>
-                <span className="compare-summary-badge">{summaryLabel}</span>
-              </div>
-              <div className="compare-summary-pills">
-                <span className={`compare-chip ${priceW}`}>Best Value · {priceW === 'tie' ? 'Tie' : priceW === 'left' ? 'Left' : 'Right'}</span>
-                <span className={`compare-chip ${ratingW}`}>Higher Rated · {ratingW === 'tie' ? 'Tie' : ratingW === 'left' ? 'Left' : 'Right'}</span>
-                <span className={`compare-chip ${integrityW}`}>More Trusted · {integrityW === 'tie' ? 'Tie' : integrityW === 'left' ? 'Left' : 'Right'}</span>
-                <span className={`compare-chip ${brandW}`}>Better Brand/Seller · {brandW === 'tie' ? 'Tie' : brandW === 'left' ? 'Left' : 'Right'}</span>
-              </div>
-            </section>
-          </div>
-
-          <div className="cascade-item cascade-delay-2">
-            <section className="compare-products-grid">
-              {([
-                { side: 'LEFT', a: la, record: left, image: getAnalysisImage(la), isLeader: leftWins > rightWins },
-                { side: 'RIGHT', a: ra, record: right, image: getAnalysisImage(ra), isLeader: rightWins > leftWins },
-              ] as const).map(({ side, a, record, image, isLeader }) => (
-                <article key={side} className={`compare-product-card ${isLeader ? 'compare-product-card--leader' : ''}`}>
-                  <div className="compare-product-image-wrap">
-                    {image
-                      ? <img src={image} alt={a.title ?? 'Product'} className="compare-product-image" />
-                      : <ProductImagePlaceholder className="compare-product-image" />}
-                  </div>
-                  <div className="compare-product-card-body">
-                    <div className="compare-product-card-top">
-                      <span className="compare-side-badge">{side}</span>
-                      {isLeader && <span className="compare-winner-badge">BEST PICK</span>}
-                    </div>
-                    <p className="compare-product-title">{a.title ?? 'Untitled Product'}</p>
-                    <p className="compare-product-meta">{a.brand ?? 'Unknown brand'} · {new Date(record.scannedAt).toLocaleString()}</p>
-                    <div className="compare-quick-stats">
-                      <div className="compare-quick-stat"><span>Score</span><strong>{renderMetricValue(a.overallScore)}</strong></div>
-                      <div className="compare-quick-stat"><span>Price</span><strong>{renderMetricValue(a.price)}</strong></div>
-                      <div className="compare-quick-stat"><span>Rating</span><strong>{renderMetricValue(a.rating)}</strong></div>
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </section>
-          </div>
-
-          <div className="cascade-item cascade-delay-3">
-            <section className="section-card compare-section-card">
-              <h3 className="compare-section-title">Core Metrics</h3>
-              <div className="compare-rows">
-                {coreMetrics.map(({ label, lv, rv, winner }) => (
-                  <div key={label} className="compare-row">
-                    <div className="compare-row-label">{label}</div>
-                    <div className={getCompareValueClass(winner, 'left')}>{renderMetricValue(lv)}</div>
-                    <div className={getCompareValueClass(winner, 'right')}>{renderMetricValue(rv)}</div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </div>
-
-          <div className="cascade-item cascade-delay-4">
-            <section className="section-card compare-section-card">
-              <h3 className="compare-section-title">Trust & Reputation</h3>
-              <div className="compare-rows">
-                {trustMetrics.map(({ label, lv, rv, winner }) => (
-                  <div key={label} className="compare-row">
-                    <div className="compare-row-label">{label}</div>
-                    <div className={getCompareValueClass(winner, 'left')}>{renderMetricValue(lv)}</div>
-                    <div className={getCompareValueClass(winner, 'right')}>{renderMetricValue(rv)}</div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </div>
-
-          <div className="cascade-item cascade-delay-5">
-            <section className="section-card compare-section-card">
-              <h3 className="compare-section-title">AI Verdict</h3>
-              <div className="compare-ai-grid">
-                {[la, ra].map((a, i) => (
-                  <div key={i} className="compare-ai-card">
-                    <p className="compare-ai-label">Recommendation</p>
-                    <p className="compare-ai-recommendation">{renderMetricValue(a.aiAnalysis?.recommendation)}</p>
-                    <p className="compare-ai-verdict">{renderMetricValue(a.aiAnalysis?.verdict)}</p>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </div>
-
-          <div className="cascade-item cascade-delay-6">
-            <SectionCard title={isLeftEbay || isRightEbay ? "Review / Seller Review Integrity Keywords" : "Review Integrity Keywords"}>
-              <p className="compare-subtitle">{la.title ?? 'Left Product'}</p>
-              <KeywordPills keywords={lri?.commonKeywords} emptyMessage="No keywords found" />
-              <div style={{ height: 14 }} />
-              <p className="compare-subtitle">{ra.title ?? 'Right Product'}</p>
-              <KeywordPills keywords={rri?.commonKeywords} emptyMessage="No keywords found" />
-            </SectionCard>
-          </div>
-
-          <div className="cascade-item cascade-delay-7">
-            <SectionCard title={isLeftEbay || isRightEbay ? "Brand / Seller Reputation Keywords" : "Brand Reputation Keywords"}>
-              <p className="compare-subtitle">{la.title ?? 'Left Product'}</p>
-              <KeywordPills keywords={lbr?.commonKeywords} emptyMessage="No keywords found" />
-              <div style={{ height: 14 }} />
-              <p className="compare-subtitle">{ra.title ?? 'Right Product'}</p>
-              <KeywordPills keywords={rbr?.commonKeywords} emptyMessage="No keywords found" />
-            </SectionCard>
+      <header className="top-header">
+        <div className="brand-row">
+          <img src={logoSrc} alt="Nectar logo" className="brand-logo" />
+          <div className="brand-block">
+            <h1>Nectar</h1>
+            <p>PRODUCT COMPARISON</p>
           </div>
         </div>
+        <button className="premium-btn" onClick={onBack}>← Back</button>
+      </header>
+
+      <div className="content" key="compare-view">
+        <div className="cascade-item cascade-delay-1">
+          <section className="section-card compare-hero">
+            <div className="compare-hero-top">
+              <div>
+                <h3 className="compare-hero-title">Compare Products</h3>
+                <p className="compare-hero-text">Side-by-side view of pricing, trust, ratings, and AI verdicts.</p>
+              </div>
+              <span className="compare-summary-badge">{summaryLabel}</span>
+            </div>
+            <div className="compare-summary-pills">
+              <span className={`compare-chip ${priceW}`}>Best Value · {priceW === 'tie' ? 'Tie' : priceW === 'left' ? 'Left' : 'Right'}</span>
+              <span className={`compare-chip ${ratingW}`}>Higher Rated · {ratingW === 'tie' ? 'Tie' : ratingW === 'left' ? 'Left' : 'Right'}</span>
+              <span className={`compare-chip ${integrityW}`}>More Trusted · {integrityW === 'tie' ? 'Tie' : integrityW === 'left' ? 'Left' : 'Right'}</span>
+              <span className={`compare-chip ${brandW}`}>Better Brand/Seller · {brandW === 'tie' ? 'Tie' : brandW === 'left' ? 'Left' : 'Right'}</span>
+            </div>
+          </section>
+        </div>
+
+        <div className="cascade-item cascade-delay-2">
+          <section className="compare-products-grid">
+            {([
+              { side: 'LEFT', a: la, record: left, image: getAnalysisImage(la), isLeader: leftWins > rightWins },
+              { side: 'RIGHT', a: ra, record: right, image: getAnalysisImage(ra), isLeader: rightWins > leftWins },
+            ] as const).map(({ side, a, record, image, isLeader }) => (
+              <article key={side} className={`compare-product-card ${isLeader ? 'compare-product-card--leader' : ''}`}>
+                <div className="compare-product-image-wrap">
+                  {image
+                    ? <img src={image} alt={a.title ?? 'Product'} className="compare-product-image" />
+                    : <ProductImagePlaceholder className="compare-product-image" />}
+                </div>
+                <div className="compare-product-card-body">
+                  <div className="compare-product-card-top">
+                    <span className="compare-side-badge">{side}</span>
+                    {isLeader && <span className="compare-winner-badge">BEST PICK</span>}
+                  </div>
+                  <p className="compare-product-title">{a.title ?? 'Untitled Product'}</p>
+                  <p className="compare-product-meta">{a.brand ?? 'Unknown brand'} · {new Date(record.scannedAt).toLocaleString()}</p>
+                  <div className="compare-quick-stats">
+                    <div className="compare-quick-stat"><span>Score</span><strong>{renderMetricValue(a.overallScore)}</strong></div>
+                    <div className="compare-quick-stat"><span>Price</span><strong>{renderMetricValue(a.price)}</strong></div>
+                    <div className="compare-quick-stat"><span>Rating</span><strong>{renderMetricValue(a.rating)}</strong></div>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </section>
+        </div>
+
+        <div className="cascade-item cascade-delay-3">
+          <section className="section-card compare-section-card">
+            <h3 className="compare-section-title">Core Metrics</h3>
+            <div className="compare-rows">
+              {coreMetrics.map(({ label, lv, rv, winner }) => (
+                <div key={label} className="compare-row">
+                  <div className="compare-row-label">{label}</div>
+                  <div className={getCompareValueClass(winner, 'left')}>{renderMetricValue(lv)}</div>
+                  <div className={getCompareValueClass(winner, 'right')}>{renderMetricValue(rv)}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <div className="cascade-item cascade-delay-4">
+          <section className="section-card compare-section-card">
+            <h3 className="compare-section-title">Trust & Reputation</h3>
+            <div className="compare-rows">
+              {trustMetrics.map(({ label, lv, rv, winner }) => (
+                <div key={label} className="compare-row">
+                  <div className="compare-row-label">{label}</div>
+                  <div className={getCompareValueClass(winner, 'left')}>{renderMetricValue(lv)}</div>
+                  <div className={getCompareValueClass(winner, 'right')}>{renderMetricValue(rv)}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <div className="cascade-item cascade-delay-5">
+          <section className="section-card compare-section-card">
+            <h3 className="compare-section-title">AI Verdict</h3>
+            <div className="compare-ai-grid">
+              {[la, ra].map((a, i) => (
+                <div key={i} className="compare-ai-card">
+                  <p className="compare-ai-label">Recommendation</p>
+                  <p className="compare-ai-recommendation">{renderMetricValue(a.aiAnalysis?.recommendation)}</p>
+                  <p className="compare-ai-verdict">{renderMetricValue(a.aiAnalysis?.verdict)}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+
+        <div className="cascade-item cascade-delay-6">
+          <SectionCard title={isLeftEbay || isRightEbay ? "Review / Seller Review Integrity Keywords" : "Review Integrity Keywords"}>
+            <p className="compare-subtitle">{la.title ?? 'Left Product'}</p>
+            <KeywordPills keywords={lri?.commonKeywords} emptyMessage="No keywords found" />
+            <div style={{ height: 14 }} />
+            <p className="compare-subtitle">{ra.title ?? 'Right Product'}</p>
+            <KeywordPills keywords={rri?.commonKeywords} emptyMessage="No keywords found" />
+          </SectionCard>
+        </div>
+
+        <div className="cascade-item cascade-delay-7">
+          <SectionCard title={isLeftEbay || isRightEbay ? "Brand / Seller Reputation Keywords" : "Brand Reputation Keywords"}>
+            <p className="compare-subtitle">{la.title ?? 'Left Product'}</p>
+            <KeywordPills keywords={lbr?.commonKeywords} emptyMessage="No keywords found" />
+            <div style={{ height: 14 }} />
+            <p className="compare-subtitle">{ra.title ?? 'Right Product'}</p>
+            <KeywordPills keywords={rbr?.commonKeywords} emptyMessage="No keywords found" />
+          </SectionCard>
+        </div>
+      </div>
     </AutoSizingWindow>
   )
 }
@@ -1584,6 +1665,7 @@ export default function App() {
   const [selectedCompareIds, setSelectedCompareIds] = useState<string[]>([])
   const [compareRecords, setCompareRecords] = useState<[ScanRecord, ScanRecord] | null>(null)
   const [recommendationFilter, setRecommendationFilter] = useState<RecommenderFilter>('overall')
+  const [recommendationMarketplace, setRecommendationMarketplace] = useState<RecommenderMarketplace>('amazon')
   const [recommendationPrompt, setRecommendationPrompt] = useState('')
   const [recommendationImageDataUrl, setRecommendationImageDataUrl] = useState('')
   const [recommendationImageName, setRecommendationImageName] = useState('')
@@ -1598,14 +1680,17 @@ export default function App() {
   const scanDelayResolveRef = useRef<(() => void) | null>(null)
   const scanWasCancelledRef = useRef(false)
   const recommendationRequestIdRef = useRef(0)
+  const recommendationPromptDebounceRef = useRef<number | null>(null)
+  const skipNextRecommendationEffectRef = useRef(false)
   const recommendationHistoryKey = getRecommendationHistoryKey(scanHistory)
 
-  const fetchRecommendations = async (opts?: { prompt?: string; imageDataUrl?: string; history?: ScanRecord[]; filter?: RecommenderFilter; forceLoadingSkeleton?: boolean }) => {
+  const fetchRecommendations = async (opts?: { prompt?: string; imageDataUrl?: string; history?: ScanRecord[]; filter?: RecommenderFilter; marketplace?: RecommenderMarketplace; forceLoadingSkeleton?: boolean; skipInitialFade?: boolean }) => {
     const historyForRequest = opts?.history ?? scanHistory
     const promptForRequest = opts?.prompt ?? recommendationPrompt
     const imageForRequest = opts?.imageDataUrl ?? recommendationImageDataUrl
     const filterForRequest = opts?.filter ?? recommendationFilter
-    const fallbackProducts = getHistoryRecommendationFallback(historyForRequest, filterForRequest)
+    const marketplaceForRequest = opts?.marketplace ?? recommendationMarketplace
+    const fallbackProducts = getHistoryRecommendationFallback(historyForRequest, filterForRequest, marketplaceForRequest)
     const isExplicitRefinement = Boolean(opts?.forceLoadingSkeleton || promptForRequest.trim() || imageForRequest)
     const previousProducts = recommendedProducts
     const requestId = recommendationRequestIdRef.current + 1
@@ -1624,17 +1709,24 @@ export default function App() {
     try {
       setRecommendationsLoading(true)
       setRecommendationMessage('')
+
       if (isExplicitRefinement) {
-        if (previousProducts.length) {
+        // Fade out existing products first if any are showing
+        if (previousProducts.length && !opts?.skipInitialFade) {
           setRecommendationsFading(true)
           await new Promise((resolve) => window.setTimeout(resolve, RECOMMENDATION_FADE_MS))
           if (!isLatestRecommendationRequest()) return
         }
-        if (!previousProducts.length) setRecommendedProducts([])
+        // Always clear so the skeleton loader is visible during the API call.
+        // previousProducts is captured in closure and restored as fallback on failure.
+        setRecommendedProducts([])
         setRecommendationsFading(false)
       } else if (fallbackProducts.length) {
+        // For non-refinement background refreshes, show local fallback immediately
+        // while the API call runs silently in the background.
         setRecommendedProducts(fallbackProducts)
       }
+
       const controller = new AbortController()
       timeoutId = window.setTimeout(
         () => controller.abort(),
@@ -1647,6 +1739,7 @@ export default function App() {
         body: JSON.stringify({
           history: historyForRequest,
           filter: filterForRequest,
+          marketplace: marketplaceForRequest,
           prompt: promptForRequest,
           imageDataUrl: imageForRequest,
         }),
@@ -1664,11 +1757,12 @@ export default function App() {
         setRecommendationMessage('')
         return
       }
+      // API returned no products
       if (isExplicitRefinement) {
         setRecommendationMessage(
           previousProducts.length
-            ? 'No fresh matches yet. Still showing your previous picks.'
-            : 'No products found yet. Try a broader phrase or a different marketplace.'
+            ? 'No fresh matches found. Showing previous picks.'
+            : 'No products found. Try a broader phrase or different filter.'
         )
         if (previousProducts.length) setRecommendedProducts(previousProducts)
         return
@@ -1681,7 +1775,7 @@ export default function App() {
       if (isExplicitRefinement) {
         setRecommendationMessage(
           previousProducts.length
-            ? 'Search timed out. Still showing your previous picks.'
+            ? 'Search timed out. Showing previous picks.'
             : 'Search timed out. Try again or broaden the prompt.'
         )
         if (previousProducts.length) setRecommendedProducts(previousProducts)
@@ -1698,6 +1792,14 @@ export default function App() {
     }
   }
 
+  const showRecommendationSkeleton = () => {
+    recommendationRequestIdRef.current += 1
+    setRecommendationsLoading(true)
+    setRecommendationsFading(false)
+    setRecommendationMessage('')
+    setRecommendedProducts([])
+  }
+
   useEffect(() => {
     detectActiveUrl()
     loadCurrentSavedScan().then(setCurrentSavedScan)
@@ -1705,14 +1807,19 @@ export default function App() {
     loadScanHistory().then(setScanHistory)
     return () => {
       if (cancelTimerRef.current !== null) window.clearTimeout(cancelTimerRef.current)
+      if (recommendationPromptDebounceRef.current !== null) window.clearTimeout(recommendationPromptDebounceRef.current)
       scanDelayResolveRef.current?.()
       scanAbortRef.current?.abort()
     }
   }, [])
 
   useEffect(() => {
-    fetchRecommendations({ history: scanHistory, filter: recommendationFilter })
-  }, [recommendationFilter, recommendationHistoryKey])
+    if (skipNextRecommendationEffectRef.current) {
+      skipNextRecommendationEffectRef.current = false
+      return
+    }
+    fetchRecommendations({ history: scanHistory, filter: recommendationFilter, marketplace: recommendationMarketplace })
+  }, [recommendationFilter, recommendationMarketplace, recommendationHistoryKey])
 
   // ── URL Detection ──
 
@@ -1863,7 +1970,7 @@ export default function App() {
       setRecommendationImageName('')
       setRecommendationMessage('')
       setScanHistory(nextHistory)
-      setRecommendedProducts(getHistoryRecommendationFallback(nextHistory, recommendationFilter))
+      setRecommendedProducts(getHistoryRecommendationFallback(nextHistory, recommendationFilter, recommendationMarketplace))
     } catch (err) {
       if (scanWasCancelledRef.current || (err instanceof DOMException && err.name === 'AbortError')) {
         setBackendStatus('Scan has been cancelled successfully')
@@ -1996,7 +2103,78 @@ export default function App() {
     setRecommendationImageName('')
   }
 
+  const handleRecommendationFilterChange = (nextFilter: RecommenderFilter) => {
+    if (nextFilter === recommendationFilter) return
+    if (recommendationPromptDebounceRef.current !== null) {
+      window.clearTimeout(recommendationPromptDebounceRef.current)
+      recommendationPromptDebounceRef.current = null
+    }
+    skipNextRecommendationEffectRef.current = true
+    setRecommendationFilter(nextFilter)
+    showRecommendationSkeleton()
+    fetchRecommendations({
+      history: scanHistory,
+      filter: nextFilter,
+      marketplace: recommendationMarketplace,
+      forceLoadingSkeleton: true,
+      skipInitialFade: true,
+    })
+  }
+
+  const handleRecommendationMarketplaceChange = (nextMarketplace: RecommenderMarketplace) => {
+    if (nextMarketplace === recommendationMarketplace) return
+    if (recommendationPromptDebounceRef.current !== null) {
+      window.clearTimeout(recommendationPromptDebounceRef.current)
+      recommendationPromptDebounceRef.current = null
+    }
+    skipNextRecommendationEffectRef.current = true
+    setRecommendationMarketplace(nextMarketplace)
+    showRecommendationSkeleton()
+    fetchRecommendations({
+      history: scanHistory,
+      filter: recommendationFilter,
+      marketplace: nextMarketplace,
+      forceLoadingSkeleton: true,
+      skipInitialFade: true,
+    })
+  }
+
+  const handleRecommendationPromptChange = (nextPrompt: string) => {
+    setRecommendationPrompt(nextPrompt)
+    if (recommendationMessage) setRecommendationMessage('')
+    if (recommendationPromptDebounceRef.current !== null) {
+      window.clearTimeout(recommendationPromptDebounceRef.current)
+      recommendationPromptDebounceRef.current = null
+    }
+
+    const hasRecommendationInput = Boolean(scanHistory.length || nextPrompt.trim() || recommendationImageDataUrl)
+    if (!hasRecommendationInput) {
+      recommendationRequestIdRef.current += 1
+      setRecommendationsLoading(false)
+      setRecommendationsFading(false)
+      setRecommendedProducts([])
+      return
+    }
+
+    showRecommendationSkeleton()
+    recommendationPromptDebounceRef.current = window.setTimeout(() => {
+      recommendationPromptDebounceRef.current = null
+      fetchRecommendations({
+        prompt: nextPrompt,
+        history: scanHistory,
+        filter: recommendationFilter,
+        marketplace: recommendationMarketplace,
+        forceLoadingSkeleton: true,
+        skipInitialFade: true,
+      })
+    }, 550)
+  }
+
   const handleRecommendationSubmit = () => {
+    if (recommendationPromptDebounceRef.current !== null) {
+      window.clearTimeout(recommendationPromptDebounceRef.current)
+      recommendationPromptDebounceRef.current = null
+    }
     fetchRecommendations({ forceLoadingSkeleton: true })
   }
 
@@ -2020,6 +2198,7 @@ export default function App() {
       analysis={analysis}
       products={recommendedProducts}
       filter={recommendationFilter}
+      marketplace={recommendationMarketplace}
       prompt={recommendationPrompt}
       imageDataUrl={recommendationImageDataUrl}
       imageName={recommendationImageName}
@@ -2028,11 +2207,9 @@ export default function App() {
       hasMemory={scanHistory.length > 0}
       message={recommendationMessage}
       defaultOpen={!loading && !hasScanned}
-      onFilterChange={setRecommendationFilter}
-      onPromptChange={(nextPrompt) => {
-        setRecommendationPrompt(nextPrompt)
-        if (recommendationMessage) setRecommendationMessage('')
-      }}
+      onFilterChange={handleRecommendationFilterChange}
+      onMarketplaceChange={handleRecommendationMarketplaceChange}
+      onPromptChange={handleRecommendationPromptChange}
       onImageUpload={handleRecommendationImageUpload}
       onClearImage={handleRecommendationImageClear}
       onSubmit={handleRecommendationSubmit}
@@ -2055,79 +2232,79 @@ export default function App() {
 
   return (
     <AutoSizingWindow>
-        <header
-          className="top-header"
-          onMouseEnter={() => setWindowControlsVisible(true)}
-          onMouseLeave={() => setWindowControlsVisible(false)}
-        >
-          <div className="brand-row">
-            <img src={logoSrc} alt="Nectar logo" className="brand-logo" />
-            <div className="brand-block">
-              <h1>Nectar</h1>
-              <p>SMART PRODUCT ANALYZER</p>
-            </div>
+      <header
+        className="top-header"
+        onMouseEnter={() => setWindowControlsVisible(true)}
+        onMouseLeave={() => setWindowControlsVisible(false)}
+      >
+        <div className="brand-row">
+          <img src={logoSrc} alt="Nectar logo" className="brand-logo" />
+          <div className="brand-block">
+            <h1>Nectar</h1>
+            <p>SMART PRODUCT ANALYZER</p>
           </div>
-          <button className="premium-btn" onClick={() => setView('premium')}>Go Premium</button>
-          <div className={`window-controls ${windowControlsVisible ? 'visible' : ''}`}>
-            <button className="window-control window-control-minimize" onClick={() => window.electronAPI?.minimizeWindow?.()} title="Minimize" />
-            <button className="window-control window-control-close" onClick={() => window.electronAPI?.closeWindow?.()} title="Close" />
-          </div>
-        </header>
-
-        <div className="content" key="home-view">
-          <div className="cascade-item cascade-delay-1">
-            <SectionCard title="Product Analysis" className="section-card--hero">
-              <div className="url-input-container">
-                <div className="url-status-bar">
-                  <span className={`status-dot ${isAutoDetected ? 'status-dot--active' : ''}`} />
-                  <span className="status-label">{isAutoDetected ? 'Active Browser Tab' : 'Manual Entry'}</span>
-                  {detectedMarketplace && (
-                    <span className={`marketplace-badge marketplace-badge--${detectedMarketplace}`}>
-                      {detectedMarketplace === 'amazon' ? 'Amazon' : 'eBay'}
-                    </span>
-                  )}
-                  <button type="button" className="url-refresh-btn" onClick={detectActiveUrl} title="Detect active URL from browser">
-                    ↻ Sync Browser
-                  </button>
-                </div>
-                <input
-                  type="text"
-                  className="premium-url-input"
-                  placeholder="Paste Amazon or eBay product URL here..."
-                  value={scanUrl}
-                  onChange={(e) => { setScanUrl(e.target.value); setIsAutoDetected(false) }}
-                />
-              </div>
-              <p className={`body-text hero-status ${error ? 'status-error' : 'status-ok'}`}>
-                {error || backendStatus}
-              </p>
-              <button className="scan-btn scan-btn--hero" onClick={handleScan} disabled={loading}>
-                {loading ? 'Scanning…' : 'Scan Product'}
-              </button>
-              {loading && cancelAvailable && (
-                <button type="button" className="scan-cancel-btn" onClick={handleCancelScan}>
-                  <span>Cancel Scan</span>
-                </button>
-              )}
-            </SectionCard>
-          </div>
-
-          {!hasScanned && (
-            <>
-              <div className="cascade-item cascade-delay-2 popup-fit-stop">{recommendationsSection}</div>
-              <div className="cascade-item cascade-delay-3">{historySection}</div>
-            </>
-          )}
-          {loading && <SkeletonResults />}
-
-          {!loading && hasScanned && analysis && (
-            <>
-              <ResultsView analysis={analysis} isExiting={isExitingResults} />
-              <div className="cascade-item cascade-delay-7">{recommendationsSection}</div>
-              <div className="cascade-item cascade-delay-8">{historySection}</div>
-            </>
-          )}
         </div>
+        <button className="premium-btn" onClick={() => setView('premium')}>Go Premium</button>
+        <div className={`window-controls ${windowControlsVisible ? 'visible' : ''}`}>
+          <button className="window-control window-control-minimize" onClick={() => window.electronAPI?.minimizeWindow?.()} title="Minimize" />
+          <button className="window-control window-control-close" onClick={() => window.electronAPI?.closeWindow?.()} title="Close" />
+        </div>
+      </header>
+
+      <div className="content" key="home-view">
+        <div className="cascade-item cascade-delay-1">
+          <SectionCard title="Product Analysis" className="section-card--hero">
+            <div className="url-input-container">
+              <div className="url-status-bar">
+                <span className={`status-dot ${isAutoDetected ? 'status-dot--active' : ''}`} />
+                <span className="status-label">{isAutoDetected ? 'Active Browser Tab' : 'Manual Entry'}</span>
+                {detectedMarketplace && (
+                  <span className={`marketplace-badge marketplace-badge--${detectedMarketplace}`}>
+                    {detectedMarketplace === 'amazon' ? 'Amazon' : 'eBay'}
+                  </span>
+                )}
+                <button type="button" className="url-refresh-btn" onClick={detectActiveUrl} title="Detect active URL from browser">
+                  ↻ Sync Browser
+                </button>
+              </div>
+              <input
+                type="text"
+                className="premium-url-input"
+                placeholder="Paste Amazon or eBay product URL here..."
+                value={scanUrl}
+                onChange={(e) => { setScanUrl(e.target.value); setIsAutoDetected(false) }}
+              />
+            </div>
+            <p className={`body-text hero-status ${error ? 'status-error' : 'status-ok'}`}>
+              {error || backendStatus}
+            </p>
+            <button className="scan-btn scan-btn--hero" onClick={handleScan} disabled={loading}>
+              {loading ? 'Scanning…' : 'Scan Product'}
+            </button>
+            {loading && cancelAvailable && (
+              <button type="button" className="scan-cancel-btn" onClick={handleCancelScan}>
+                <span>Cancel Scan</span>
+              </button>
+            )}
+          </SectionCard>
+        </div>
+
+        {!hasScanned && (
+          <>
+            <div className="cascade-item cascade-delay-2 popup-fit-stop">{recommendationsSection}</div>
+            <div className="cascade-item cascade-delay-3">{historySection}</div>
+          </>
+        )}
+        {loading && <SkeletonResults />}
+
+        {!loading && hasScanned && analysis && (
+          <>
+            <ResultsView analysis={analysis} isExiting={isExitingResults} />
+            <div className="cascade-item cascade-delay-7">{recommendationsSection}</div>
+            <div className="cascade-item cascade-delay-8">{historySection}</div>
+          </>
+        )}
+      </div>
     </AutoSizingWindow>
   )
 }

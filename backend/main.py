@@ -20,12 +20,16 @@ from .marketplaces.registry import MARKETPLACE_ADAPTERS
 NECTAR_SECRET = os.getenv("NECTAR_API_SECRET", "")
 MAX_RECOMMENDATION_CANDIDATES = 24
 MAX_RECOMMENDATION_CANDIDATES_PER_TERM = 6
-RECOMMENDATION_SEARCH_TIMEOUT_SECONDS = 14.0
+RECOMMENDATION_SEARCH_TIMEOUT_SECONDS = 16.0
+RECOMMENDATION_AMAZON_SEARCH_TIMEOUT_SECONDS = 10.0
 RECOMMENDATION_REFINED_TERM_LIMIT = 2
+MIN_HISTORY_RECOMMENDATION_SOURCE_TERMS = 3
 KNOWN_PROMPT_BRANDS = {
     "apple", "sony", "bose", "jbl", "samsung", "anker", "soundcore", "beats",
     "skullcandy", "google", "microsoft", "logitech", "razer", "steelseries",
     "carhartt", "nike", "adidas", "levi", "levis", "stanley", "hydro flask",
+    "anua", "owala", "reebok", "under armour", "new balance", "asics", "puma",
+    "brooks", "saucony", "hoka", "topo", "aeropostale",
 }
 PROMPT_PRODUCT_TERMS = {
     "airpods", "earbuds", "headphones", "speaker", "laptop", "keyboard", "mouse",
@@ -93,16 +97,37 @@ class RecommendationsPayload(BaseModel):
     filter: str = "overall"
     prompt: str = ""
     imageDataUrl: str = ""
+    marketplace: str = "all"
 
 active_scan_cancellations: dict[str, asyncio.Event] = {}
 
+def _infer_brand_from_title(title: str) -> str | None:
+    text = re.sub(r"[^a-z0-9]+", " ", str(title or "").lower()).strip()
+    if not text:
+        return None
+    for brand in sorted(KNOWN_PROMPT_BRANDS, key=len, reverse=True):
+        normalized_brand = re.sub(r"[^a-z0-9]+", " ", brand.lower()).strip()
+        if re.search(rf"\b{re.escape(normalized_brand)}\b", text):
+            return brand.title()
+    return None
+
 def _price_display(item: dict[str, Any]) -> str | None:
-    price = item.get("price")
+    price = (
+        item.get("price")
+        or item.get("current_price")
+        or item.get("currentPrice")
+        or item.get("sale_price")
+        or item.get("salePrice")
+        or item.get("item_price")
+        or item.get("itemPrice")
+        or item.get("priceText")
+        or item.get("price_display")
+    )
     if isinstance(price, dict):
-        display = price.get("display") or price.get("text") or price.get("formatted")
+        display = price.get("display") or price.get("text") or price.get("formatted") or price.get("raw")
         if display:
             return str(display)
-        value = price.get("value") or price.get("amount")
+        value = price.get("value") or price.get("amount") or price.get("extracted")
         return f"${float(value):.2f}" if isinstance(value, (int, float)) else (str(value) if value else None)
     if isinstance(price, (str, int, float)):
         return str(price)
@@ -167,32 +192,55 @@ def _is_available_recommendation(item: dict[str, Any]) -> bool:
     return not any(signal in text for signal in unavailable_signals)
 
 def _normalize_recommendation_product(item: dict[str, Any], adapter) -> dict[str, Any] | None:
-    listing_id = item.get("asin") or item.get("listingId") or item.get("item_id")
-    listing_url = item.get("listingUrl") or item.get("productUrl") or item.get("url")
+    listing_id = (
+        item.get("asin")
+        or item.get("listingId")
+        or item.get("item_id")
+        or item.get("itemId")
+        or item.get("id")
+    )
+    listing_url = (
+        item.get("listingUrl")
+        or item.get("productUrl")
+        or item.get("url")
+        or item.get("link")
+        or item.get("item_url")
+        or item.get("itemUrl")
+        or item.get("product_url")
+    )
     if not listing_id and listing_url and adapter.name == "ebay":
         match = re.search(r"/itm/(?:[^/]+/)?(\d{10,13})", str(listing_url))
         listing_id = match.group(1) if match else None
-    title = (item.get("title") or "").strip()
+    title = (item.get("title") or item.get("name") or item.get("product_title") or "").strip()
     if not listing_id or not title:
         return None
     price_display = _price_display(item)
-    price_value = _numeric_price(item.get("price") if item.get("price") is not None else price_display)
+    price_value = _numeric_price(price_display)
     if price_value is None or not price_display or not _is_available_recommendation(item):
         return None
 
     listing_url = str(listing_url or adapter.product_url(str(listing_id)))
+    image = (
+        item.get("mainImageUrl")
+        or item.get("image")
+        or item.get("image_url")
+        or item.get("imageUrl")
+        or item.get("thumbnail")
+        or item.get("thumbnail_url")
+        or item.get("thumbnailUrl")
+    )
     return {
         "title": title,
         "asin": item.get("asin") or str(listing_id),
         "listingId": str(listing_id),
         "marketplace": adapter.name,
-        "brand": item.get("brand"),
+        "brand": item.get("brand") or item.get("seller_name") or item.get("store_name") or _infer_brand_from_title(title),
         "rating": item.get("rating"),
         "reviewCount": item.get("ratingsTotal") or item.get("reviewCount"),
         "price": price_display,
         "priceValue": price_value,
         "isPrime": item.get("isPrime"),
-        "image": item.get("mainImageUrl") or item.get("image"),
+        "image": image,
         "listingUrl": listing_url,
         "productUrl": listing_url,
         "amazonUrl": listing_url if adapter.name == "amazon" else None,
@@ -385,6 +433,14 @@ def _ordered_recommendation_adapters(prompt: str, preferred_marketplace: str):
     adapters = list(MARKETPLACE_ADAPTERS)
     if requested and _prompt_requires_marketplace_lock(prompt):
         adapters = [adapter for adapter in adapters if adapter.name in requested]
+    if not requested:
+        return sorted(
+            adapters,
+            key=lambda adapter: (
+                0 if adapter.name == "amazon" else 1,
+                0 if adapter.name == preferred_marketplace else 1,
+            ),
+        )
     return sorted(
         adapters,
         key=lambda adapter: (
@@ -393,12 +449,22 @@ def _ordered_recommendation_adapters(prompt: str, preferred_marketplace: str):
         ),
     )
 
+def _filter_recommendation_adapters(adapters, marketplace: str):
+    if marketplace in {"amazon", "ebay"}:
+        return [adapter for adapter in adapters if adapter.name == marketplace]
+    return adapters
+
+def _recommendation_adapter_timeout(adapter) -> float:
+    if adapter.name == "amazon":
+        return RECOMMENDATION_AMAZON_SEARCH_TIMEOUT_SECONDS
+    return RECOMMENDATION_SEARCH_TIMEOUT_SECONDS
+
 async def _search_adapter_for_recommendations(adapter, term: str) -> list:
     started = time.perf_counter()
     try:
         results = await asyncio.wait_for(
             asyncio.to_thread(adapter.search_similar_products, term),
-            timeout=RECOMMENDATION_SEARCH_TIMEOUT_SECONDS,
+            timeout=_recommendation_adapter_timeout(adapter),
         )
         elapsed = time.perf_counter() - started
         print(f"[Recommendations] {adapter.name} search '{term}' returned {len(results or [])} items in {elapsed:.1f}s")
@@ -485,22 +551,58 @@ def _diversify_recommendations(
     *,
     limit: int = 5,
     max_per_brand: int = 2,
+    max_per_source_term: int | None = None,
+    max_per_marketplace: int | None = None,
 ) -> list[dict[str, Any]]:
     selected: list[dict[str, Any]] = []
     deferred: list[dict[str, Any]] = []
     brand_counts: dict[str, int] = {}
+    source_counts: dict[int, int] = {}
+    marketplace_counts: dict[str, int] = {}
 
     for product in ranked_products:
         brand = _brand_key(product.get("brand"))
-        if not brand or brand_counts.get(brand, 0) < max_per_brand:
+        marketplace = str(product.get("marketplace") or "")
+        source_index = product.get("_sourceTermIndex")
+        source_limited = (
+            max_per_source_term is not None
+            and isinstance(source_index, int)
+            and source_counts.get(source_index, 0) >= max_per_source_term
+        )
+        marketplace_limited = (
+            max_per_marketplace is not None
+            and marketplace
+            and marketplace_counts.get(marketplace, 0) >= max_per_marketplace
+        )
+        brand_limited = bool(brand and brand_counts.get(brand, 0) >= max_per_brand)
+        if not source_limited and not marketplace_limited and not brand_limited:
             selected.append(product)
             if brand:
                 brand_counts[brand] = brand_counts.get(brand, 0) + 1
+            if isinstance(source_index, int):
+                source_counts[source_index] = source_counts.get(source_index, 0) + 1
+            if marketplace:
+                marketplace_counts[marketplace] = marketplace_counts.get(marketplace, 0) + 1
         else:
             deferred.append(product)
 
         if len(selected) >= limit:
             break
+
+    if len(selected) < limit and max_per_marketplace is not None:
+        remaining_deferred: list[dict[str, Any]] = []
+        for product in deferred:
+            if len(selected) >= limit:
+                remaining_deferred.append(product)
+                continue
+            marketplace = str(product.get("marketplace") or "")
+            if marketplace and marketplace_counts.get(marketplace, 0) >= max_per_marketplace:
+                remaining_deferred.append(product)
+                continue
+            selected.append(product)
+            if marketplace:
+                marketplace_counts[marketplace] = marketplace_counts.get(marketplace, 0) + 1
+        deferred = remaining_deferred
 
     if len(selected) < limit:
         for product in deferred:
@@ -517,6 +619,13 @@ def _has_enough_diverse_candidates(products: list[dict[str, Any]], filter_mode: 
     diversified = _diversify_recommendations(ranked, limit=5)
     brands = {_brand_key(product.get("brand")) for product in diversified if _brand_key(product.get("brand"))}
     return len(diversified) >= 5 and len(brands) >= 3
+
+def _source_term_coverage(products: list[dict[str, Any]]) -> int:
+    return len({
+        product.get("_sourceTermIndex")
+        for product in products
+        if isinstance(product.get("_sourceTermIndex"), int)
+    })
 
 def _public_recommendation_product(product: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in product.items() if not str(key).startswith("_")}
@@ -721,7 +830,11 @@ async def recommendations(payload: RecommendationsPayload):
             preferred_marketplace = next(iter(requested_marketplaces))
         elif has_text_refinement and _prompt_has_product_target(payload.prompt):
             preferred_marketplace = "amazon"
-        adapters = _ordered_recommendation_adapters(payload.prompt, preferred_marketplace)
+        marketplace_filter = payload.marketplace if payload.marketplace in {"all", "amazon", "ebay"} else "all"
+        adapters = _filter_recommendation_adapters(
+            _ordered_recommendation_adapters(payload.prompt, preferred_marketplace),
+            marketplace_filter,
+        )
 
         if not adapters:
             return {
@@ -729,6 +842,7 @@ async def recommendations(payload: RecommendationsPayload):
                 "query": search_query,
                 "reason": "No supported marketplace matched that request.",
                 "filter": filter_mode,
+                "marketplace": marketplace_filter,
                 "products": [],
             }
 
@@ -749,7 +863,7 @@ async def recommendations(payload: RecommendationsPayload):
 
         print(
             f"[Recommendations] query='{search_query}' filter='{filter_mode}' "
-            f"terms={search_terms} marketplaces={[adapter.name for adapter in adapters]}"
+            f"marketplace='{marketplace_filter}' terms={search_terms} marketplaces={[adapter.name for adapter in adapters]}"
         )
 
         seen: set[str] = set()
@@ -758,73 +872,79 @@ async def recommendations(payload: RecommendationsPayload):
         normalized_count = 0
         relevance_drop_count = 0
         duplicate_drop_count = 0
-        search_jobs = [
-            (term_index, term, adapter)
-            for term_index, term in enumerate(search_terms)
-            for adapter in adapters
-        ]
+        term_counts: dict[tuple[int, str], int] = {}
 
-        term_counts: dict[int, int] = {}
-        search_tasks = [
-            asyncio.create_task(_recommendation_search_job(term_index, term, adapter))
-            for term_index, term, adapter in search_jobs
-        ]
-
-        for completed in asyncio.as_completed(search_tasks):
-            term_index, term, adapter, results = await completed
-            term_added = term_counts.get(term_index, 0)
-            if (
-                term_added >= MAX_RECOMMENDATION_CANDIDATES_PER_TERM
-                or len(products) >= MAX_RECOMMENDATION_CANDIDATES
-            ):
-                continue
-
-            for raw in results:
-                raw_count += 1
-                if not isinstance(raw, dict):
-                    continue
-                product = _normalize_recommendation_product(raw, adapter)
-                if not product:
-                    continue
-                normalized_count += 1
-                if not _product_matches_relevance(
-                    product,
-                    query=search_query,
-                    prompt=payload.prompt,
-                    has_image_refinement=has_image_refinement,
-                ):
-                    relevance_drop_count += 1
-                    continue
-                key = product["listingId"]
-                if key in seen:
-                    duplicate_drop_count += 1
-                    continue
-                product["_sourceTerm"] = term
-                product["_sourceTermIndex"] = term_index
-                seen.add(key)
-                products.append(product)
-                term_added += 1
-                term_counts[term_index] = term_added
+        for term_index, term in enumerate(search_terms):
+            for adapter in adapters:
+                term_key = (term_index, adapter.name if marketplace_filter == "all" else "*")
+                term_added = term_counts.get(term_key, 0)
                 if (
                     term_added >= MAX_RECOMMENDATION_CANDIDATES_PER_TERM
                     or len(products) >= MAX_RECOMMENDATION_CANDIDATES
                 ):
                     break
 
+                results = await _search_adapter_for_recommendations(adapter, term)
+                for raw in results:
+                    raw_count += 1
+                    if not isinstance(raw, dict):
+                        continue
+                    product = _normalize_recommendation_product(raw, adapter)
+                    if not product:
+                        continue
+                    normalized_count += 1
+                    if not _product_matches_relevance(
+                        product,
+                        query=search_query,
+                        prompt=payload.prompt,
+                        has_image_refinement=has_image_refinement,
+                    ):
+                        relevance_drop_count += 1
+                        continue
+                    key = product["listingId"]
+                    if key in seen:
+                        duplicate_drop_count += 1
+                        continue
+                    product["_sourceTerm"] = term
+                    product["_sourceTermIndex"] = term_index
+                    seen.add(key)
+                    products.append(product)
+                    term_added += 1
+                    term_counts[term_key] = term_added
+                    if (
+                        term_added >= MAX_RECOMMENDATION_CANDIDATES_PER_TERM
+                        or len(products) >= MAX_RECOMMENDATION_CANDIDATES
+                    ):
+                        break
+
             if len(products) >= MAX_RECOMMENDATION_CANDIDATES:
                 break
-            if not brand_locked and _has_enough_diverse_candidates(products, filter_mode):
+            if has_refinement and term_index == 0 and len(products) >= 5:
+                break
+            if (
+                not has_refinement
+                and _source_term_coverage(products) >= min(MIN_HISTORY_RECOMMENDATION_SOURCE_TERMS, len(search_terms))
+                and len(products) >= 5
+            ):
+                break
+            if has_refinement and not brand_locked and _has_enough_diverse_candidates(products, filter_mode):
                 break
 
-        for task in search_tasks:
-            if not task.done():
-                task.cancel()
-
         ranked_products = _sort_recommendations(products, filter_mode)
+        available_marketplaces = {
+            str(product.get("marketplace") or "")
+            for product in ranked_products
+            if product.get("marketplace")
+        }
         final_products = (
             ranked_products[:5]
             if brand_locked
-            else _diversify_recommendations(ranked_products, limit=5)
+            else _diversify_recommendations(
+                ranked_products,
+                limit=5,
+                max_per_source_term=None if has_refinement else 2,
+                max_per_marketplace=4 if marketplace_filter == "all" and len(available_marketplaces) > 1 else None,
+            )
         )
         print(
             "[Recommendations] pipeline "
@@ -838,6 +958,7 @@ async def recommendations(payload: RecommendationsPayload):
             "query": search_query,
             "reason": query_result.get("reason"),
             "filter": filter_mode,
+            "marketplace": marketplace_filter,
             "products": [_public_recommendation_product(product) for product in final_products],
         }
     except Exception:

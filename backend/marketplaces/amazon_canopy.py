@@ -30,9 +30,12 @@ CONNECT_TIMEOUT = 10   # seconds to establish TCP connection
 READ_TIMEOUT    = 45   # seconds to wait for the server to send data
 MAX_RETRIES     = 3    # number of automatic retries on transient failures
 RETRY_BACKOFF   = 1.5  # exponential back-off factor (1.5s, 3s, 4.5s …)
+# Search is best-effort for recommendations; keep it below the UI timeout
+# so slow Canopy queries do not continue long after the response is decided.
 SEARCH_CONNECT_TIMEOUT = 3
-SEARCH_READ_TIMEOUT = 9
-SEARCH_MAX_RETRIES = 0
+SEARCH_READ_TIMEOUT    = 9
+SEARCH_MAX_RETRIES     = 0
+SEARCH_RESULT_LIMIT    = 8
 
 ASIN_PATH_PATTERNS = (
     r"/(?:dp|gp/product|gp/aw/d|gp/aw/dp|gp/-/product|gp/offer-listing|product-reviews|review/product)/([A-Z0-9]{10})(?:[/?]|$)",
@@ -145,7 +148,7 @@ class AmazonCanopyAdapter(MarketplaceAdapter):
         query = """
         query SearchProducts($input: AmazonProductSearchResultsInput!) {
         amazonProductSearchResults(input: $input) {
-            productResults(input: { page: 1 }) {
+            productResults(input: { page: 1, limit: __SEARCH_RESULT_LIMIT__ }) {
             results {
                 title
                 asin
@@ -162,7 +165,7 @@ class AmazonCanopyAdapter(MarketplaceAdapter):
             }
         }
         }
-        """
+        """.replace("__SEARCH_RESULT_LIMIT__", str(SEARCH_RESULT_LIMIT))
 
         search_input = {
             "searchTerm": search_term,
