@@ -39,7 +39,7 @@ config:
     fontFamily: '''Source Code Pro Variable'', monospace'
 ---
 flowchart LR
- subgraph ELECTRON["⚡  Electron Shell"]
+ subgraph ELECTRON["Electron Shell"]
         E1["Frameless glass overlay\nalways-on-top · IPC resize"]
         E2["URL detection\nAppleScript · PS · xdotool"]
   end
@@ -60,7 +60,7 @@ flowchart LR
         N2["Reputation scoring\nBayesian blend · prior = 68"]
         N3["Overall score\namazon 40/35/25\nebay  30/25/45"]
   end
- subgraph AILAY["✨  Gemini AI · gemini-2.5-flash"]
+ subgraph AILAY["Gemini AI · gemini-2.5-flash"]
         G1["Verdict · BUY / COMPARE / SKIP"]
         G2["Score explainer\nRec query builder"]
   end
