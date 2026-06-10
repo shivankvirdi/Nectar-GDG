@@ -199,9 +199,9 @@ E-commerce lacks trustworthy product intelligence, with consumers losing billion
 │  │  Products,      │  │  eBay product   │  │  fuzzy match │  │ Secret   │   │
 │  │  reviews,       │  │  + search       │  │  Aggregate   │  │ Manager  │   │
 │  │  search.        │  │  endpoints.     │  │  ratings +   │  │          │   │
-│  │  Retry with     │  │ Field           │  │  review text │  │          │   │
-│  │  backoff,       │  │ normalisation   │  │              │  │          │   │
-│  │  timeout guards │  │ to shared shape │  │  1-hr cache  │  │          │   │  
+│  │  Retry with     │  │ Field           │  │  review text │  │ google-  │   │
+│  │  backoff,       │  │ normalisation   │  │              │  │ genai    │   │
+│  │  timeout guards │  │ to shared shape │  │  1-hr cache  │  │ client   │   │  
 │  │                 │  │                 │  │              │  │          │   │    
 │  └─────────────────┘  └─────────────────┘  └──────────────┘  └──────────┘   │
 │                                                                             │
