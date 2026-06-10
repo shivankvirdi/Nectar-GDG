@@ -39,7 +39,7 @@ config:
     fontFamily: '''Source Code Pro Variable'', monospace'
 ---
 flowchart LR
- subgraph ELECTRON["⚡  Electron Shell"]
+ subgraph ELECTRON["Electron Shell"]
         E1["Frameless glass overlay\nalways-on-top · IPC resize"]
         E2["URL detection\nAppleScript · PS · xdotool"]
   end
