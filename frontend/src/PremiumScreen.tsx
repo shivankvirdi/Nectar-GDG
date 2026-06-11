@@ -1,6 +1,3 @@
-import logoSrc from '/icons/logo.png'
-import { useState } from 'react'
-
 interface Props {
   onBack: () => void
 }
@@ -17,149 +14,161 @@ const plans = [
       'Review Integrity score',
       'Brand Reputation score',
       'Similar product suggestions',
-      'One product scan at a time',
-      'Analysis history database',
-      'Side-by-side product comparison',
+      'One product at a time',
     ],
     highlight: false,
     cta: 'Current Plan',
   },
   {
     name: 'PRO',
-    price: '$19.99',
+    price: '$59',
     period: '/mo',
-    desc: 'For e-commerce & dropshippers',
+    desc: 'For sellers & dropshippers',
     features: [
-      'Everything in Free',
       '1,500 scans per month',
+      'Everything in Free',
+      'AI-powered pro/con analysis',
       'Deep sentiment analysis',
       'Bulk analysis (up to 50 at once)',
-      'Search by keyword and URL',
-      'Increased max analysis history database',
+      'Side-by-side product comparison',
+      'Search by keyword, not just URL',
     ],
     highlight: true,
-    cta: 'Upgrade to Pro',
+    cta: 'Get Pro',
   },
   {
     name: 'BUSINESS',
-    price: '$149.99',
+    price: '$349',
     period: '/mo',
     desc: 'For retailers & agencies',
     features: [
-      'Everything in Pro',
       '20,000+ scans per month',
+      'Everything in Pro',
       'Reputation trend forecasting',
       'Multi-platform analysis',
-      'Demographic & geographic sentiment',
-      'Bulk analysis (up to 2,000 at once)',
+      'Demographic & geo sentiment',
+      'Bulk analysis (up to 2,000)',
       'Custom white-label reports',
-      'Price and sentiment change alerts',
-      'Audit logs',
+      'Analysis history database',
+      '$0.02 per scan over limit',
     ],
     highlight: false,
-    cta: 'Upgrade to Business',
+    cta: 'Get Business',
   },
 ]
 
 export default function PremiumScreen({ onBack }: Props) {
-  const [windowControlsVisible, setWindowControlsVisible] = useState(false)
-
   return (
-    <>
-      <header className="top-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }} onMouseEnter={() => setWindowControlsVisible(true)} onMouseLeave={() => setWindowControlsVisible(false)}>
-        <div className="brand-row">
-          <img src={logoSrc} alt="Nectar logo" className="brand-logo" />
-          <div className="brand-block">
-            <h1>Nectar</h1>
-            <p>SMART PRODUCT ANALYZER</p>
-          </div>
+    <div className="screen" style={{ overflowY: 'auto' }}>
+
+      <div className="navbar">
+        <div>
+          <div className="logo"> Nectar</div>
+          <div className="subtitle">SMART PRODUCT ANALYZER</div>
         </div>
-
-        <button className="premium-btn" onClick={onBack}>
-          ← Back
-        </button>
-
-        <div className={`window-controls ${windowControlsVisible ? 'visible' : ''}`}>
-          <button
-            className="window-control window-control-minimize"
-            onClick={() => window.electronAPI?.minimizeWindow?.()}
-            title="Minimize"
-          />
-          <button
-            className="window-control window-control-close"
-            onClick={() => window.electronAPI?.closeWindow?.()}
-            title="Close"
-          />
-        </div>
-      </header>
-
-      <div className="content" key="premium-content">
-        <div className="cascade-item cascade-delay-1">
-          <div className="premium-hero">
-            <p className="premium-hero-title">Choose Your Plan</p>
-            <p className="premium-hero-subtitle">
-              Unlock the full power of Nectar
-            </p>
-          </div>
-        </div>
-
-        {plans.map((plan, index) => (
-          <div
-            key={plan.name}
-            className={`cascade-item cascade-delay-${Math.min(index + 2, 8)}`}
-          >
-            <section
-              className={`premium-plan-card ${plan.highlight ? 'premium-plan-card--highlight' : ''}`}
-            >
-              {plan.highlight && (
-                <div className="premium-badge">POPULAR</div>
-              )}
-
-              <div className="premium-plan-top">
-                <div>
-                  <p className={`premium-plan-name ${plan.highlight ? 'premium-plan-name--highlight' : ''}`}>
-                    {plan.name}
-                  </p>
-                  <p className={`premium-plan-desc ${plan.highlight ? 'premium-plan-desc--highlight' : ''}`}>
-                    {plan.desc}
-                  </p>
-                </div>
-
-                <div className="premium-plan-price-wrap">
-                  <span className={`premium-plan-price ${plan.highlight ? 'premium-plan-price--highlight' : ''}`}>
-                    {plan.price}
-                  </span>
-                  <span className={`premium-plan-period ${plan.highlight ? 'premium-plan-period--highlight' : ''}`}>
-                    {plan.period}
-                  </span>
-                </div>
-              </div>
-
-              <div className="premium-feature-list">
-                {plan.features.map((feature) => (
-                  <p
-                    key={feature}
-                    className={`premium-feature ${plan.highlight ? 'premium-feature--highlight' : ''}`}
-                  >
-                    <span
-                      className={`premium-feature-icon ${plan.highlight ? 'premium-feature-icon--highlight' : ''}`}
-                    >
-                      ✦
-                    </span>
-                    {feature}
-                  </p>
-                ))}
-              </div>
-
-              <button
-                className={`premium-plan-cta ${plan.highlight ? 'premium-plan-cta--highlight' : ''}`}
-              >
-                {plan.cta}
-              </button>
-            </section>
-          </div>
-        ))}
+        <button className="premium-btn" onClick={onBack}>← Back</button>
       </div>
-    </>
+
+      <div style={{ textAlign: 'center', margin: '12px 0 16px' }}>
+        <p style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', letterSpacing: '0.05em' }}>
+          Choose Your Plan
+        </p>
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+          Unlock the full power of Nectar
+        </p>
+      </div>
+
+      {plans.map((plan) => (
+        <div
+          key={plan.name}
+          style={{
+            background: plan.highlight ? 'var(--brand)' : 'var(--surface2)',
+            border: plan.highlight ? 'none' : '1px solid var(--border)',
+            borderRadius: 14,
+            padding: '14px 16px',
+            marginBottom: 10,
+            position: 'relative',
+          }}
+        >
+          {plan.highlight && (
+            <div style={{
+              position: 'absolute',
+              top: -10,
+              right: 14,
+              background: '#fff',
+              color: 'var(--brand)',
+              fontSize: 9,
+              fontWeight: 800,
+              letterSpacing: '0.15em',
+              padding: '3px 8px',
+              borderRadius: 999,
+            }}>
+              POPULAR
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <p style={{
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: '0.2em',
+                color: plan.highlight ? '#fff' : 'var(--text-muted)',
+              }}>
+                {plan.name}
+              </p>
+              <p style={{
+                fontSize: 10,
+                color: plan.highlight ? 'rgba(255,255,255,0.7)' : 'var(--text-muted)',
+                marginTop: 2,
+              }}>
+                {plan.desc}
+              </p>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <span style={{ fontSize: 22, fontWeight: 800, color: plan.highlight ? '#fff' : 'var(--text)' }}>
+                {plan.price}
+              </span>
+              <span style={{ fontSize: 10, color: plan.highlight ? 'rgba(255,255,255,0.7)' : 'var(--text-muted)' }}>
+                {plan.period}
+              </span>
+            </div>
+          </div>
+
+          <div style={{ margin: '10px 0 12px' }}>
+            {plan.features.map((f) => (
+              <p key={f} style={{
+                fontSize: 11,
+                color: plan.highlight ? 'rgba(255,255,255,0.9)' : 'var(--text)',
+                marginBottom: 4,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}>
+                <span style={{ color: plan.highlight ? '#fff' : 'var(--brand)', fontSize: 10 }}>✦</span>
+                {f}
+              </p>
+            ))}
+          </div>
+
+          <button style={{
+            width: '100%',
+            padding: '9px',
+            borderRadius: 10,
+            border: plan.highlight ? 'none' : '1px solid var(--brand)',
+            background: plan.highlight ? 'rgba(0,0,0,0.2)' : 'transparent',
+            color: plan.highlight ? '#fff' : 'var(--brand)',
+            fontWeight: 700,
+            fontSize: 11,
+            letterSpacing: '0.1em',
+            cursor: 'pointer',
+            fontFamily: 'var(--font-display)',
+          }}>
+            {plan.cta}
+          </button>
+        </div>
+      ))}
+
+    </div>
   )
 }

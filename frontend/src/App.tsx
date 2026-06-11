@@ -15,6 +15,7 @@ declare global {
       minimizeWindow: () => void
       closeWindow: () => void
       openExternal?: (url: string) => void
+      toggleExpand?: () => Promise<boolean>
     }
   }
 }
@@ -1656,6 +1657,12 @@ export default function App() {
   const [isExitingResults, setIsExitingResults] = useState(false)
   const [cancelAvailable, setCancelAvailable] = useState(false)
   const [windowControlsVisible, setWindowControlsVisible] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(false)
+
+  const handleToggleExpand = async () => {
+    const next = await window.electronAPI?.toggleExpand?.()
+    if (next !== undefined) setIsExpanded(next)
+  }
 
   const [currentSavedScan, setCurrentSavedScan] = useState<ScanRecord | null>(null)
   const [previousSavedScan, setPreviousSavedScan] = useState<ScanRecord | null>(null)
@@ -2246,12 +2253,13 @@ export default function App() {
         </div>
         <button className="premium-btn" onClick={() => setView('premium')}>Go Premium</button>
         <div className={`window-controls ${windowControlsVisible ? 'visible' : ''}`}>
+          <button className="window-control window-control-expand" onClick={handleToggleExpand} title={isExpanded ? 'Collapse' : 'Expand to dashboard'} />
           <button className="window-control window-control-minimize" onClick={() => window.electronAPI?.minimizeWindow?.()} title="Minimize" />
           <button className="window-control window-control-close" onClick={() => window.electronAPI?.closeWindow?.()} title="Close" />
         </div>
       </header>
 
-      <div className="content" key="home-view">
+      <div className={`content${isExpanded ? ' content--dashboard' : ''}${isExpanded && hasScanned ? ' content--dashboard-results' : ''}`} key="home-view">
         <div className="cascade-item cascade-delay-1">
           <SectionCard title="Product Analysis" className="section-card--hero">
             <div className="url-input-container">

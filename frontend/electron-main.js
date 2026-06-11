@@ -191,6 +191,39 @@ ipcMain.handle('get-active-tab-url', async () => {
   }
 })
 
+// ── Expand / Collapse (dashboard mode) ───────────────────────────────────────
+let isExpanded = false
+
+ipcMain.handle('toggle-expand', async () => {
+  if (!mainWindow) return
+  stopAutoResizeAnimation()
+
+  if (!isExpanded) {
+    isExpanded = true
+    mainWindow.setResizable(true)
+    mainWindow.setMaximizable(true)
+    mainWindow.setAlwaysOnTop(false)
+    mainWindow.setMinimumSize(800, 600)
+    mainWindow.maximize()
+  } else {
+    isExpanded = false
+    const { width: screenWidth } = screen.getPrimaryDisplay().workAreaSize
+    mainWindow.unmaximize()
+    mainWindow.setResizable(false)
+    mainWindow.setMaximizable(false)
+    mainWindow.setMinimumSize(DEFAULT_WIDTH, MIN_WINDOW_HEIGHT)
+    if (process.platform === 'darwin') mainWindow.setAlwaysOnTop(true, 'floating')
+    else if (process.platform === 'win32') mainWindow.setAlwaysOnTop(true, 'normal')
+    else mainWindow.setAlwaysOnTop(true)
+    mainWindow.setBounds(
+      { x: screenWidth - DEFAULT_WIDTH - 24, y: 40, width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT },
+      true
+    )
+  }
+
+  return isExpanded
+})
+
 ipcMain.handle('open-external', (_event, url) => {
   if (url && /^https?:\/\//i.test(url)) {
     shell.openExternal(url)

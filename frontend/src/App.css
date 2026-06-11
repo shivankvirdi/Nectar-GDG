@@ -1188,3 +1188,193 @@ button:focus, button:focus-visible {
 .recommendation-send-btn { border: 1px solid rgba(120, 110, 100, 0.18); background: rgba(231, 229, 228, 0.86); color: #8a8178; font-size: 17px; font-weight: 850; }
 .recommendation-send-btn:hover:not(:disabled) { border-color: rgba(249, 115, 22, 0.32); background: var(--brand); color: #fff; transform: translateY(-1px); }
 .recommendation-send-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ── Expand button ───────────────────────────────────────────────────────────*/
+.window-control-expand {
+  background: rgba(39, 201, 120, 0.80);
+}
+.window-control-expand:hover {
+  background: #22c55e;
+}
+.window-control-expand::before {
+  content: '⤢';
+  color: rgba(0, 0, 0, 0.55);
+  font-size: 7px;
+  font-weight: bold;
+  line-height: 1;
+}
+
+/* ── Dashboard pre-scan: 2-column, full height ───────────────────────────────*/
+.content--dashboard {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  grid-template-rows: 1fr 1fr !important;
+  gap: 14px !important;
+  padding: 16px !important;
+  flex-direction: unset !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: calc(100vh - 57px) !important;
+  max-height: calc(100vh - 57px) !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+/* Scan card — left col, spans both rows, full height */
+.content--dashboard > .cascade-item.cascade-delay-1 {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  display: flex;
+  flex-direction: column;
+}
+
+.content--dashboard > .cascade-item.cascade-delay-1 .section-card {
+  flex: 1;
+  height: 100%;
+}
+
+/* Recommendations — right col, row 1 */
+.content--dashboard > .cascade-item.cascade-delay-2 {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.content--dashboard > .cascade-item.cascade-delay-2 .section-card {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.content--dashboard > .cascade-item.cascade-delay-2 .section-content.open {
+  flex: 1;
+  min-height: 0;
+}
+
+.content--dashboard > .cascade-item.cascade-delay-2 .section-content-inner {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.content--dashboard > .cascade-item.cascade-delay-2 .recommendation-carousel-wrap {
+  flex: 1;
+  min-height: 0;
+}
+
+/* History — right col, row 2 */
+.content--dashboard > .cascade-item.cascade-delay-3 {
+  grid-column: 2;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.content--dashboard > .cascade-item.cascade-delay-3 .section-card {
+  flex: 1;
+  height: 100%;
+}
+
+/* ── Dashboard post-scan: 3-column, full height ──────────────────────────────*/
+.content--dashboard-results {
+  display: grid !important;
+  grid-template-columns: 260px 1fr 280px !important;
+  grid-template-rows: 1fr 1fr !important;
+  gap: 14px !important;
+  padding: 14px !important;
+  flex-direction: unset !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: calc(100vh - 57px) !important;
+  max-height: calc(100vh - 57px) !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+/* Col 1: Scan card — spans both rows */
+.content--dashboard-results > .cascade-item.cascade-delay-1 {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  display: flex;
+  flex-direction: column;
+}
+
+.content--dashboard-results > .cascade-item.cascade-delay-1 .section-card {
+  flex: 1;
+  height: 100%;
+}
+
+/* Col 2: Results — spans both rows, scrollable */
+.content--dashboard-results > .results-animate {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  height: 100%;
+  overflow-y: auto;
+  padding-right: 6px;
+  scrollbar-width: thin;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.content--dashboard-results > .results-animate::-webkit-scrollbar { width: 3px; }
+.content--dashboard-results > .results-animate::-webkit-scrollbar-track { background: transparent; }
+.content--dashboard-results > .results-animate::-webkit-scrollbar-thumb { background: rgba(200,190,180,0.3); border-radius: 2px; }
+
+/* Col 3 row 1: Recommendations — stretches */
+.content--dashboard-results > .cascade-item.cascade-delay-7 {
+  grid-column: 3;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.content--dashboard-results > .cascade-item.cascade-delay-7 .section-card {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.content--dashboard-results > .cascade-item.cascade-delay-7 .section-content.open {
+  flex: 1;
+  min-height: 0;
+}
+
+.content--dashboard-results > .cascade-item.cascade-delay-7 .section-content-inner {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.content--dashboard-results > .cascade-item.cascade-delay-7 .recommendation-carousel-wrap {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Col 3 row 2: History — stretches */
+.content--dashboard-results > .cascade-item.cascade-delay-8 {
+  grid-column: 3;
+  grid-row: 2;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.content--dashboard-results > .cascade-item.cascade-delay-8 .section-card {
+  flex: 1;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* Wider product cards in dashboard */
+.content--dashboard .similar-card,
+.content--dashboard-results .similar-card {
+  min-width: 180px;
+  max-width: 180px;
+}
