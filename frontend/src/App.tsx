@@ -44,7 +44,7 @@ const RECOMMENDER_MARKETPLACES = ['all', 'amazon', 'ebay'] as const
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Insight = { topic: string; status: string }
+type Insight = { topic: string; status: unknown; detail?: unknown }
 type Keyword = { word: string; count: number; sentiment: 'positive' | 'negative' | 'neutral' }
 
 type SimilarProduct = {
@@ -75,6 +75,7 @@ type Analysis = {
   price?: string | number | null
   rating?: string | number | null
   reviewCount?: number | null
+  condition?: string | null
   overallScore?: number
   image?: string
   imageUrl?: string
@@ -319,6 +320,76 @@ function formatFlagLabel(flag: string): string {
 
 function renderMetricValue(value?: string | number | null): string {
   return value !== null && value !== undefined ? String(value) : 'N/A'
+}
+
+function formatProductRating(analysis: Analysis, isEbay: boolean): string {
+  if (analysis.rating !== null && analysis.rating !== undefined && analysis.rating !== '') {
+    return `${analysis.rating} / 5`
+  }
+  if (isEbay) {
+    const sellerPct = analysis.sellerReputation?.sellerPositivePct
+    return sellerPct != null ? `Seller feedback ${sellerPct}% positive` : 'Product rating unavailable'
+  }
+  return 'N/A'
+}
+
+function formatProductReviewCount(analysis: Analysis, isEbay: boolean): string {
+  if (analysis.reviewCount !== null && analysis.reviewCount !== undefined) {
+    return analysis.reviewCount.toLocaleString()
+  }
+  if (isEbay) {
+    const sellerCount = analysis.sellerReputation?.sellerReviewCount
+    return sellerCount != null ? `${sellerCount.toLocaleString()} seller feedback ratings` : 'Product reviews unavailable'
+  }
+  return 'N/A'
+}
+
+function formatInsightStatus(value: unknown): string {
+  if (value === null || value === undefined || value === '') return 'Unavailable'
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value)
+  }
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    const display = record.display ?? record.text ?? record.formatted ?? record.raw ?? record.description
+    if (display) return formatInsightStatus(display)
+    const amount = record.value ?? record.amount ?? record.extracted
+    const currency = record.currency
+    if (typeof amount === 'number') {
+      if (currency && /delivery|day/i.test(String(currency))) return `Delivery in ${amount} days`
+      if (amount === 0) return 'Free'
+      return currency && String(currency).toUpperCase() !== 'USD'
+        ? `${amount} ${currency}`
+        : `$${amount.toFixed(2)}`
+    }
+    if (amount) return String(amount)
+  }
+  return 'Details unavailable'
+}
+
+function getInsightTone(status: string): 'positive' | 'caution' | 'neutral' {
+  const text = status.toLowerCase()
+  if (/(excellent|good|positive|free|matched|top rated|strong)/.test(text)) return 'positive'
+  if (/(caution|poor|disputed|unavailable|not specified|low|missing|unclear)/.test(text)) return 'caution'
+  return 'neutral'
+}
+
+function InsightPill({ insight }: { insight: Insight }) {
+  const status = formatInsightStatus(insight.status)
+  const detail = formatInsightStatus(insight.detail ?? insight.status)
+  const tone = getInsightTone(status)
+  return (
+    <div className={`insight-pill insight-pill--${tone}`} tabIndex={0}>
+      <span>{insight.topic}</span>
+      <strong>{status}</strong>
+      {detail.length > 42 && (
+        <div className="insight-popover" role="tooltip">
+          <span className="insight-popover-title">{insight.topic}</span>
+          <p>{detail}</p>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function getAnalysisImage(item?: Analysis | null): string | undefined {
@@ -635,6 +706,38 @@ function ProductImagePlaceholder({ className = 'similar-card-image' }: { classNa
   )
 }
 
+function ProductImage({
+  src,
+  alt,
+  className = 'similar-card-image',
+}: {
+  src?: string | null
+  alt: string
+  className?: string
+}) {
+  const [failed, setFailed] = useState(false)
+  const imageSrc = typeof src === 'string' ? src.trim() : ''
+
+  useEffect(() => {
+    setFailed(false)
+  }, [imageSrc])
+
+  if (!imageSrc || failed) {
+    return <ProductImagePlaceholder className={className} />
+  }
+
+  return (
+    <img
+      src={imageSrc}
+      alt={alt}
+      className={className}
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+    />
+  )
+}
+
 function MetricBar({ label, value }: { label: string; value?: number }) {
   const safeValue = Math.max(0, Math.min(100, value ?? 0))
   return (
@@ -767,6 +870,7 @@ function ScoreExplainer({ metric, analysis }: { metric: string; analysis: Analys
 function VerdictCard({ ai }: { ai: NonNullable<Analysis['aiAnalysis']> }) {
   const rec = ai.recommendation ?? 'COMPARE'
   const [open, setOpen] = useState(true)
+
   return (
     <section className={`section-card verdict-card results-animate ${open ? 'section-card--open' : 'section-card--closed'}`}>
       <div className="verdict-card-header">
@@ -886,9 +990,7 @@ export function ProductRecommendationScroller({ analysis, products }: { analysis
                 </div>
                 {product.isPrime && <span className="prime-badge">Prime</span>}
               </div>
-              {product.image
-                ? <img src={product.image} alt={product.title ?? 'Product'} className="similar-card-image" />
-                : <ProductImagePlaceholder />}
+              <ProductImage src={product.image} alt={product.title ?? 'Product'} />
               <p className="similar-card-title">{product.title ?? 'Untitled Product'}</p>
               <p className="similar-card-brand">{brandLabel}</p>
               <div className="similar-card-price-row">
@@ -1318,8 +1420,9 @@ function ResultsView({ analysis, isExiting }: { analysis: Analysis; isExiting: b
               <p><strong>Brand:</strong> {analysis.brand ?? 'N/A'}</p>
             )}
             <p><strong>Price:</strong> {analysis.price ?? 'N/A'}</p>
-            <p><strong>Rating:</strong> {analysis.rating != null ? `${analysis.rating} / 5` : 'N/A'}</p>
-            <p><strong>Review Count:</strong> {analysis.reviewCount != null ? analysis.reviewCount.toLocaleString() : 'N/A'}</p>
+            <p><strong>Rating:</strong> {formatProductRating(analysis, isEbay)}</p>
+            <p><strong>Review Count:</strong> {formatProductReviewCount(analysis, isEbay)}</p>
+            {isEbay && analysis.condition && <p><strong>Condition:</strong> {analysis.condition}</p>}
           </div>
         </SectionCard>
       </div>
@@ -1374,6 +1477,12 @@ function ResultsView({ analysis, isExiting }: { analysis: Analysis; isExiting: b
                 {`${Math.round((ri.verifiedPurchaseRatio as number) * 100)}%`}
               </p>
             )}
+            {isEbay && ri?.sentimentConsistencyRatio != null && (
+              <p>
+                <strong>Sentiment Consistency:</strong>{' '}
+                {`${Math.round((ri.sentimentConsistencyRatio as number) * 100)}%`}
+              </p>
+            )}
           </div>
           <ScoreExplainer metric={isEbay ? 'seller_review_integrity' : 'review_integrity'} analysis={analysis} />
         </SectionCard>
@@ -1415,10 +1524,7 @@ function ResultsView({ analysis, isExiting }: { analysis: Analysis; isExiting: b
           {br?.insights?.length ? (
             <div className="insight-list">
               {br.insights.map((insight) => (
-                <div key={insight.topic} className="insight-pill">
-                  <span>{insight.topic}</span>
-                  <strong>{insight.status}</strong>
-                </div>
+                <InsightPill key={insight.topic} insight={insight} />
               ))}
             </div>
           ) : (
@@ -1550,9 +1656,7 @@ function CompareView({ records, onBack }: { records: [ScanRecord, ScanRecord]; o
             ] as const).map(({ side, a, record, image, isLeader }) => (
               <article key={side} className={`compare-product-card ${isLeader ? 'compare-product-card--leader' : ''}`}>
                 <div className="compare-product-image-wrap">
-                  {image
-                    ? <img src={image} alt={a.title ?? 'Product'} className="compare-product-image" />
-                    : <ProductImagePlaceholder className="compare-product-image" />}
+                  <ProductImage src={image} alt={a.title ?? 'Product'} className="compare-product-image" />
                 </div>
                 <div className="compare-product-card-body">
                   <div className="compare-product-card-top">
@@ -1665,7 +1769,7 @@ export default function App() {
   const [selectedCompareIds, setSelectedCompareIds] = useState<string[]>([])
   const [compareRecords, setCompareRecords] = useState<[ScanRecord, ScanRecord] | null>(null)
   const [recommendationFilter, setRecommendationFilter] = useState<RecommenderFilter>('overall')
-  const [recommendationMarketplace, setRecommendationMarketplace] = useState<RecommenderMarketplace>('amazon')
+  const [recommendationMarketplace, setRecommendationMarketplace] = useState<RecommenderMarketplace>('all')
   const [recommendationPrompt, setRecommendationPrompt] = useState('')
   const [recommendationImageDataUrl, setRecommendationImageDataUrl] = useState('')
   const [recommendationImageName, setRecommendationImageName] = useState('')

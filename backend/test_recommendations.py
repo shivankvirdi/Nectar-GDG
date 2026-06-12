@@ -96,6 +96,21 @@ class RecommendationTests(unittest.TestCase):
         self.assertEqual(product["image"], "https://i.ebayimg.test/shoe.jpg")
         self.assertEqual(product["brand"], "trusted-seller")
 
+    def test_normalizes_nested_and_protocol_relative_recommendation_images(self):
+        adapter = FakeAdapter("amazon", [])
+        product = app_main._normalize_recommendation_product(
+            {
+                "title": "SKIN1004 Madagascar Centella Light Cleansing Oil",
+                "asin": "B0IMAGEOBJECT",
+                "price": {"display": "$12.50", "value": 12.50},
+                "image": {"url": "//images.amazon.test/skin1004.jpg"},
+            },
+            adapter,
+        )
+
+        self.assertIsNotNone(product)
+        self.assertEqual(product["image"], "https://images.amazon.test/skin1004.jpg")
+
     def test_ebay_adapter_search_normalizer_preserves_name_title(self):
         adapter = EbayScraperAPIAdapter()
         product = adapter._normalize_search_result(
@@ -112,6 +127,19 @@ class RecommendationTests(unittest.TestCase):
         self.assertEqual(product["asin"], "266123456789")
         self.assertEqual(product["price"]["display"], "$19.95")
         self.assertEqual(product["brand"], "audio-store")
+
+    def test_ebay_adapter_search_normalizer_flattens_image_objects(self):
+        adapter = EbayScraperAPIAdapter()
+        product = adapter._normalize_search_result(
+            {
+                "title": "Roto Grip Bowling Ball",
+                "product_url": "https://www.ebay.com/itm/267111111111",
+                "price": {"raw": "$53.00"},
+                "images": [{"src": "//i.ebayimg.test/ball.jpg"}],
+            }
+        )
+
+        self.assertEqual(product["mainImageUrl"], "https://i.ebayimg.test/ball.jpg")
 
     def test_ebay_adapter_search_normalizer_supports_scraperapi_product_fields(self):
         adapter = EbayScraperAPIAdapter()

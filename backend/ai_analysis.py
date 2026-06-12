@@ -37,6 +37,30 @@ def _is_quota_exhausted(error: Exception) -> bool:
     return "RESOURCE_EXHAUSTED" in message or "429" in message or "QUOTA" in message
 
 
+def _clean_metadata_value(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, dict):
+        for key in ("display", "text", "formatted", "raw", "label", "description", "name"):
+            text = _clean_metadata_value(value.get(key))
+            if text:
+                return text
+        raw_value = value.get("value") or value.get("amount") or value.get("extracted")
+        currency = value.get("currency")
+        if isinstance(raw_value, (int, float)):
+            if currency and re.search(r"delivery|day", str(currency), re.IGNORECASE):
+                return f"Delivery in {raw_value:g} days"
+            if raw_value == 0:
+                return "free"
+            if currency and str(currency).upper() not in {"USD", "$"}:
+                return f"{raw_value:g} {currency}"
+            return f"${raw_value:.2f}"
+        return str(raw_value).strip() if raw_value else ""
+    return re.sub(r"\s+", " ", str(value)).strip()
+
+
 def _looks_like_shopping_prompt(prompt: str, recent_items: list[dict]) -> bool:
     if not prompt:
         return True
@@ -206,6 +230,8 @@ def get_ai_verdict(
     delivery_max=None,
     return_policy=None,
     condition=None,
+    price=None,
+    product_keyword=None,
 ):
 
     review_snippets = "\n".join(
@@ -230,6 +256,26 @@ def get_ai_verdict(
 
     if condition:
         metadata_summary.append(f"Condition: {condition}")
+
+    clean_metadata_summary = []
+    if product_keyword and product_keyword != "unknown":
+        clean_metadata_summary.append(f"Product category: {product_keyword}")
+    if price:
+        clean_metadata_summary.append(f"Price: {_clean_metadata_value(price)}")
+    if seller_positive_pct is not None:
+        clean_metadata_summary.append(f"Seller feedback: {seller_positive_pct}% positive")
+
+    min_text = _clean_metadata_value(delivery_min)
+    max_text = _clean_metadata_value(delivery_max)
+    if min_text and max_text:
+        clean_metadata_summary.append(f"Delivery estimate: {min_text} to {max_text}")
+    elif min_text or max_text:
+        clean_metadata_summary.append(f"Delivery estimate: {min_text or max_text}")
+    if return_policy:
+        clean_metadata_summary.append(f"Returns: {_clean_metadata_value(return_policy)}")
+    if condition:
+        clean_metadata_summary.append(f"Condition: {_clean_metadata_value(condition)}")
+    metadata_summary = clean_metadata_summary
 
     metadata_text = "\n".join(metadata_summary)
 
@@ -256,7 +302,9 @@ Return JSON only.
 
 Rules:
 - pros/cons must come directly from patterns in the reviews, not invented
-- verdict must be one sentence, max 20 words
+- verdict must be one sentence, max 24 words
+- verdict must name or clearly describe the specific product/category, not just the resale listing
+- include product-specific context from the title or metadata when it is relevant
 - recommendation: BUY if score>=75, SKIP if score<50, otherwise COMPARE
 - if reviews are overwhelmingly positive with no real cons, make the cons minor nitpicks only
 """
@@ -328,7 +376,7 @@ Rules:
                     return {
                         "pros": pros[:3],
                         "cons": cons[:3],
-                        "verdict": result.get("verdict", "See scores above."),
+                        "verdict": result.get("verdict", _fallback_verdict(title, overall_score, marketplace)),
                         "recommendation": rec,
                     }
 
@@ -350,6 +398,19 @@ Rules:
         return _fallback(overall_score, marketplace=marketplace)
 
 
+def _fallback_verdict(title: str, overall_score: int, marketplace: str = "amazon") -> str:
+    product_name = re.sub(r"\s+", " ", title or "This product").strip()
+    if len(product_name) > 72:
+        product_name = product_name[:69].rstrip() + "..."
+    if marketplace == "ebay":
+        return f"{product_name} depends on seller trust, condition, returns, and fit for the buyer."
+    if overall_score >= 75:
+        return f"{product_name} looks strong based on the available trust signals."
+    if overall_score < 50:
+        return f"{product_name} shows enough trust concerns to compare alternatives first."
+    return f"{product_name} is worth comparing against similar options before buying."
+
+
 def _fallback(overall_score: int, marketplace: str = "amazon") -> dict:
     is_ebay = marketplace == "ebay"
     rec = "BUY" if overall_score >= 75 else "SKIP" if overall_score < 50 else "COMPARE"
@@ -364,7 +425,7 @@ def _fallback(overall_score: int, marketplace: str = "amazon") -> dict:
             "Could not extract detailed feedback",
             "Manual review recommended",
         ],
-        "verdict": "Analysis based on scores only — not enough review text available.",
+        "verdict": "Analysis is based on trust signals because detailed review text is limited.",
         "recommendation": rec,
     }
 

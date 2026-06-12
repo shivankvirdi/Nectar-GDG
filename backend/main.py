@@ -38,7 +38,7 @@ PROMPT_PRODUCT_TERMS = {
     "running shoes", "hoodie", "jacket", "jeans", "air fryer", "coffee maker",
     "espresso machine", "blender", "toaster", "microwave", "kettle", "projector",
     "printer", "scanner", "router", "power bank", "cable", "drone", "microphone",
-    "soundbar", "controller", "chair", "toothbrush",
+    "soundbar", "controller", "chair", "toothbrush", "bowling ball",
 }
 RELEVANCE_PROFILES = {
     "headphones": {
@@ -68,6 +68,11 @@ RELEVANCE_PROFILES = {
         "triggers": ("shirt", "shirts", "t-shirt", "tee", "pocket shirt"),
         "required": ("shirt", "t-shirt", "tee", "polo", "henley"),
         "blocked": ("pants", "jeans", "shoes", "slippers", "hat"),
+    },
+    "bowling_ball": {
+        "triggers": ("bowling ball", "bowling balls"),
+        "required": ("bowling ball", "bowling balls"),
+        "blocked": ("bag", "bags", "shoe", "shoes", "cleaner", "polish", "towel"),
     },
 }
 
@@ -131,6 +136,30 @@ def _price_display(item: dict[str, Any]) -> str | None:
         return f"${float(value):.2f}" if isinstance(value, (int, float)) else (str(value) if value else None)
     if isinstance(price, (str, int, float)):
         return str(price)
+    return None
+
+def _image_display(item: Any) -> str | None:
+    if not item:
+        return None
+    if isinstance(item, str):
+        image = item.strip()
+        if not image:
+            return None
+        if image.startswith("//"):
+            return f"https:{image}"
+        if image.startswith(("http://", "https://", "data:image/")):
+            return image
+        return None
+    if isinstance(item, dict):
+        for key in ("url", "src", "link", "display", "large", "medium", "thumbnail", "imageUrl", "image_url"):
+            image = _image_display(item.get(key))
+            if image:
+                return image
+    if isinstance(item, list):
+        for candidate in item:
+            image = _image_display(candidate)
+            if image:
+                return image
     return None
 
 def _numeric_price(value: Any) -> float | None:
@@ -220,7 +249,7 @@ def _normalize_recommendation_product(item: dict[str, Any], adapter) -> dict[str
         return None
 
     listing_url = str(listing_url or adapter.product_url(str(listing_id)))
-    image = (
+    image = _image_display(
         item.get("mainImageUrl")
         or item.get("image")
         or item.get("image_url")
@@ -228,6 +257,8 @@ def _normalize_recommendation_product(item: dict[str, Any], adapter) -> dict[str
         or item.get("thumbnail")
         or item.get("thumbnail_url")
         or item.get("thumbnailUrl")
+        or item.get("images")
+        or item.get("media")
     )
     return {
         "title": title,
@@ -943,7 +974,7 @@ async def recommendations(payload: RecommendationsPayload):
                 ranked_products,
                 limit=5,
                 max_per_source_term=None if has_refinement else 2,
-                max_per_marketplace=4 if marketplace_filter == "all" and len(available_marketplaces) > 1 else None,
+                max_per_marketplace=3 if marketplace_filter == "all" and len(available_marketplaces) > 1 else None,
             )
         )
         print(

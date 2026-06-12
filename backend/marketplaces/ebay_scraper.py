@@ -83,6 +83,30 @@ def _safe_str(value, default: str = "") -> str:
     return default
 
 
+def _image_url(value) -> str:
+    """Return only usable browser image URLs from ScraperAPI's varied shapes."""
+    if not value:
+        return ""
+    if isinstance(value, str):
+        image = value.strip()
+        if image.startswith("//"):
+            return f"https:{image}"
+        if image.startswith(("http://", "https://", "data:image/")):
+            return image
+        return ""
+    if isinstance(value, dict):
+        for key in ("url", "src", "link", "display", "large", "medium", "thumbnail", "imageUrl", "image_url"):
+            image = _image_url(value.get(key))
+            if image:
+                return image
+    if isinstance(value, list):
+        for item in value:
+            image = _image_url(item)
+            if image:
+                return image
+    return ""
+
+
 def _infer_brand_from_title(title: str) -> str:
     text = re.sub(r"[^a-z0-9]+", " ", str(title or "").lower()).strip()
     if not text:
@@ -513,24 +537,16 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
         if not brand_name:
             brand_name = _safe_str(r.get("brand") or r.get("store_name") or r.get("seller_name"), "")
 
-        image = _safe_str(
+        image = _image_url(
             r.get("image_url")
             or r.get("imageUrl")
             or r.get("image")
             or r.get("thumbnail")
             or r.get("thumbnail_url")
-            or r.get("thumbnailUrl"),
-            "",
+            or r.get("thumbnailUrl")
+            or r.get("images")
+            or r.get("media")
         )
-        if not image:
-            for img in _ensure_list(r.get("images")):
-                if isinstance(img, str) and img:
-                    image = img
-                    break
-                if isinstance(img, dict):
-                    image = _safe_str(img.get("url") or img.get("src") or img.get("link"), "")
-                    if image:
-                        break
 
         title = _safe_str(r.get("title") or r.get("name") or r.get("product_title"))
 

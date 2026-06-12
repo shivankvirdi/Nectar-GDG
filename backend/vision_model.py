@@ -19,6 +19,69 @@ def _raise_if_cancelled(is_cancelled: Callable[[], bool] | None) -> None:
         raise ScanCancelled()
 
 
+def _count_to_int(value) -> int | None:
+    if isinstance(value, int):
+        return value if value >= 0 else None
+    cleaned = re.sub(r"[^0-9]", "", str(value or ""))
+    return int(cleaned) if cleaned else None
+
+
+def _clean_text_value(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, dict):
+        for key in ("display", "text", "formatted", "raw", "label", "description", "name"):
+            text = _clean_text_value(value.get(key))
+            if text:
+                return text
+        raw_value = value.get("value") or value.get("amount") or value.get("extracted")
+        currency = value.get("currency")
+        if isinstance(raw_value, (int, float)):
+            if currency and re.search(r"delivery|day", str(currency), re.IGNORECASE):
+                return f"Delivery in {raw_value:g} days"
+            if currency and str(currency).upper() not in {"USD", "$"}:
+                return f"{raw_value:g} {currency}"
+            return "Free" if raw_value == 0 else f"${raw_value:.2f}"
+        if raw_value:
+            return str(raw_value).strip()
+        return ""
+    return str(value).strip()
+
+
+def _format_delivery_window(delivery_min, delivery_max) -> str:
+    min_text = _clean_text_value(delivery_min)
+    max_text = _clean_text_value(delivery_max)
+    if min_text and max_text and min_text != max_text:
+        return f"Estimated delivery {min_text} to {max_text}"
+    if min_text or max_text:
+        return f"Estimated delivery {min_text or max_text}"
+    return ""
+
+
+def _format_shipping_cost(shipping_cost) -> str:
+    if shipping_cost is None:
+        return ""
+    if isinstance(shipping_cost, dict):
+        raw_value = shipping_cost.get("value") or shipping_cost.get("amount") or shipping_cost.get("extracted")
+        currency = shipping_cost.get("currency")
+        if isinstance(raw_value, (int, float)):
+            if currency and re.search(r"delivery|day", str(currency), re.IGNORECASE):
+                return f"Delivery in {raw_value:g} days"
+            if raw_value == 0:
+                return "Free shipping"
+            if currency and str(currency).upper() not in {"USD", "$"}:
+                return f"Shipping {raw_value:g} {currency}"
+            return f"Shipping ${raw_value:.2f}"
+    text = _clean_text_value(shipping_cost)
+    if not text:
+        return ""
+    if text.lower() in {"0", "0.0", "$0", "$0.00", "free"}:
+        return "Free shipping"
+    return text if "shipping" in text.lower() else f"Shipping {text}"
+
+
 # ─── Product keyword list ────────────────────────────────────────────────────
 PRODUCT_KEYWORDS = [
     "wireless earbuds", "wired earbuds", "noise cancelling headphones",
@@ -59,7 +122,7 @@ PRODUCT_KEYWORDS = [
     "hair straightener", "curling iron", "electric razor", "massage gun",
     "smart scale", "blood pressure monitor", "pulse oximeter",
     "backpack", "laptop bag", "laptop sleeve", "cable organizer",
-    "desk organizer",
+    "desk organizer", "bowling ball",
 ]
 
 
@@ -145,7 +208,7 @@ async def get_seller_reputation(seller: dict, reviews: list, product: dict) -> d
     """
     seller_name    = seller.get("name", "Unknown Seller")
     positive_pct   = _parse_seller_pct(seller.get("seller_review", ""))
-    reviews_count  = seller.get("seller_reviews_count")
+    reviews_count  = _count_to_int(seller.get("seller_reviews_count"))
     top_rated      = seller.get("top_rated", False)
 
     normalised_reviews = [
@@ -217,6 +280,70 @@ def _build_seller_insights(
     estimatedDeliveryMin/Max, returnPolicy, condition at the top level.
     """
     from .nlp_utils import sia
+
+    if positive_pct is None:
+        trust_status = "Unknown"
+    elif positive_pct >= 99.0:
+        trust_status = "Excellent"
+    elif positive_pct >= 97.0:
+        trust_status = "Good"
+    elif positive_pct >= 90.0:
+        trust_status = "Caution"
+    else:
+        trust_status = "Poor"
+
+    if top_rated:
+        trust_status = f"{trust_status} - Top Rated"
+
+    shipping_status = (
+        _format_delivery_window(product.get("estimatedDeliveryMin"), product.get("estimatedDeliveryMax"))
+        or _format_shipping_cost(product.get("shippingCost"))
+        or "Delivery estimate unavailable"
+    )
+
+    condition = _clean_text_value(product.get("condition"))
+    accuracy_scores = []
+    for review in reviews:
+        text = (review.get("text") or "").lower()
+        if any(keyword in text for keyword in (
+            "described", "accurate", "exactly", "expected",
+            "different", "mislead", "wrong", "not as",
+        )):
+            accuracy_scores.append(sia.polarity_scores(review["text"])["compound"])
+
+    if accuracy_scores:
+        avg_accuracy = sum(accuracy_scores) / len(accuracy_scores)
+        if avg_accuracy >= 0.05:
+            accuracy_label = "description matched feedback"
+        elif avg_accuracy <= -0.05:
+            accuracy_label = "description accuracy disputed"
+        else:
+            accuracy_label = "description feedback mixed"
+        quality_status = f"{condition} - {accuracy_label}" if condition else accuracy_label
+    else:
+        quality_status = condition or "Condition not specified"
+
+    return_policy = _clean_text_value(product.get("returnPolicy"))
+    if return_policy:
+        return_status = return_policy
+    else:
+        return_scores = []
+        for review in reviews:
+            text = (review.get("text") or "").lower()
+            if any(keyword in text for keyword in ("return", "refund", "support", "seller", "response", "contact")):
+                return_scores.append(sia.polarity_scores(review["text"])["compound"])
+        if return_scores:
+            avg_returns = sum(return_scores) / len(return_scores)
+            return_status = "Support feedback is positive" if avg_returns >= 0.05 else "Support feedback needs caution" if avg_returns <= -0.05 else "Support feedback is neutral"
+        else:
+            return_status = "Return details unavailable"
+
+    return [
+        {"topic": "Seller Trust", "status": trust_status},
+        {"topic": "Shipping & Delivery", "status": shipping_status},
+        {"topic": "Item Condition", "status": quality_status},
+        {"topic": "Returns & Support", "status": return_status},
+    ]
 
     # ── Insight 1: Seller Trust ───────────────────────────────────────────
     if positive_pct is None:
@@ -302,6 +429,67 @@ def _build_seller_insights(
 
 
 # ─── Accessory / keyword helpers ─────────────────────────────────────────────
+
+def build_ebay_seller_review_integrity(review_integrity: dict, seller_reputation: dict) -> dict:
+    """
+    Build an Amazon-shaped integrity block from eBay seller feedback when
+    listing-level review text is unavailable.
+    """
+    if review_integrity.get("integrity_score_pct") is not None:
+        return review_integrity
+
+    positive_pct = seller_reputation.get("sellerPositivePct")
+    review_count = _count_to_int(seller_reputation.get("sellerReviewCount"))
+    top_rated = bool(seller_reputation.get("topRatedSeller"))
+
+    if positive_pct is None:
+        return {
+            "integrity_score_pct": 50,
+            "integrity_label": "Seller review integrity is unclear because seller feedback data was not available.",
+            "verified_purchase_ratio": None,
+            "sentiment_consistency_ratio": None,
+            "flags": {"missing_seller_feedback": True},
+            "commonKeywords": [],
+        }
+
+    volume_component = 0
+    if review_count:
+        if review_count >= 5000:
+            volume_component = 100
+        elif review_count >= 1000:
+            volume_component = 90
+        elif review_count >= 250:
+            volume_component = 78
+        elif review_count >= 50:
+            volume_component = 65
+        else:
+            volume_component = 45
+
+    score = round((positive_pct * 0.78) + (volume_component * 0.17) + (5 if top_rated else 0))
+    score = max(0, min(100, score))
+
+    if score >= 85:
+        label = "Strong seller review integrity - feedback volume and sentiment look consistent."
+    elif score >= 70:
+        label = "Moderate seller review integrity - feedback is mostly positive, but review the listing details."
+    else:
+        label = "Low seller review integrity - seller feedback raises caution."
+
+    flags = {}
+    if positive_pct < 97:
+        flags["seller_feedback_caution"] = True
+    if not review_count or review_count < 50:
+        flags["low_feedback_volume"] = True
+
+    return {
+        "integrity_score_pct": score,
+        "integrity_label": label,
+        "verified_purchase_ratio": None,
+        "sentiment_consistency_ratio": round(positive_pct / 100, 2),
+        "flags": flags,
+        "commonKeywords": seller_reputation.get("commonKeywords", []),
+    }
+
 
 def detect_accessory_type(title: str, fallback_keyword: str = "") -> str:
     text = (title or "").lower()
@@ -553,6 +741,7 @@ async def analyze_product_url(
             if isinstance(seller.get("name"), str)
             else ""
         ) or str(profile.get("brand", "") or "")
+        review_integrity = build_ebay_seller_review_integrity(review_integrity, reputation_result)
     else:
         brand = profile.get("brand", "") or product.get("brand", "")
         if brand:
@@ -633,6 +822,13 @@ async def analyze_product_url(
         integrity_score=integrity_score,
         reputation_score=reputation_score,
         marketplace=marketplace.name,
+        seller_positive_pct=reputation_result.get("sellerPositivePct") if is_ebay else None,
+        delivery_min=product.get("estimatedDeliveryMin") if is_ebay else None,
+        delivery_max=product.get("estimatedDeliveryMax") if is_ebay else None,
+        return_policy=product.get("returnPolicy") if is_ebay else None,
+        condition=product.get("condition") if is_ebay else None,
+        price=_clean_text_value(product.get("price")),
+        product_keyword=resolved_product_keyword,
     )
     _raise_if_cancelled(is_cancelled)
 
@@ -648,9 +844,10 @@ async def analyze_product_url(
         "productKeyword": resolved_product_keyword,
         "title":          product.get("title"),
         "brand":          brand,
-        "price":          (product.get("price") or {}).get("display"),
+        "price":          _clean_text_value(product.get("price")) or None,
         "rating":         rating,
         "reviewCount":    product.get("ratingsTotal"),
+        "condition":      product.get("condition"),
         "image":          product.get("mainImageUrl"),
         "amazonUrl":      marketplace.product_url(listing_id),
 
