@@ -147,25 +147,9 @@ app.on('window-all-closed', () => {
 ipcMain.handle('close-window',    () => { if (mainWindow) mainWindow.close() })
 ipcMain.handle('minimize-window', () => { if (mainWindow) mainWindow.minimize() })
 
-// ── Auto-fit: renderer reports content height, we resize the window ──────────
-// Called from App.tsx after every render that might change height.
 ipcMain.handle('fit-to-content', async (_event, { contentHeight }) => {
   if (!mainWindow) return
   animateWindowToContentHeight(contentHeight)
-
-  // Clamp: never smaller than 200px, never bigger than 90% of screen height
-  const maxH   = Math.floor(screenHeight * 0.90)
-  const newH   = Math.min(maxH, Math.max(200, Math.ceil(contentHeight) + WINDOW_PADDING))
-  const newW = Math.ceil(contentWidth)
-  const [curW, curH] = mainWindow.getSize()
-
-  if (Math.abs(curH - newH) > 2) {           // skip trivial sub-pixel changes
-    mainWindow.setSize(newW, newH, true)     // no animation — instant snap
-    // Re-pin to right edge in case width changed
-    const [, y] = mainWindow.getPosition()
-    mainWindow.setPosition(screenWidth - newW - 24, y)
-  }
-
 })
 
 // ── Manual resize (e.g. when content area scrolls) ────────────────────────────
