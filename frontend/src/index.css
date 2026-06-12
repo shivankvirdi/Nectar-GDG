@@ -1,90 +1,11 @@
-/* ═══════════════════════════════════════════════════════════════
+/* ===============================================================
    EASY TUNING — change these four lines to adjust glass look:
 
    --blur-amount   : higher = more frosted (try 8px–60px)
    --tint-opacity  : higher = more coloured / less see-through (0.0–1.0)
    --tint-color    : the RGB of the panel tint (warm white by default)
    --tint-sat      : backdrop-filter saturation boost (1.0 = neutral)
-   ═══════════════════════════════════════════════════════════════ */
-@font-face {
-  font-family: "Satoshi";
-  src: url("./assets/fonts/Satoshi-400.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Satoshi";
-  src: url("./assets/fonts/Satoshi-500.woff2") format("woff2");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Satoshi";
-  src: url("./assets/fonts/Satoshi-700.woff2") format("woff2");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Satoshi";
-  src: url("./assets/fonts/Satoshi-900.woff2") format("woff2");
-  font-weight: 800 900;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Manrope";
-  src: url("./assets/fonts/Manrope-300.ttf") format("truetype");
-  font-weight: 300;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Manrope";
-  src: url("./assets/fonts/Manrope-400.ttf") format("truetype");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Manrope";
-  src: url("./assets/fonts/Manrope-500.ttf") format("truetype");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Manrope";
-  src: url("./assets/fonts/Manrope-600.ttf") format("truetype");
-  font-weight: 600;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Manrope";
-  src: url("./assets/fonts/Manrope-700.ttf") format("truetype");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Manrope";
-  src: url("./assets/fonts/Manrope-800.ttf") format("truetype");
-  font-weight: 800;
-  font-style: normal;
-  font-display: swap;
-}
+   =============================================================== */
 
 :root {
   --blur-amount:   14px;
@@ -133,7 +54,7 @@
   --shadow-warm: 0 8px 20px rgba(255, 140, 66, 0.14);
 }
 
-/* ── Reset ──────────────────────────────────────────────────── */
+/* -- Reset ---------------------------------------------------- */
 * { box-sizing: border-box; }
 
 html, body, #root {

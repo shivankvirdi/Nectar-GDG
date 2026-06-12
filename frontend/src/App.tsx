@@ -2294,15 +2294,6 @@ export default function App() {
     return <CompareView records={compareRecords} onBack={() => setView('home')} />
   }
 
-<<<<<<< HEAD
-  if (view === 'premium') {
-    return (
-      <AutoSizingWindow>
-        <PremiumScreen key="premium-screen" onBack={() => setView('home')} />
-      </AutoSizingWindow>
-    )
-  }
-
   const recommendationsSection = (
     <SmartRecommendationsSection
       key={`recommendations-${loading ? 'loading' : hasScanned ? 'post-scan' : 'launch'}`}
@@ -2327,8 +2318,6 @@ export default function App() {
     />
   )
 
-=======
->>>>>>> 620d7d5 (Added more frontend features)
   const historySection = (
     <ScanHistorySection
       scanHistory={scanHistory}
@@ -2356,64 +2345,7 @@ export default function App() {
             <h1>Nectar</h1>
             <p>SMART PRODUCT ANALYZER</p>
           </div>
-<<<<<<< HEAD
-=======
-          <div className={`window-controls ${windowControlsVisible ? 'visible' : ''}`}>
-            <button className="window-control window-control-minimize" onClick={() => window.electronAPI?.minimizeWindow?.()} title="Minimize" />
-            <button className="window-control window-control-close" onClick={() => window.electronAPI?.closeWindow?.()} title="Close" />
-          </div>
-        </header>
-
-        <div className="content" key="home-view">
-          <div className="cascade-item cascade-delay-1">
-            <SectionCard title="Product Analysis" className="section-card--hero">
-              <div className="url-input-container">
-                <div className="url-status-bar">
-                  <span className={`status-dot ${isAutoDetected ? 'status-dot--active' : ''}`} />
-                  <span className="status-label">{isAutoDetected ? 'Active Browser Tab' : 'Manual Entry'}</span>
-                  {detectedMarketplace && (
-                    <span className={`marketplace-badge marketplace-badge--${detectedMarketplace}`}>
-                      {detectedMarketplace === 'amazon' ? 'Amazon' : 'eBay'}
-                    </span>
-                  )}
-                  <button type="button" className="url-refresh-btn" onClick={detectActiveUrl} title="Detect active URL from browser">
-                    ↻ Sync Browser
-                  </button>
-                </div>
-                <input
-                  type="text"
-                  className="premium-url-input"
-                  placeholder="Paste Amazon or eBay product URL here..."
-                  value={scanUrl}
-                  onChange={(e) => { setScanUrl(e.target.value); setIsAutoDetected(false) }}
-                />
-              </div>
-              <p className={`body-text hero-status ${error ? 'status-error' : 'status-ok'}`}>
-                {error || backendStatus}
-              </p>
-              <button className="scan-btn scan-btn--hero" onClick={handleScan} disabled={loading}>
-                {loading ? 'Scanning…' : 'Scan Product'}
-              </button>
-              {loading && cancelAvailable && (
-                <button type="button" className="scan-cancel-btn" onClick={handleCancelScan}>
-                  <span>Cancel Scan</span>
-                </button>
-              )}
-            </SectionCard>
-          </div>
-
-          {!hasScanned && <div className="cascade-item cascade-delay-2">{historySection}</div>}
-          {loading && <SkeletonResults />}
-
-          {!loading && hasScanned && analysis && (
-            <>
-              <ResultsView analysis={analysis} isExiting={isExitingResults} />
-              <div className="cascade-item cascade-delay-7">{historySection}</div>
-            </>
-          )}
->>>>>>> 620d7d5 (Added more frontend features)
         </div>
-        <button className="premium-btn" onClick={() => setView('premium')}>Go Premium</button>
         <div className={`window-controls ${windowControlsVisible ? 'visible' : ''}`}>
           <button className="window-control window-control-expand" onClick={handleToggleExpand} title={isExpanded ? 'Collapse' : 'Expand to dashboard'} />
           <button className="window-control window-control-minimize" onClick={() => window.electronAPI?.minimizeWindow?.()} title="Minimize" />

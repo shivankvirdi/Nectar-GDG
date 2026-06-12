@@ -1,3 +1,5 @@
+@import "./fonts.css";
+
 :root {
   font-family: var(--font-body);
   color-scheme: light;
@@ -34,7 +36,6 @@ button:focus, button:focus-visible {
 }
 
 /* ── Draggable header region ─────────────────────────────────── */
-<<<<<<< HEAD
 .top-header,
 .top-header .brand-row,
 .top-header .brand-block,
@@ -44,11 +45,6 @@ button:focus, button:focus-visible {
 .top-header button,
 .window-controls,
 .window-controls *        { -webkit-app-region: no-drag; }
-=======
-.top-header {
-  -webkit-app-region: drag;
-}
->>>>>>> 620d7d5 (Added more frontend features)
 
 .brand-row,
 .brand-block,
@@ -1158,7 +1154,6 @@ button,
   border-color: rgba(59, 130, 246, 0.25) !important;
 }
 
-<<<<<<< HEAD
 /* Smart recommendations */
 .recommendation-title-star {
   width: 24px;
@@ -1516,8 +1511,8 @@ button,
 .content--dashboard .similar-card,
 .content--dashboard-results .similar-card {
   min-width: 180px;
-  max-width: 180px;
-=======
+  max-width: 180px;}
+  
 .app-shell,
 .popup-shell,
 .top-header {
@@ -1553,5 +1548,4 @@ button,
 .top-header .window-controls,
 .top-header .window-control {
   -webkit-app-region: no-drag;
->>>>>>> 620d7d5 (Added more frontend features)
 }
