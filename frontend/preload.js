@@ -9,4 +9,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   closeWindow: () => ipcRenderer.invoke('close-window'),
   minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  toggleExpand: () => ipcRenderer.invoke('toggle-expand'),  
 })

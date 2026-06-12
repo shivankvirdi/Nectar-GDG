@@ -9,7 +9,7 @@ E-commerce lacks trustworthy product intelligence, with consumers losing billion
 - AI-powered product analysis
 - Review integrity detection
 - Brand and seller reputation scoring
-- Similar product recommendations
+- Personalized product recommendations
 - Product comparison tools
 - Scan history and recommendation memory
 - Amazon and eBay support
@@ -28,43 +28,54 @@ E-commerce lacks trustworthy product intelligence, with consumers losing billion
 ---
 
 ## Architecture Diagram
-
-```text
-User
-  |
-  v
-Electron Desktop App
-  - Window controls
-  - Active browser URL detection
-  - Opens external product links
-  |
-  v
-React + Vite Frontend
-  - Scan module
-  - Product results
-  - Smart recommendations
-  - Scan history
-  - Compare view
-  |
-  | HTTP requests
-  v
-FastAPI Backend
-  - /current-url
-  - /cancel-scan
-  - /explain-score
-  - /recommendations
-  |
-  v
-Analysis Pipeline
-  - Product data collection
-  - Review authenticity analysis
-  - Brand/Seller reputation scoring
-  - Overall trust score
-  |
-  +--> Canopy API: Amazon product data
-  +--> ScraperAPI: eBay product data
-  +--> Google Places API: brand reputation context
-  +--> Gemini API: verdicts, explanations, smart recommendations
+```mermaid
+---
+config:
+  layout: dagre
+  theme: redux-dark-color
+  look: redux
+  fontFamily: '''Source Code Pro Variable'', monospace'
+  themeVariables:
+    fontFamily: '''Source Code Pro Variable'', monospace'
+---
+flowchart LR
+ subgraph ELECTRON["Electron Shell"]
+        E1["Frameless glass overlay\nalways-on-top · IPC resize"]
+        E2["URL detection\nAppleScript · PS · xdotool"]
+  end
+ subgraph REACT["React + TypeScript"]
+        R1["Scan · Results · Compare"]
+        R2["Recommendations · History"]
+  end
+ subgraph API["FastAPI · Cloud Run · Secret Manager"]
+        A1["/current-url · /cancel-scan"]
+        A2["/explain-score\n/recommendations"]
+  end
+ subgraph PIPELINE["Analysis Pipeline"]
+        P1["Marketplace adapter registry\nAmazon · eBay"]
+        P2["Fetch · normalise\nKeyword inference"]
+  end
+ subgraph NLP["NLP Engine"]
+        N1["Review integrity\nVADER scoring · flags\n· star ↔ text match\n· verified purchases"]
+        N2["Reputation scoring\nBayesian blend · prior = 68, prior × (1 − conf) + signal × conf"]
+        N3["WordNet lemmatization · TF-IDF scoring + boost words · bigrams · negation pairs"]
+        N4["Overall score\nAmazon 40/35/25\neBay  30/25/45"]
+  end
+ subgraph AILAY["Gemini AI · gemini-2.5-flash"]
+        G1["Verdict · BUY / COMPARE / SKIP"]
+        G2["Score explainer\nRec query builder"]
+  end
+    USER(["Amazon / eBay"]) --> E1
+    E1 --> R1
+    A1 --> P1
+    P1 --> N1 & CANOPY["Canopy API\nAmazon GraphQL"] & SCRAPER["ScraperAPI\neBay structured"]
+    N1 --> G1
+    G1 -- verdict · scores --> R1
+    N2 --> PLACES["Google Places\nBrand lookup · Review\nsignals · Insights"]
+    G1 --> G2
+    G2 --> GAPI["Gemini API\ngemini-2.5-flash ·  flash lite fallback · context + snippets"]
+    R1 -- "HTTP · X-Nectar-Secret" --> A1
+    R2 --> A2
 ```
 
 # How to Use
