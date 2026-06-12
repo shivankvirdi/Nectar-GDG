@@ -34,6 +34,7 @@ button:focus, button:focus-visible {
 }
 
 /* ── Draggable header region ─────────────────────────────────── */
+<<<<<<< HEAD
 .top-header,
 .top-header .brand-row,
 .top-header .brand-block,
@@ -43,7 +44,25 @@ button:focus, button:focus-visible {
 .top-header button,
 .window-controls,
 .window-controls *        { -webkit-app-region: no-drag; }
+=======
+.top-header {
+  -webkit-app-region: drag;
+}
+>>>>>>> 620d7d5 (Added more frontend features)
 
+.brand-row,
+.brand-block,
+.brand-block h1,
+.brand-block p {
+  -webkit-app-region: drag;
+}
+
+button,
+.window-controls,
+.window-control,
+.collapse-icon-btn {
+  -webkit-app-region: no-drag;
+}
 /* ── The glass panel ─────────────────────────────────────────────
    Semi-transparent + strong blur → real frosted-glass look.
    border-radius clips it to a rounded card floating over desktop.
@@ -1019,6 +1038,7 @@ button:focus, button:focus-visible {
   border-color: rgba(59, 130, 246, 0.25) !important;
 }
 
+<<<<<<< HEAD
 /* Smart recommendations */
 .recommendation-title-star {
   width: 24px;
@@ -1377,4 +1397,41 @@ button:focus, button:focus-visible {
 .content--dashboard-results .similar-card {
   min-width: 180px;
   max-width: 180px;
+=======
+.app-shell,
+.popup-shell,
+.top-header {
+  transition:
+    background 0.24s var(--motion-smooth),
+    opacity 0.24s ease,
+    transform 0.24s var(--motion-smooth),
+    box-shadow 0.24s var(--motion-smooth),
+    border-color 0.24s var(--motion-smooth);
+}
+
+.window-controls {
+  -webkit-app-region: no-drag;
+  transition:
+    opacity 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
+    transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
+    background 0.22s ease;
+}
+
+.window-control {
+  -webkit-app-region: no-drag;
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.top-header {
+  -webkit-app-region: drag;
+}
+
+.top-header button,
+.top-header .window-controls,
+.top-header .window-control {
+  -webkit-app-region: no-drag;
+>>>>>>> 620d7d5 (Added more frontend features)
 }
