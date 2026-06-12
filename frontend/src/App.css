@@ -613,12 +613,22 @@ button,
 .premium-btn:active { transform: scale(0.97) !important; }
 
 /* ── Similar products scroll ─────────────────────────────────── */
-.similar-scroll-shell { position: relative; margin: 0 -1px; padding: 0 2px; }
+.similar-scroll-shell {
+  position: relative;
+  margin: 0 -1px;
+  padding: 0 2px;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
 
 .similar-scroll {
   display: flex;
   gap: 10px;
   overflow-x: auto;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
   padding: 4px 1px 8px;
   scroll-snap-type: x proximity;
   scrollbar-width: none;
@@ -666,6 +676,11 @@ button,
 .similar-scroll-shell .similar-scroll-arrow:hover,
 .similar-scroll-shell:hover .similar-scroll-arrow:hover { opacity: 1; background: rgba(255, 246, 239, 0.92); border-color: rgba(249, 115, 22, 0.32); color: var(--brand-deep); transform: translateY(-50%) scale(1.06); }
 .similar-scroll-arrow:active { opacity: 0.84; transform: translateY(-50%) scale(0.96); }
+.similar-scroll-arrow:disabled {
+  opacity: 0.28;
+  cursor: default;
+  pointer-events: none;
+}
 
 .similar-card {
   min-width: 170px;
@@ -1548,4 +1563,676 @@ button,
 .top-header .window-controls,
 .top-header .window-control {
   -webkit-app-region: no-drag;
+}
+
+/* Dashboard refinements */
+.section-collapsed-summary {
+  margin-top: 3px;
+  padding: 8px 9px;
+  border: 1px solid rgba(220, 210, 200, 0.40);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.section-card--closed .section-card-header {
+  margin-bottom: 0;
+}
+
+.section-card--closed.section-card--with-summary .section-card-header {
+  margin-bottom: 7px;
+}
+
+.recommendation-summary,
+.history-summary {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+}
+
+.recommendation-summary-copy,
+.history-summary > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.recommendation-summary-copy strong,
+.history-summary strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #2f2924;
+  font-size: 11.5px;
+  font-weight: 820;
+  line-height: 1.25;
+}
+
+.recommendation-summary-copy span,
+.history-summary span:not(.history-score) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #847a72;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.recommendation-summary-thumbs {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.recommendation-summary-thumb {
+  width: 31px;
+  height: 31px;
+  object-fit: contain;
+  border: 1px solid rgba(220, 210, 200, 0.55);
+  border-radius: 9px;
+  background: rgba(250, 248, 245, 0.82);
+  padding: 2px;
+}
+
+.recommendation-summary-thumb + .recommendation-summary-thumb {
+  margin-left: -8px;
+}
+
+.recommendation-carousel-wrap {
+  min-height: 142px;
+  padding: 8px 7px 2px;
+  margin-bottom: 8px;
+}
+
+.recommendation-empty {
+  min-height: 118px;
+}
+
+.recommendation-refine {
+  min-height: 64px;
+  padding: 8px 9px 34px;
+}
+
+.recommendation-prompt {
+  min-height: 30px;
+  max-height: 62px;
+}
+
+.similar-card {
+  min-width: 150px;
+  max-width: 150px;
+  padding: 8px;
+  gap: 5px;
+}
+
+.similar-card-image {
+  height: 76px;
+}
+
+.similar-card-title {
+  min-height: 27px;
+  font-size: 11px;
+}
+
+.similar-card-brand,
+.similar-card-rating {
+  font-size: 10px;
+}
+
+.similar-card-rating {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scan-history-list {
+  overflow-y: auto;
+  max-height: min(360px, 42vh);
+  padding-right: 2px;
+  scrollbar-width: none;
+}
+
+.scan-history-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.content--dashboard,
+.content--dashboard-results {
+  display: grid !important;
+  grid-template-rows: none !important;
+  grid-auto-rows: min-content !important;
+  align-content: start !important;
+  gap: 14px !important;
+  height: calc(100vh - 57px) !important;
+  max-height: calc(100vh - 57px) !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scrollbar-width: none;
+}
+
+.content--dashboard::-webkit-scrollbar,
+.content--dashboard-results::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.content--dashboard {
+  grid-template-columns: minmax(320px, 0.95fr) minmax(430px, 1.05fr) !important;
+  padding: 16px !important;
+}
+
+.content--dashboard-results {
+  grid-template-columns: minmax(248px, 300px) minmax(430px, 1fr) minmax(320px, 420px) !important;
+  padding: 14px !important;
+}
+
+.content--dashboard > .cascade-item,
+.content--dashboard-results > .cascade-item,
+.content--dashboard-results > .results-animate {
+  min-width: 0;
+  align-self: start;
+}
+
+.content--dashboard > .cascade-item.cascade-delay-1,
+.content--dashboard-results > .cascade-item.cascade-delay-1 {
+  grid-row: auto !important;
+}
+
+.content--dashboard > .cascade-item.cascade-delay-1 {
+  grid-column: 1 !important;
+}
+
+.content--dashboard > .cascade-item.cascade-delay-2 {
+  grid-column: 2 !important;
+  grid-row: 1 !important;
+}
+
+.content--dashboard > .cascade-item.cascade-delay-3 {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+}
+
+.content--dashboard-results > .cascade-item.cascade-delay-1 {
+  grid-column: 1 !important;
+}
+
+.content--dashboard-results > .results-animate {
+  grid-column: 2 !important;
+  grid-row: 1 / span 4 !important;
+  height: auto !important;
+  max-height: calc(100vh - 88px);
+  overflow-y: auto;
+  padding-right: 0 !important;
+  scrollbar-width: none;
+}
+
+.content--dashboard-results > .results-animate::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.content--dashboard-results > .cascade-item.cascade-delay-7 {
+  grid-column: 3 !important;
+  grid-row: 1 !important;
+}
+
+.content--dashboard-results > .cascade-item.cascade-delay-8 {
+  grid-column: 3 !important;
+  grid-row: 2 !important;
+}
+
+.content--dashboard .section-card,
+.content--dashboard-results .section-card {
+  height: auto !important;
+  min-height: 0 !important;
+  flex: 0 0 auto !important;
+}
+
+.content--dashboard .section-card:hover,
+.content--dashboard-results .section-card:hover {
+  transform: none;
+}
+
+.content--dashboard .section-content.open,
+.content--dashboard-results .section-content.open {
+  flex: 0 0 auto !important;
+}
+
+.content--dashboard .section-content-inner,
+.content--dashboard-results .section-content-inner {
+  height: auto !important;
+}
+
+.content--dashboard .recommendation-carousel-wrap,
+.content--dashboard-results .recommendation-carousel-wrap {
+  flex: 0 0 auto !important;
+  min-height: 132px;
+}
+
+.content--dashboard .similar-card,
+.content--dashboard-results .similar-card {
+  min-width: clamp(132px, 15vw, 158px);
+  max-width: clamp(132px, 15vw, 158px);
+}
+
+.content--dashboard .similar-card-image,
+.content--dashboard-results .similar-card-image {
+  height: 68px;
+}
+
+.content--dashboard .recommendation-refine,
+.content--dashboard-results .recommendation-refine {
+  min-height: 58px;
+}
+
+.content--dashboard .cascade-item,
+.content--dashboard-results .cascade-item,
+.content--dashboard-results > .results-animate {
+  animation: dashboardFadeIn 0.18s ease-out forwards !important;
+  will-change: opacity;
+}
+
+@keyframes dashboardFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (max-width: 980px) {
+  .content--dashboard,
+  .content--dashboard-results {
+    grid-template-columns: 1fr !important;
+  }
+
+  .content--dashboard > .cascade-item,
+  .content--dashboard-results > .cascade-item,
+  .content--dashboard-results > .results-animate {
+    grid-column: 1 !important;
+    grid-row: auto !important;
+  }
+
+  .content--dashboard-results > .results-animate {
+    max-height: none;
+  }
+}
+
+/* Final dashboard column layout: fitted stacks instead of reserved grid cells */
+.content--dashboard {
+  grid-template-rows: 1fr !important;
+  align-items: stretch !important;
+  align-content: stretch !important;
+  overflow: hidden !important;
+}
+
+.content--dashboard:not(.content--dashboard-results) {
+  grid-template-columns: minmax(360px, 0.92fr) minmax(460px, 1.08fr) !important;
+}
+
+.content--dashboard-results {
+  grid-template-columns: minmax(260px, 360px) minmax(500px, 1fr) minmax(380px, 560px) !important;
+}
+
+.dashboard-column {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: hidden;
+}
+
+.dashboard-column > .cascade-item {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  opacity: 1;
+}
+
+.dashboard-column .section-card {
+  width: 100%;
+}
+
+.dashboard-column--primary {
+  grid-column: 1;
+}
+
+.content--dashboard:not(.content--dashboard-results) .dashboard-column--side {
+  grid-column: 2;
+}
+
+.dashboard-column--results {
+  grid-column: 2;
+}
+
+.content--dashboard-results .dashboard-column--side {
+  grid-column: 3;
+}
+
+.dashboard-column--primary .section-card--history {
+  flex: 0 0 auto !important;
+}
+
+.dashboard-column--results > .results-animate,
+.dashboard-column--results > .skeleton-card-enter,
+.dashboard-column--results > .skeleton-results {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0;
+  scrollbar-width: none;
+}
+
+.dashboard-column--results > .results-animate::-webkit-scrollbar,
+.dashboard-column--results > .skeleton-card-enter::-webkit-scrollbar,
+.dashboard-column--results > .skeleton-results::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.dashboard-column--side > .cascade-item:has(.section-card--closed) {
+  flex: 0 0 auto;
+}
+
+.dashboard-column--side > .cascade-item:has(.section-card--open) {
+  flex: 0 1 auto;
+}
+
+.dashboard-column--side > .cascade-item:has(.section-card--history.section-card--open) {
+  flex: 1 1 0;
+}
+
+.dashboard-column--side > .cascade-item:has(.section-card--recommendations.section-card--open) {
+  flex: 0 1 min(350px, 44vh);
+}
+
+.dashboard-column--side .section-card {
+  min-height: 0 !important;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-column--side .section-card--closed {
+  flex: 0 0 auto !important;
+}
+
+.dashboard-column--side .section-card--open {
+  flex: 1 1 auto !important;
+}
+
+.dashboard-column--side .section-content.open {
+  flex: 1 1 auto !important;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dashboard-column--side .section-content-inner {
+  min-height: 0;
+}
+
+.dashboard-column--side .section-card--recommendations .section-content-inner,
+.dashboard-column--side .section-card--history .section-content-inner {
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-column--side .section-card--recommendations.section-card--open .recommendation-carousel-wrap {
+  flex: 1 1 0 !important;
+  min-height: 116px;
+}
+
+.dashboard-column--side .section-card--recommendations.section-card--open .recommendation-refine {
+  flex: 0 0 auto;
+}
+
+.dashboard-column--side .section-card--history.section-card--open .scan-history-toolbar,
+.dashboard-column--side .section-card--history.section-card--open .compare-history-actions {
+  flex: 0 0 auto;
+}
+
+.dashboard-column--side .section-card--history.section-card--open .scan-history-list {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+}
+
+.dashboard-column--side .section-card--history.section-card--open .compare-history-actions {
+  margin-top: 8px;
+}
+
+@media (max-width: 1120px) {
+  .content--dashboard,
+  .content--dashboard-results {
+    grid-template-columns: 1fr !important;
+    overflow-y: auto !important;
+  }
+
+  .dashboard-column,
+  .dashboard-column--results > .results-animate {
+    grid-column: 1 !important;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+/* Expanded dashboard has no per-module collapse behavior. */
+.content--dashboard .collapse-icon-btn {
+  display: none !important;
+}
+
+.content--dashboard .section-collapsed-summary {
+  display: none !important;
+}
+
+.content--dashboard .section-card-header {
+  margin-bottom: 8px !important;
+}
+
+.content--dashboard .section-content {
+  grid-template-rows: 1fr !important;
+  opacity: 1 !important;
+  flex: 1 1 auto !important;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.content--dashboard .section-content-inner {
+  min-height: 0;
+}
+
+.content--dashboard .section-card--closed {
+  display: flex;
+  flex-direction: column;
+}
+
+.content--dashboard .dashboard-column--primary > .cascade-item {
+  flex: 1 1 0;
+}
+
+.content--dashboard .dashboard-column--primary .section-card--history {
+  flex: 1 1 0 !important;
+  height: 100% !important;
+  display: flex;
+  flex-direction: column;
+}
+
+.content--dashboard .dashboard-column--primary .section-card--history .section-content-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100% !important;
+}
+
+.content--dashboard .dashboard-column--primary .section-card--history .scan-history-toolbar,
+.content--dashboard .dashboard-column--primary .section-card--history .compare-history-actions {
+  flex: 0 0 auto;
+}
+
+.content--dashboard .dashboard-column--primary .section-card--history .scan-history-list,
+.content--dashboard .dashboard-column--primary .section-card--history .empty-state {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: none;
+}
+
+.content--dashboard .dashboard-column--primary .section-card--history .scan-history-list {
+  overflow-y: auto;
+}
+
+.content--dashboard .dashboard-column--primary .section-card--history .empty-state {
+  display: grid;
+  place-items: center;
+}
+
+.content--dashboard .dashboard-column--side .section-card--hero .scan-btn--hero {
+  margin-top: 4px;
+}
+
+.content--dashboard .dashboard-column--side > .cascade-item {
+  flex: 1 1 0 !important;
+}
+
+.content--dashboard .dashboard-column--side > .cascade-item:has(.section-card--hero) {
+  flex: 0 0 min(240px, 38%) !important;
+}
+
+.content--dashboard .dashboard-column--side > .cascade-item:has(.section-card--recommendations) {
+  flex: 1 1 0 !important;
+}
+
+.content--dashboard .dashboard-column--side > .cascade-item:has(.section-card--history) {
+  flex: 1 1 0 !important;
+}
+
+.content--dashboard .dashboard-column--side .section-card {
+  flex: 1 1 0 !important;
+}
+
+.content--dashboard .dashboard-column--side .section-card--recommendations .section-content-inner,
+.content--dashboard .dashboard-column--side .section-card--history .section-content-inner {
+  height: 100% !important;
+}
+
+.content--dashboard .dashboard-column--side .section-card--recommendations .recommendation-carousel-wrap {
+  flex: 0 0 auto !important;
+  min-height: 220px;
+}
+
+.content--dashboard .dashboard-column--side .section-card--recommendations .similar-scroll {
+  min-height: 206px;
+  align-items: stretch;
+}
+
+.content--dashboard .dashboard-column--side .section-card--recommendations .similar-card {
+  min-height: 192px;
+}
+
+.content--dashboard .dashboard-column--side .section-card--history .scan-history-list,
+.content--dashboard .dashboard-column--side .section-card--history .empty-state {
+  flex: 1 1 0;
+}
+
+.content--dashboard .dashboard-column--side .section-card--history .empty-state {
+  display: grid;
+  place-items: center;
+}
+
+/* Keep dashboard recommendation cards fully visible. */
+.content--dashboard .dashboard-column--side .section-card--recommendations {
+  overflow: visible;
+}
+
+.content--dashboard .dashboard-column--side .section-card--recommendations .section-content,
+.content--dashboard .dashboard-column--side .section-card--recommendations .section-content-inner {
+  overflow: hidden;
+  min-width: 0;
+}
+
+.content--dashboard .dashboard-column--side .section-card--recommendations .section-content-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.content--dashboard .dashboard-column--side .section-card--recommendations .recommendation-carousel-wrap {
+  flex: 1 1 auto !important;
+  min-height: 0;
+  margin-bottom: 0;
+  padding-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.content--dashboard .dashboard-column--side .section-card--recommendations .similar-scroll-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+.content--dashboard .dashboard-column--side .section-card--recommendations .similar-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  padding-bottom: 8px;
+  align-items: stretch;
+}
+
+.content--dashboard .dashboard-column--side .section-card--recommendations .similar-card {
+  min-width: 166px;
+  max-width: 166px;
+  min-height: 0;
+  height: 100%;
+}
+
+.content--dashboard .dashboard-column--side .section-card--recommendations .similar-card-image {
+  height: clamp(78px, 36%, 130px);
+}
+
+.content--dashboard .dashboard-column--side .section-card--recommendations .similar-scroll-arrow {
+  opacity: 0.82;
+  width: 28px;
+  height: 38px;
+  background: rgba(255, 252, 248, 0.86);
+}
+
+.content--dashboard .dashboard-column--side .section-card--recommendations .recommendation-refine {
+  flex: 0 0 auto;
+}
+
+/* Let hover insight popovers escape their cards instead of clipping at the bottom. */
+.content--dashboard .dashboard-column--results,
+.content--dashboard .dashboard-column--results > .results-animate,
+.content--dashboard .dashboard-column--results .section-card,
+.content--dashboard .dashboard-column--results .section-content,
+.content--dashboard .dashboard-column--results .section-content-inner,
+.content--dashboard .section-card--brand,
+.content--dashboard .section-card--integrity {
+  overflow: visible;
+}
+
+.content--dashboard .dashboard-column--results > .results-animate {
+  overflow-y: auto;
+  overflow-x: visible;
+  padding-bottom: 120px;
+}
+
+.content--dashboard .insight-list {
+  position: relative;
+  z-index: 20;
+}
+
+.content--dashboard .insight-popover {
+  z-index: 200;
+}
+
+.content--dashboard .insight-pill .insight-popover {
+  top: auto;
+  bottom: calc(100% + 7px);
 }

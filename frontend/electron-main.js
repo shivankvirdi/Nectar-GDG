@@ -1,5 +1,7 @@
 const { app, BrowserWindow, ipcMain, screen } = require('electron')
 const path = require('path')
+const fs = require('fs')
+const os = require('os')
 const { shell } = require('electron')
 const {
   getActiveUrl,
@@ -18,6 +20,79 @@ const AUTO_RESIZE_EASE = 0.40
 
 let autoResizeTimer = null
 let autoResizeTargetHeight = DEFAULT_HEIGHT
+
+const LEGACY_STORAGE_DIR = path.join(app.getPath('appData'), 'Electron')
+const APP_STORAGE_DIR = path.join(app.getPath('appData'), 'Nectar')
+const CACHE_DIR = path.join(os.tmpdir(), 'Nectar', 'ChromiumCache')
+const HISTORY_MARKER = 'nectar_scan_history'
+
+function ensureDir(dir) {
+  try {
+    fs.mkdirSync(dir, { recursive: true })
+    return true
+  } catch {
+    return false
+  }
+}
+
+function folderContainsText(dir, text) {
+  try {
+    if (!fs.existsSync(dir)) return false
+    const entries = fs.readdirSync(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (folderContainsText(fullPath, text)) return true
+        continue
+      }
+      if (!entry.isFile()) continue
+      try {
+        if (fs.readFileSync(fullPath).includes(text)) return true
+      } catch {
+        // Ignore locked cache/profile files; readable LevelDB files are enough for migration detection.
+      }
+    }
+  } catch {
+    return false
+  }
+  return false
+}
+
+function migrateLegacyStorage() {
+  const legacyLocalStorage = path.join(LEGACY_STORAGE_DIR, 'Local Storage')
+  const nextLocalStorage = path.join(APP_STORAGE_DIR, 'Local Storage')
+
+  if (!folderContainsText(legacyLocalStorage, HISTORY_MARKER)) return
+  if (folderContainsText(nextLocalStorage, HISTORY_MARKER)) return
+
+  try {
+    fs.rmSync(nextLocalStorage, { recursive: true, force: true })
+    fs.cpSync(legacyLocalStorage, nextLocalStorage, { recursive: true })
+  } catch {
+    // If migration fails, keep startup non-fatal; the app can still create fresh storage.
+  }
+}
+
+if (ensureDir(APP_STORAGE_DIR)) {
+  migrateLegacyStorage()
+  app.setPath('userData', APP_STORAGE_DIR)
+}
+
+if (ensureDir(CACHE_DIR)) {
+  app.commandLine.appendSwitch('disk-cache-dir', CACHE_DIR)
+  app.commandLine.appendSwitch('disable-gpu-shader-disk-cache')
+}
+
+// Chromium can spam stderr for transient remote image/API TLS resets. Keep app logs readable
+// without relaxing certificate validation or suppressing renderer console errors.
+app.commandLine.appendSwitch('log-level', '3')
+app.commandLine.appendSwitch('disable-logging')
+
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+
+if (!gotSingleInstanceLock) {
+  app.quit()
+}
 
 function clampWindowHeight(height) {
   return Math.min(MAX_WINDOW_HEIGHT, Math.max(MIN_WINDOW_HEIGHT, Math.ceil(height)))
@@ -133,12 +208,21 @@ function createWindow() {
   })
 }
 
-app.whenReady().then(() => {
-  createWindow()
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+if (gotSingleInstanceLock) {
+  app.on('second-instance', () => {
+    if (!mainWindow) return
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    if (!mainWindow.isVisible()) mainWindow.show()
+    mainWindow.focus()
   })
-})
+
+  app.whenReady().then(() => {
+    createWindow()
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
+  })
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

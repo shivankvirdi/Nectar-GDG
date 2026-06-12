@@ -773,6 +773,7 @@ function SectionCard({
   headerLeading,
   headerTitleSuffix,
   headerActions,
+  collapsedSummary,
 }: {
   title: string
   children: React.ReactNode
@@ -782,10 +783,11 @@ function SectionCard({
   headerLeading?: React.ReactNode
   headerTitleSuffix?: React.ReactNode
   headerActions?: React.ReactNode
+  collapsedSummary?: React.ReactNode
 }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <section className={`section-card ${className} ${open || !collapsible ? 'section-card--open' : 'section-card--closed'}`}>
+    <section className={`section-card ${className} ${open || !collapsible ? 'section-card--open' : 'section-card--closed'} ${collapsedSummary ? 'section-card--with-summary' : ''}`}>
       <div className="section-card-header">
         <div className="section-card-title-row">
           {headerLeading}
@@ -807,6 +809,11 @@ function SectionCard({
           )}
         </div>
       </div>
+      {collapsible && !open && collapsedSummary && (
+        <div className="section-collapsed-summary">
+          {collapsedSummary}
+        </div>
+      )}
       <div className={`section-content ${!collapsible || open ? 'open' : ''}`}>
         <div className="section-content-inner">{children}</div>
       </div>
@@ -934,10 +941,14 @@ export function ProductRecommendationScroller({ analysis, products }: { analysis
     window.addEventListener('resize', updateScrollState)
     const ro = new ResizeObserver(updateScrollState)
     ro.observe(el)
+    const frame = window.requestAnimationFrame(updateScrollState)
+    const timeout = window.setTimeout(updateScrollState, 150)
     return () => {
       el.removeEventListener('scroll', updateScrollState)
       window.removeEventListener('resize', updateScrollState)
       ro.disconnect()
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(timeout)
     }
   }, [products.length])
 
@@ -1084,6 +1095,15 @@ function SmartRecommendationsSection({
     onImageUpload(file)
   }
 
+  const marketplaceLabel = marketplace === 'all' ? 'All marketplaces' : marketplace === 'amazon' ? 'Amazon' : 'eBay'
+  const summaryText = isLoading
+    ? 'Refreshing picks'
+    : products.length > 0
+      ? `${products.length} ${products.length === 1 ? 'pick' : 'picks'} by ${filter}`
+      : hasMemory
+        ? 'Ready to refine saved scans'
+        : 'Scan a product to see recommendations'
+
   return (
     <SectionCard
       title="Recommended for You"
@@ -1091,6 +1111,26 @@ function SmartRecommendationsSection({
       defaultOpen={defaultOpen}
       className="section-card--recommendations"
       headerTitleSuffix={<span className="recommendation-title-star" aria-hidden="true" />}
+      collapsedSummary={(
+        <div className="recommendation-summary">
+          {products.length > 0 && (
+            <div className="recommendation-summary-thumbs" aria-hidden="true">
+              {products.slice(0, 3).map((product, index) => (
+                <ProductImage
+                  key={product.listingId ?? product.asin ?? index}
+                  src={product.image}
+                  alt=""
+                  className="recommendation-summary-thumb"
+                />
+              ))}
+            </div>
+          )}
+          <div className="recommendation-summary-copy">
+            <strong>{summaryText}</strong>
+            <span>{marketplaceLabel}</span>
+          </div>
+        </div>
+      )}
       headerActions={(
         <div className="recommendation-filter-control" ref={filterMenuRef}>
           <button
@@ -1291,8 +1331,31 @@ function ScanHistorySection({
   onClearAll: () => void
   onCompare: () => void
 }) {
+  const latestScan = scanHistory[0]
   return (
-    <SectionCard title="Scan History" collapsible defaultOpen={false} className="section-card--history">
+    <SectionCard
+      title="Scan History"
+      collapsible
+      defaultOpen={false}
+      className="section-card--history"
+      collapsedSummary={(
+        <div className="history-summary">
+          <div>
+            <strong>
+              {scanHistory.length > 0
+                ? `${scanHistory.length} saved ${scanHistory.length === 1 ? 'scan' : 'scans'}`
+                : 'No saved scans'}
+            </strong>
+            <span>
+              {latestScan?.analysis.title ?? 'Completed scans will appear here.'}
+            </span>
+          </div>
+          {latestScan && (
+            <span className="history-score">{latestScan.analysis.overallScore ?? '--'}</span>
+          )}
+        </div>
+      )}
+    >
       {scanHistory.length > 0 ? (
         <>
           <div className="scan-history-toolbar">
@@ -1760,9 +1823,15 @@ export default function App() {
   const [isExitingResults, setIsExitingResults] = useState(false)
   const [cancelAvailable, setCancelAvailable] = useState(false)
   const [windowControlsVisible, setWindowControlsVisible] = useState(false)
-  const [isExpanded, setIsExpanded] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(() => (
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('dashboard')
+  ))
 
   const handleToggleExpand = async () => {
+    if (!window.electronAPI?.toggleExpand) {
+      setIsExpanded((prev) => !prev)
+      return
+    }
     const next = await window.electronAPI?.toggleExpand?.()
     if (next !== undefined) setIsExpanded(next)
   }
@@ -2332,6 +2401,96 @@ export default function App() {
     />
   )
 
+  const productAnalysisSection = (
+    <SectionCard title="Product Analysis" className="section-card--hero">
+      <div className="url-input-container">
+        <div className="url-status-bar">
+          <span className={`status-dot ${isAutoDetected ? 'status-dot--active' : ''}`} />
+          <span className="status-label">{isAutoDetected ? 'Active Browser Tab' : 'Manual Entry'}</span>
+          {detectedMarketplace && (
+            <span className={`marketplace-badge marketplace-badge--${detectedMarketplace}`}>
+              {detectedMarketplace === 'amazon' ? 'Amazon' : 'eBay'}
+            </span>
+          )}
+          <button type="button" className="url-refresh-btn" onClick={detectActiveUrl} title="Detect active URL from browser">
+            Sync Browser
+          </button>
+        </div>
+        <input
+          type="text"
+          className="premium-url-input"
+          placeholder="Paste Amazon or eBay product URL here..."
+          value={scanUrl}
+          onChange={(e) => { setScanUrl(e.target.value); setIsAutoDetected(false) }}
+        />
+      </div>
+      <p className={`body-text hero-status ${error ? 'status-error' : 'status-ok'}`}>
+        {error || backendStatus}
+      </p>
+      <button className="scan-btn scan-btn--hero" onClick={handleScan} disabled={loading}>
+        {loading ? 'Scanning...' : 'Scan Product'}
+      </button>
+      {loading && cancelAvailable && (
+        <button type="button" className="scan-cancel-btn" onClick={handleCancelScan}>
+          <span>Cancel Scan</span>
+        </button>
+      )}
+    </SectionCard>
+  )
+
+  const dashboardLayout = (
+    <>
+      <div className="dashboard-column dashboard-column--primary">
+        <div className="cascade-item cascade-delay-1">{historySection}</div>
+      </div>
+
+      {loading && (
+        <div className="dashboard-column dashboard-column--results">
+          <SkeletonResults />
+        </div>
+      )}
+
+      {!loading && hasScanned && analysis && (
+        <div className="dashboard-column dashboard-column--results">
+          <ResultsView analysis={analysis} isExiting={isExitingResults} />
+        </div>
+      )}
+
+      <div className="dashboard-column dashboard-column--side">
+        <div className={`cascade-item ${hasScanned ? 'cascade-delay-7' : 'cascade-delay-2'}`}>
+          {productAnalysisSection}
+        </div>
+        {!loading && (
+          <div className={`cascade-item ${hasScanned ? 'cascade-delay-8' : 'cascade-delay-3 popup-fit-stop'}`}>
+            {recommendationsSection}
+          </div>
+        )}
+      </div>
+    </>
+  )
+
+  const popupLayout = (
+    <>
+      <div className="cascade-item cascade-delay-1">{productAnalysisSection}</div>
+
+      {!hasScanned && (
+        <>
+          <div className="cascade-item cascade-delay-2 popup-fit-stop">{recommendationsSection}</div>
+          <div className="cascade-item cascade-delay-3">{historySection}</div>
+        </>
+      )}
+      {loading && <SkeletonResults />}
+
+      {!loading && hasScanned && analysis && (
+        <>
+          <ResultsView analysis={analysis} isExiting={isExitingResults} />
+          <div className="cascade-item cascade-delay-7">{recommendationsSection}</div>
+          <div className="cascade-item cascade-delay-8">{historySection}</div>
+        </>
+      )}
+    </>
+  )
+
   return (
     <AutoSizingWindow>
       <header
@@ -2354,56 +2513,60 @@ export default function App() {
       </header>
 
       <div className={`content${isExpanded ? ' content--dashboard' : ''}${isExpanded && hasScanned ? ' content--dashboard-results' : ''}`} key="home-view">
-        <div className="cascade-item cascade-delay-1">
-          <SectionCard title="Product Analysis" className="section-card--hero">
-            <div className="url-input-container">
-              <div className="url-status-bar">
-                <span className={`status-dot ${isAutoDetected ? 'status-dot--active' : ''}`} />
-                <span className="status-label">{isAutoDetected ? 'Active Browser Tab' : 'Manual Entry'}</span>
-                {detectedMarketplace && (
-                  <span className={`marketplace-badge marketplace-badge--${detectedMarketplace}`}>
-                    {detectedMarketplace === 'amazon' ? 'Amazon' : 'eBay'}
-                  </span>
-                )}
-                <button type="button" className="url-refresh-btn" onClick={detectActiveUrl} title="Detect active URL from browser">
-                  ↻ Sync Browser
+        {isExpanded ? dashboardLayout : (
+          <>
+            <div className="cascade-item cascade-delay-1">
+              <SectionCard title="Product Analysis" className="section-card--hero">
+                <div className="url-input-container">
+                  <div className="url-status-bar">
+                    <span className={`status-dot ${isAutoDetected ? 'status-dot--active' : ''}`} />
+                    <span className="status-label">{isAutoDetected ? 'Active Browser Tab' : 'Manual Entry'}</span>
+                    {detectedMarketplace && (
+                      <span className={`marketplace-badge marketplace-badge--${detectedMarketplace}`}>
+                        {detectedMarketplace === 'amazon' ? 'Amazon' : 'eBay'}
+                      </span>
+                    )}
+                    <button type="button" className="url-refresh-btn" onClick={detectActiveUrl} title="Detect active URL from browser">
+                      Sync Browser
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    className="premium-url-input"
+                    placeholder="Paste Amazon or eBay product URL here..."
+                    value={scanUrl}
+                    onChange={(e) => { setScanUrl(e.target.value); setIsAutoDetected(false) }}
+                  />
+                </div>
+                <p className={`body-text hero-status ${error ? 'status-error' : 'status-ok'}`}>
+                  {error || backendStatus}
+                </p>
+                <button className="scan-btn scan-btn--hero" onClick={handleScan} disabled={loading}>
+                  {loading ? 'Scanning...' : 'Scan Product'}
                 </button>
-              </div>
-              <input
-                type="text"
-                className="premium-url-input"
-                placeholder="Paste Amazon or eBay product URL here..."
-                value={scanUrl}
-                onChange={(e) => { setScanUrl(e.target.value); setIsAutoDetected(false) }}
-              />
+                {loading && cancelAvailable && (
+                  <button type="button" className="scan-cancel-btn" onClick={handleCancelScan}>
+                    <span>Cancel Scan</span>
+                  </button>
+                )}
+              </SectionCard>
             </div>
-            <p className={`body-text hero-status ${error ? 'status-error' : 'status-ok'}`}>
-              {error || backendStatus}
-            </p>
-            <button className="scan-btn scan-btn--hero" onClick={handleScan} disabled={loading}>
-              {loading ? 'Scanning…' : 'Scan Product'}
-            </button>
-            {loading && cancelAvailable && (
-              <button type="button" className="scan-cancel-btn" onClick={handleCancelScan}>
-                <span>Cancel Scan</span>
-              </button>
+
+            {!hasScanned && (
+              <>
+                <div className="cascade-item cascade-delay-2 popup-fit-stop">{recommendationsSection}</div>
+                <div className="cascade-item cascade-delay-3">{historySection}</div>
+              </>
             )}
-          </SectionCard>
-        </div>
+            {loading && <SkeletonResults />}
 
-        {!hasScanned && (
-          <>
-            <div className="cascade-item cascade-delay-2 popup-fit-stop">{recommendationsSection}</div>
-            <div className="cascade-item cascade-delay-3">{historySection}</div>
-          </>
-        )}
-        {loading && <SkeletonResults />}
-
-        {!loading && hasScanned && analysis && (
-          <>
-            <ResultsView analysis={analysis} isExiting={isExitingResults} />
-            <div className="cascade-item cascade-delay-7">{recommendationsSection}</div>
-            <div className="cascade-item cascade-delay-8">{historySection}</div>
+            {!loading && hasScanned && analysis && (
+              <>
+                <ResultsView analysis={analysis} isExiting={isExitingResults} />
+                <div className="cascade-item cascade-delay-7">{recommendationsSection}</div>
+                <div className="cascade-item cascade-delay-8">{historySection}</div>
+              </>
+            )}
           </>
         )}
       </div>
