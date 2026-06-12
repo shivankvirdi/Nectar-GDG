@@ -88,17 +88,44 @@ def build_recommendation_query(
     refinement_prompt = (refinement_prompt or "").strip()
 
     recent_items = []
-    for item in history[:8]:
+    for index, item in enumerate(history[:8]):
         analysis = item.get("analysis") if isinstance(item, dict) else {}
         if not isinstance(analysis, dict):
             continue
+        review_integrity = analysis.get("reviewIntegrity") or {}
+        seller_integrity = analysis.get("sellerReviewIntegrity") or {}
+        brand_reputation = analysis.get("brandReputation") or {}
+        review_keywords = review_integrity.get("commonKeywords", []) if isinstance(review_integrity, dict) else []
+        seller_keywords = seller_integrity.get("commonKeywords", []) if isinstance(seller_integrity, dict) else []
+        brand_keywords = brand_reputation.get("commonKeywords", []) if isinstance(brand_reputation, dict) else []
+        similar_products = analysis.get("similarProducts") or []
         recent_items.append({
+            "recencyRank": index + 1,
+            "scannedAt": item.get("scannedAt"),
             "title": analysis.get("title"),
             "brand": analysis.get("brand"),
             "productKeyword": analysis.get("productKeyword"),
             "price": analysis.get("price"),
             "rating": analysis.get("rating"),
+            "reviewCount": analysis.get("reviewCount"),
             "overallScore": analysis.get("overallScore"),
+            "marketplace": analysis.get("marketplace"),
+            "positiveSignals": [
+                keyword.get("word")
+                for keyword in (review_keywords + seller_keywords + brand_keywords)
+                if isinstance(keyword, dict) and keyword.get("sentiment") == "positive"
+            ][:8],
+            "nearbyAlternatives": [
+                {
+                    "title": product.get("title"),
+                    "brand": product.get("brand"),
+                    "price": product.get("price"),
+                    "rating": product.get("rating"),
+                    "marketplace": product.get("marketplace"),
+                }
+                for product in similar_products[:4]
+                if isinstance(product, dict)
+            ],
         })
 
     fallback_term = "popular products"
@@ -128,6 +155,10 @@ Task:
 - If out of scope, return allowed=false, query="", reason="{UNRELATED_RECOMMENDATION_MESSAGE}".
 - Never answer the user's unrelated question.
 - Infer what product category the user is currently interested in.
+- Act as a recommendation orchestrator over the user's behavior, not a generic search box.
+- Put the most weight on recencyRank 1-3, then use older scans as secondary preference evidence.
+- Favor product categories, features, price tiers, quality signals, and marketplaces that repeat in recent history.
+- Use nearbyAlternatives as evidence of what the user has already been shown; search for directly connected products without simply repeating the exact same listing.
 - If a photo is included, use its visible product style/brand/category as a refinement.
 - Create one concise marketplace search query that should return 5 products the user would like.
 - Prefer cross-brand alternatives by default. Do not include a brand from scan memory in the query unless the user explicitly asks for that brand or same-brand products.

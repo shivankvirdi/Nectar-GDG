@@ -545,6 +545,26 @@ function sortFallbackProducts(products: SimilarProduct[], filter: RecommenderFil
   return [...products].sort((a, b) => getFallbackProductRank(b, filter) - getFallbackProductRank(a, filter))
 }
 
+function scanRecordToProduct(record: ScanRecord): SimilarProduct | null {
+  const analysis = record.analysis
+  const title = analysis.title?.trim()
+  if (!title) return null
+  return {
+    title,
+    asin: analysis.asin,
+    listingId: analysis.listingId,
+    marketplace: analysis.marketplace,
+    brand: analysis.brand ?? undefined,
+    rating: analysis.rating ?? undefined,
+    reviewCount: analysis.reviewCount ?? undefined,
+    price: analysis.price ?? undefined,
+    image: analysis.image ?? analysis.imageUrl ?? analysis.mainImageUrl ?? analysis.mainImage,
+    listingUrl: analysis.listingUrl,
+    productUrl: analysis.productUrl,
+    amazonUrl: analysis.marketplace === 'amazon' ? analysis.productUrl ?? analysis.listingUrl : undefined,
+  }
+}
+
 function getProductMarketplace(product: SimilarProduct): RecommenderMarketplace {
   if (product.marketplace === 'amazon' || product.marketplace === 'ebay') return product.marketplace
   const url = `${product.listingUrl ?? ''} ${product.productUrl ?? ''} ${product.amazonUrl ?? ''}`.toLowerCase()
@@ -563,20 +583,35 @@ function getHistoryRecommendationFallback(
   marketplace: RecommenderMarketplace,
 ): SimilarProduct[] {
   const seen = new Set<string>()
-  const products: SimilarProduct[] = []
+  const candidates: { product: SimilarProduct; score: number }[] = []
 
-  for (const record of history) {
-    for (const product of record.analysis.similarProducts ?? []) {
+  for (const [recordIndex, record] of history.entries()) {
+    const recencyWeight = Math.max(0, 10 - recordIndex) * 14
+    const scannedProduct = scanRecordToProduct(record)
+    const sourceProducts = [
+      ...(scannedProduct ? [scannedProduct] : []),
+      ...(record.analysis.similarProducts ?? []),
+    ]
+
+    for (const [productIndex, product] of sourceProducts.entries()) {
       const key = product.listingId ?? product.asin ?? product.listingUrl ?? product.productUrl ?? product.title
       if (!productMatchesMarketplace(product, marketplace)) continue
       if (!hasDisplayablePrice(product)) continue
       if (!key || seen.has(key)) continue
       seen.add(key)
-      products.push(product)
+      const scannedProductBonus = productIndex === 0 && scannedProduct ? 10 : 0
+      const nearbyAlternativeBonus = Math.max(0, 4 - productIndex) * 3
+      candidates.push({
+        product,
+        score: getFallbackProductRank(product, filter) + recencyWeight + scannedProductBonus + nearbyAlternativeBonus,
+      })
     }
   }
 
-  return sortFallbackProducts(products, filter).slice(0, 5)
+  return candidates
+    .sort((a, b) => b.score - a.score)
+    .map((candidate) => candidate.product)
+    .slice(0, 5)
 }
 
 // ─── Mock Data (dev only) ─────────────────────────────────────────────────────
@@ -1046,6 +1081,7 @@ function SmartRecommendationsSection({
   onPromptChange,
   onImageUpload,
   onClearImage,
+  onRefresh,
   onSubmit,
 }: {
   analysis?: Analysis | null
@@ -1065,6 +1101,7 @@ function SmartRecommendationsSection({
   onPromptChange: (prompt: string) => void
   onImageUpload: (file: File | null) => void
   onClearImage: () => void
+  onRefresh: () => void
   onSubmit: () => void
 }) {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -1180,13 +1217,13 @@ function SmartRecommendationsSection({
       )}
     >
       <div className={`recommendation-carousel-wrap ${isFading ? 'recommendation-carousel-wrap--fading' : ''}`}>
-        {products.length > 0 ? (
-          <ProductRecommendationScroller analysis={analysis} products={products} />
-        ) : isLoading ? (
+        {isLoading ? (
           <div className="recommendation-loading">
             <SkeletonLine width="160px" height={110} />
             <SkeletonLine width="160px" height={110} />
           </div>
+        ) : products.length > 0 ? (
+          <ProductRecommendationScroller analysis={analysis} products={products} />
         ) : message ? (
           <div className="recommendation-empty recommendation-empty--blocked">
             {message}
@@ -1294,14 +1331,22 @@ function SmartRecommendationsSection({
           </div>
           <button
             type="button"
+            className="recommendation-refresh-btn"
+            onClick={onRefresh}
+            disabled={isLoading || (!hasMemory && !prompt.trim() && !imageName)}
+            title="Refresh recommendations from scan history"
+            aria-label="Refresh recommendations"
+          >
+            {'\u21bb'}
+          </button>
+          <button
+            type="button"
             className="recommendation-send-btn"
             onClick={onSubmit}
             disabled={isLoading || (!prompt.trim() && !imageName && !hasMemory)}
-            title="Refresh recommendations"
-            aria-label="Refresh recommendations"
-          >
-            ↑
-          </button>
+            title="Send refinement"
+            aria-label="Send refinement"
+          />
         </div>
       </div>
     </SectionCard>
@@ -1855,12 +1900,14 @@ export default function App() {
 
   const scanAbortRef = useRef<AbortController | null>(null)
   const scanIdRef = useRef<string | null>(null)
+  // Holds freshly-built history during scan completion so recommendations use
+  // the latest saved record before React state has settled.
+  const pendingHistoryRef = useRef<ScanRecord[] | null>(null)
   const cancelTimerRef = useRef<number | null>(null)
   const scanDelayResolveRef = useRef<(() => void) | null>(null)
   const scanWasCancelledRef = useRef(false)
   const recommendationRequestIdRef = useRef(0)
   const recommendationPromptDebounceRef = useRef<number | null>(null)
-  const skipNextRecommendationEffectRef = useRef(false)
   const recommendationHistoryKey = getRecommendationHistoryKey(scanHistory)
 
   const fetchRecommendations = async (opts?: { prompt?: string; imageDataUrl?: string; history?: ScanRecord[]; filter?: RecommenderFilter; marketplace?: RecommenderMarketplace; forceLoadingSkeleton?: boolean; skipInitialFade?: boolean }) => {
@@ -1941,9 +1988,12 @@ export default function App() {
         setRecommendationMessage(
           previousProducts.length
             ? 'No fresh matches found. Showing previous picks.'
-            : 'No products found. Try a broader phrase or different filter.'
+            : fallbackProducts.length
+              ? 'No fresh matches found. Showing recent-history picks.'
+              : 'No products found. Try a broader phrase or different filter.'
         )
         if (previousProducts.length) setRecommendedProducts(previousProducts)
+        else if (fallbackProducts.length) setRecommendedProducts(fallbackProducts)
         return
       }
       setRecommendedProducts(fallbackProducts)
@@ -1955,9 +2005,12 @@ export default function App() {
         setRecommendationMessage(
           previousProducts.length
             ? 'Search timed out. Showing previous picks.'
-            : 'Search timed out. Try again or broaden the prompt.'
+            : fallbackProducts.length
+              ? 'Search timed out. Showing recent-history picks.'
+              : 'Search timed out. Try again or broaden the prompt.'
         )
         if (previousProducts.length) setRecommendedProducts(previousProducts)
+        else if (fallbackProducts.length) setRecommendedProducts(fallbackProducts)
       } else {
         setRecommendedProducts(fallbackProducts)
         setRecommendationMessage('')
@@ -1993,11 +2046,17 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (skipNextRecommendationEffectRef.current) {
-      skipNextRecommendationEffectRef.current = false
-      return
-    }
-    fetchRecommendations({ history: scanHistory, filter: recommendationFilter, marketplace: recommendationMarketplace })
+    // Use pendingHistoryRef when a fresh scan just completed so recommendations
+    // do not read the previous scanHistory snapshot.
+    const historyToUse = pendingHistoryRef.current ?? scanHistory
+    pendingHistoryRef.current = null
+    fetchRecommendations({
+      history: historyToUse,
+      filter: recommendationFilter,
+      marketplace: recommendationMarketplace,
+      forceLoadingSkeleton: historyToUse.length > 0,
+      skipInitialFade: true,
+    })
   }, [recommendationFilter, recommendationMarketplace, recommendationHistoryKey])
 
   // ── URL Detection ──
@@ -2148,8 +2207,11 @@ export default function App() {
       setRecommendationImageDataUrl('')
       setRecommendationImageName('')
       setRecommendationMessage('')
+      // FIX: store the fresh history so the useEffect picks it up correctly,
+      // then let the effect fire naturally via setScanHistory (no manual fetch call,
+      // no skip flag, no stale fallback assignment).
+      pendingHistoryRef.current = nextHistory
       setScanHistory(nextHistory)
-      setRecommendedProducts(getHistoryRecommendationFallback(nextHistory, recommendationFilter, recommendationMarketplace))
     } catch (err) {
       if (scanWasCancelledRef.current || (err instanceof DOMException && err.name === 'AbortError')) {
         setBackendStatus('Scan has been cancelled successfully')
@@ -2288,16 +2350,10 @@ export default function App() {
       window.clearTimeout(recommendationPromptDebounceRef.current)
       recommendationPromptDebounceRef.current = null
     }
-    skipNextRecommendationEffectRef.current = true
-    setRecommendationFilter(nextFilter)
+    // FIX: don't skip the effect — let it fire so there's exactly ONE fetch call.
+    // Let the effect be the single fetch path for filter changes.
     showRecommendationSkeleton()
-    fetchRecommendations({
-      history: scanHistory,
-      filter: nextFilter,
-      marketplace: recommendationMarketplace,
-      forceLoadingSkeleton: true,
-      skipInitialFade: true,
-    })
+    setRecommendationFilter(nextFilter)
   }
 
   const handleRecommendationMarketplaceChange = (nextMarketplace: RecommenderMarketplace) => {
@@ -2306,16 +2362,10 @@ export default function App() {
       window.clearTimeout(recommendationPromptDebounceRef.current)
       recommendationPromptDebounceRef.current = null
     }
-    skipNextRecommendationEffectRef.current = true
-    setRecommendationMarketplace(nextMarketplace)
+    // FIX: same race condition fix as handleRecommendationFilterChange.
+    // Let the useEffect be the single source of truth for triggering the fetch.
     showRecommendationSkeleton()
-    fetchRecommendations({
-      history: scanHistory,
-      filter: recommendationFilter,
-      marketplace: nextMarketplace,
-      forceLoadingSkeleton: true,
-      skipInitialFade: true,
-    })
+    setRecommendationMarketplace(nextMarketplace)
   }
 
   const handleRecommendationPromptChange = (nextPrompt: string) => {
@@ -2332,21 +2382,7 @@ export default function App() {
       setRecommendationsLoading(false)
       setRecommendationsFading(false)
       setRecommendedProducts([])
-      return
     }
-
-    showRecommendationSkeleton()
-    recommendationPromptDebounceRef.current = window.setTimeout(() => {
-      recommendationPromptDebounceRef.current = null
-      fetchRecommendations({
-        prompt: nextPrompt,
-        history: scanHistory,
-        filter: recommendationFilter,
-        marketplace: recommendationMarketplace,
-        forceLoadingSkeleton: true,
-        skipInitialFade: true,
-      })
-    }, 550)
   }
 
   const handleRecommendationSubmit = () => {
@@ -2354,7 +2390,28 @@ export default function App() {
       window.clearTimeout(recommendationPromptDebounceRef.current)
       recommendationPromptDebounceRef.current = null
     }
-    fetchRecommendations({ forceLoadingSkeleton: true })
+    fetchRecommendations({
+      prompt: recommendationPrompt,
+      history: scanHistory,
+      filter: recommendationFilter,
+      marketplace: recommendationMarketplace,
+      forceLoadingSkeleton: true,
+      skipInitialFade: true,
+    })
+  }
+
+  const handleRecommendationRefresh = () => {
+    if (recommendationPromptDebounceRef.current !== null) {
+      window.clearTimeout(recommendationPromptDebounceRef.current)
+      recommendationPromptDebounceRef.current = null
+    }
+    fetchRecommendations({
+      history: scanHistory,
+      filter: recommendationFilter,
+      marketplace: recommendationMarketplace,
+      forceLoadingSkeleton: true,
+      skipInitialFade: true,
+    })
   }
 
   // ── Routing ──
@@ -2383,6 +2440,7 @@ export default function App() {
       onPromptChange={handleRecommendationPromptChange}
       onImageUpload={handleRecommendationImageUpload}
       onClearImage={handleRecommendationImageClear}
+      onRefresh={handleRecommendationRefresh}
       onSubmit={handleRecommendationSubmit}
     />
   )

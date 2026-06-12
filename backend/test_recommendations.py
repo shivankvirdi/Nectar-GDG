@@ -159,6 +159,21 @@ class RecommendationTests(unittest.TestCase):
         self.assertEqual(product["price"]["display"], "$68.00")
         self.assertEqual(product["brand"], "Adidas")
 
+    def test_ebay_adapter_search_normalizer_prefers_current_price_over_discount_artifact(self):
+        adapter = EbayScraperAPIAdapter()
+        product = adapter._normalize_search_result(
+            {
+                "title": "Wolverine Men Floorhand Waterproof Work Boot",
+                "link": "https://www.ebay.com/itm/135713766682",
+                "price": {"raw": "$8.39"},
+                "current_price": {"raw": "US $83.96"},
+                "image_url": "https://i.ebayimg.test/boot.jpg",
+            }
+        )
+
+        self.assertEqual(product["price"]["display"], "$83.96")
+        self.assertEqual(product["price"]["value"], 83.96)
+
     def test_diversify_keeps_all_marketplace_fill_from_collapsing_to_one_source(self):
         ranked_products = [
             {

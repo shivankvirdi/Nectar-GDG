@@ -107,6 +107,57 @@ def _image_url(value) -> str:
     return ""
 
 
+def _parse_price_value(value):
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        for key in ("display", "text", "formatted", "raw", "value", "amount", "extracted"):
+            parsed = _parse_price_value(value.get(key))
+            if parsed is not None:
+                return parsed
+        return None
+    if isinstance(value, (int, float)):
+        parsed = float(value)
+        return parsed if parsed > 0 else None
+    match = re.search(r"\d+(?:,\d{3})*(?:\.\d{1,2})?", str(value))
+    if not match:
+        return None
+    try:
+        parsed = float(match.group(0).replace(",", ""))
+        return parsed if parsed > 0 else None
+    except ValueError:
+        return None
+
+
+def _price_object(value):
+    parsed = _parse_price_value(value)
+    if parsed is None:
+        return None
+    return {"display": f"${parsed:.2f}", "value": parsed}
+
+
+def _extract_ebay_search_price(raw: dict):
+    # ScraperAPI eBay search can include coupon/discount/installment fields under
+    # generic names. Prefer canonical item/current price fields before `price`.
+    for key in (
+        "current_price",
+        "currentPrice",
+        "item_price",
+        "itemPrice",
+        "buy_it_now_price",
+        "buyItNowPrice",
+        "converted_current_price",
+        "convertedCurrentPrice",
+        "price",
+        "sale_price",
+        "salePrice",
+    ):
+        price = _price_object(raw.get(key))
+        if price:
+            return price
+    return None
+
+
 def _infer_brand_from_title(title: str) -> str:
     text = re.sub(r"[^a-z0-9]+", " ", str(title or "").lower()).strip()
     if not text:
@@ -479,43 +530,7 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
         Map a ScraperAPI eBay search result item to the shape that
         vision_model.clean_similar_products() and the frontend expect.
         """
-        price_val = None
-        price_source = (
-            r.get("price")
-            or r.get("current_price")
-            or r.get("currentPrice")
-            or r.get("sale_price")
-            or r.get("salePrice")
-            or r.get("item_price")
-            or r.get("itemPrice")
-        )
-        price_raw = _ensure_dict(price_source)
-        if price_raw:
-            v = (
-                price_raw.get("value")
-                or price_raw.get("amount")
-                or price_raw.get("raw")
-                or price_raw.get("extracted")
-            )
-            if v is not None:
-                try:
-                    match = re.search(r"\d+(?:,\d{3})*(?:\.\d{1,2})?", str(v))
-                    fv = float(match.group(0).replace(",", "")) if match else float(v)
-                    price_val = {"display": f"${fv:.2f}", "value": fv}
-                except (TypeError, ValueError):
-                    pass
-        else:
-            p = price_source
-            if isinstance(p, (int, float)):
-                price_val = {"display": f"${float(p):.2f}", "value": float(p)}
-            elif isinstance(p, str):
-                match = re.search(r"\d+(?:,\d{3})*(?:\.\d{1,2})?", p)
-                if match:
-                    try:
-                        fv = float(match.group(0).replace(",", ""))
-                        price_val = {"display": f"${fv:.2f}", "value": fv}
-                    except ValueError:
-                        pass
+        price_val = _extract_ebay_search_price(r)
 
         listing_url = _safe_str(
             r.get("url")

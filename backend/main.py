@@ -21,7 +21,7 @@ NECTAR_SECRET = os.getenv("NECTAR_API_SECRET", "")
 MAX_RECOMMENDATION_CANDIDATES = 24
 MAX_RECOMMENDATION_CANDIDATES_PER_TERM = 6
 RECOMMENDATION_SEARCH_TIMEOUT_SECONDS = 16.0
-RECOMMENDATION_AMAZON_SEARCH_TIMEOUT_SECONDS = 10.0
+RECOMMENDATION_AMAZON_SEARCH_TIMEOUT_SECONDS = 6.0
 RECOMMENDATION_REFINED_TERM_LIMIT = 2
 MIN_HISTORY_RECOMMENDATION_SOURCE_TERMS = 3
 KNOWN_PROMPT_BRANDS = {
@@ -29,12 +29,12 @@ KNOWN_PROMPT_BRANDS = {
     "skullcandy", "google", "microsoft", "logitech", "razer", "steelseries",
     "carhartt", "nike", "adidas", "levi", "levis", "stanley", "hydro flask",
     "anua", "owala", "reebok", "under armour", "new balance", "asics", "puma",
-    "brooks", "saucony", "hoka", "topo", "aeropostale",
+    "brooks", "saucony", "hoka", "topo", "aeropostale", "yeti", "camelbak",
 }
 PROMPT_PRODUCT_TERMS = {
     "airpods", "earbuds", "headphones", "speaker", "laptop", "keyboard", "mouse",
     "monitor", "camera", "charger", "case", "watch", "phone", "tablet", "vacuum",
-    "backpack", "bottle", "shirt", "t-shirt", "tee", "shoes", "shoe", "sneakers",
+    "backpack", "bottle", "water bottle", "straw bottle", "tumbler", "shirt", "t-shirt", "tee", "shoes", "shoe", "sneakers",
     "running shoes", "hoodie", "jacket", "jeans", "air fryer", "coffee maker",
     "espresso machine", "blender", "toaster", "microwave", "kettle", "projector",
     "printer", "scanner", "router", "power bank", "cable", "drone", "microphone",
@@ -73,6 +73,14 @@ RELEVANCE_PROFILES = {
         "triggers": ("bowling ball", "bowling balls"),
         "required": ("bowling ball", "bowling balls"),
         "blocked": ("bag", "bags", "shoe", "shoes", "cleaner", "polish", "towel"),
+    },
+    "water_bottle": {
+        "triggers": ("water bottle", "bottle with straw", "straw bottle", "tumbler"),
+        "required": ("water bottle", "bottle", "tumbler", "hydration"),
+        "blocked": (
+            "shirt", "t-shirt", "tee", "headphone", "headphones", "earbuds",
+            "bowling", "shoe", "shoes", "boot", "boots", "cleansing oil",
+        ),
     },
 }
 
@@ -118,13 +126,17 @@ def _infer_brand_from_title(title: str) -> str | None:
 
 def _price_display(item: dict[str, Any]) -> str | None:
     price = (
-        item.get("price")
-        or item.get("current_price")
+        item.get("current_price")
         or item.get("currentPrice")
-        or item.get("sale_price")
-        or item.get("salePrice")
         or item.get("item_price")
         or item.get("itemPrice")
+        or item.get("buy_it_now_price")
+        or item.get("buyItNowPrice")
+        or item.get("converted_current_price")
+        or item.get("convertedCurrentPrice")
+        or item.get("price")
+        or item.get("sale_price")
+        or item.get("salePrice")
         or item.get("priceText")
         or item.get("price_display")
     )
@@ -698,14 +710,11 @@ def _recommendation_search_terms(
 
     has_refinement = bool(str(prompt or "").strip()) or has_image_refinement
 
-    if has_refinement:
-        add_to(terms, query)
-        for term in history_terms:
-            add_to(terms, term)
-    else:
-        for term in history_terms:
-            add_to(terms, term)
-        add_to(terms, query)
+    # The AI/query term is the best summary of current intent. Search it before
+    # older history terms so fresh recommendations do not wait behind stale scans.
+    add_to(terms, query)
+    for term in history_terms:
+        add_to(terms, term)
 
     return terms[:8]
 
@@ -826,10 +835,13 @@ async def recommendations(payload: RecommendationsPayload):
                 "reason": "Using the product request directly.",
             }
         else:
-            query_result = {
-                "query": _history_default_query(payload.history),
-                "reason": "Using recent scan history and the selected filter.",
-            }
+            query_result = await asyncio.to_thread(
+                build_recommendation_query,
+                payload.history,
+                filter_mode,
+                "",
+                "",
+            )
         query = query_result.get("query") or "best value products"
         brand_locked = _prompt_requests_brand_lock(payload.prompt, payload.history)
         history_brand_locked = _prompt_requests_history_brand_lock(payload.prompt, payload.history)
@@ -906,7 +918,11 @@ async def recommendations(payload: RecommendationsPayload):
         term_counts: dict[tuple[int, str], int] = {}
 
         for term_index, term in enumerate(search_terms):
-            for adapter in adapters:
+            adapter_results = await asyncio.gather(
+                *(_recommendation_search_job(term_index, term, adapter) for adapter in adapters)
+            )
+
+            for _, _, adapter, results in adapter_results:
                 term_key = (term_index, adapter.name if marketplace_filter == "all" else "*")
                 term_added = term_counts.get(term_key, 0)
                 if (
@@ -915,7 +931,6 @@ async def recommendations(payload: RecommendationsPayload):
                 ):
                     break
 
-                results = await _search_adapter_for_recommendations(adapter, term)
                 for raw in results:
                     raw_count += 1
                     if not isinstance(raw, dict):
@@ -950,7 +965,7 @@ async def recommendations(payload: RecommendationsPayload):
 
             if len(products) >= MAX_RECOMMENDATION_CANDIDATES:
                 break
-            if has_refinement and term_index == 0 and len(products) >= 5:
+            if term_index == 0 and len(products) >= 5:
                 break
             if (
                 not has_refinement
