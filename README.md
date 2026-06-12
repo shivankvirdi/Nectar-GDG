@@ -59,7 +59,7 @@ flowchart LR
         N1["Review integrity\nVADER scoring · flags\n· star ↔ text match\n· verified purchases"]
         N2["Reputation scoring\nBayesian blend · prior = 68, prior × (1 − conf) + signal × conf"]
         N3["WordNet lemmatization · TF-IDF scoring + boost words · bigrams · negation pairs"]
-        N4["Overall score\nRating/Integrity/Rep\nAmazon 40/35/25\neBay  30/25/45"]
+        N4["Overall score %'s\nRating/Integrity/Rep\nAmazon 40/35/25\neBay  30/25/45"]
   end
  subgraph AILAY["Gemini AI · gemini-2.5-flash"]
         G1["Verdict · BUY / COMPARE / SKIP"]
