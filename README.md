@@ -129,12 +129,14 @@ npm run electron:start
 ### Use Local Backend
 1. Create .env in ROOT directory and add keys ('Nectar-GDG/.env')\
 https://www.canopyapi.co/ (GraphQL API)\
-https://aistudio.google.com/app/api-keys  
-https://console.cloud.google.com/marketplace/product/google/places.googleapis.com
+https://www.scraperapi.com/ \
+https://aistudio.google.com/app/api-keys \
+https://console.cloud.google.com/marketplace/product/google/places.googleapis.com \
 ```
 CANOPY_API_KEY=your_api_key_here
 GEMINI_API_KEY=your_api_key_here
 GOOGLE_PLACES_API_KEY=your_api_key_here
+SCRAPERAPI_KEY=your_api_key_here
 ```
 2. Set frontend/.env.production to:
 ```powershell
