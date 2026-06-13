@@ -165,6 +165,7 @@ Verify:
 - CANOPY_API_KEY
 - GEMINI_API_KEY
 - GOOGLE_PLACES_API_KEY
+- SCRAPERAPI_KEY
 ### CORS or connection issues
 #### Verify VITE_API_URL matches your backend URL.
 ---
