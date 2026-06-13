@@ -1,4 +1,4 @@
-# Nectar
+# Nectar - GDG Solutions Challenge NA 2026
 
 
 
