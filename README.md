@@ -1,6 +1,9 @@
 # Nectar
 
-https://github.com/user-attachments/assets/503b7d96-bcd8-418d-aa47-0589f6e007b4
+
+
+https://github.com/user-attachments/assets/f8b34e39-cb66-4d10-819a-a570b8969f3d
+
 
 
 E-commerce lacks trustworthy product intelligence, with consumers losing billions to misleading/inflated reviews and poor purchasing decisions every year. That's why we built Nectar, a product-analyzer Electron desktop app that builds this needed trust layer by comparing products and providing in-depth insights on price, review integrity, quality, brand reputation, and similar alternatives. Nectar recommends the best option to help reduce shopper stress and support more informed purchasing decisions.
