@@ -131,7 +131,7 @@ npm run electron:start
 https://www.canopyapi.co/ (GraphQL API)\
 https://www.scraperapi.com/ \
 https://aistudio.google.com/app/api-keys \
-https://console.cloud.google.com/marketplace/product/google/places.googleapis.com \
+https://console.cloud.google.com/marketplace/product/google/places.googleapis.com
 ```
 CANOPY_API_KEY=your_api_key_here
 GEMINI_API_KEY=your_api_key_here
