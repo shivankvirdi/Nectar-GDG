@@ -1,9 +1,12 @@
-# Nectar
-
-https://github.com/user-attachments/assets/503b7d96-bcd8-418d-aa47-0589f6e007b4
+# Nectar - GDG Solutions Challenge NA 2026
 
 
-E-commerce lacks trustworthy product intelligence, with consumers losing billions to misleading/inflated reviews and poor purchasing decisions every year. That's why we built Nectar, a product-analyzer Electron desktop app that builds this needed trust layer by comparing products and providing in-depth insights on price, review integrity, quality, brand reputation, and similar alternatives. Nectar recommends the best option to help reduce shopper stress and support more informed purchasing decisions.
+
+https://github.com/user-attachments/assets/f8b34e39-cb66-4d10-819a-a570b8969f3d
+
+
+
+E-commerce lacks trustworthy product intelligence, with consumers losing billions to misleading/inflated reviews and poor purchasing decisions every year. That's why we built Nectar, a desktop overlay application that helps consumers make smarter online purchasing decisions by analyzing Amazon and eBay products in real time. The app combines review authenticity detection, AI review summaries, personalized recommendations, brand reputation analysis, and product comparison tools to identify trustworthy products and flag potentially misleading listings. By increasing transparency in e-commerce, Nectar reduces decision fatigue and empowers users to shop with greater confidence and accuracy.
 
 ## Features
 - AI-powered product analysis
@@ -126,12 +129,14 @@ npm run electron:start
 ### Use Local Backend
 1. Create .env in ROOT directory and add keys ('Nectar-GDG/.env')\
 https://www.canopyapi.co/ (GraphQL API)\
-https://aistudio.google.com/app/api-keys  
+https://www.scraperapi.com/ \
+https://aistudio.google.com/app/api-keys \
 https://console.cloud.google.com/marketplace/product/google/places.googleapis.com
 ```
 CANOPY_API_KEY=your_api_key_here
 GEMINI_API_KEY=your_api_key_here
 GOOGLE_PLACES_API_KEY=your_api_key_here
+SCRAPERAPI_KEY=your_api_key_here
 ```
 2. Set frontend/.env.production to:
 ```powershell
@@ -160,6 +165,7 @@ Verify:
 - CANOPY_API_KEY
 - GEMINI_API_KEY
 - GOOGLE_PLACES_API_KEY
+- SCRAPERAPI_KEY
 ### CORS or connection issues
 #### Verify VITE_API_URL matches your backend URL.
 ---
