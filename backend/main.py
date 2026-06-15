@@ -770,7 +770,7 @@ async def analyze_product(payload: UrlPayload):
     if payload.scanId:
         cancel_event = asyncio.Event()
         active_scan_cancellations[payload.scanId] = cancel_event
-    ...
+
     try:
         analysis = await analyze_product_url(
             payload.url,

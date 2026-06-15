@@ -1,16 +1,14 @@
-const { app, BrowserWindow, ipcMain, screen } = require('electron')
+const { app, BrowserWindow, ipcMain, screen, shell } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const os = require('os')
-const { shell } = require('electron')
 const {
-  getActiveUrl,
-  startUrlPolling
+  getActiveUrl
 } = require('./getActiveUrl')
 
 let mainWindow
 
-const ICON_PATH = path.join(__dirname, 'dist', 'icons', 'icon128.png')
+const ICON_PATH = path.join(__dirname, 'dist', 'Icons', 'icon128.png')
 const DEFAULT_WIDTH = 375
 const DEFAULT_HEIGHT = 358
 const MIN_WINDOW_HEIGHT = DEFAULT_HEIGHT
@@ -166,7 +164,6 @@ function createWindow() {
     maxHeight: MAX_WINDOW_HEIGHT,
     frame: false,
     transparent: false,
-    backgroundColor: '#1e1e1e',
     resizable:   false,
     hasShadow:   true,         // we draw our own shadow via CSS box-shadow
     x: screenWidth - DEFAULT_WIDTH - 24,
@@ -174,7 +171,7 @@ function createWindow() {
     title: 'Nectar',
     icon: ICON_PATH,
     skipTaskbar: false,
-    backgroundColor: process.platform==='darwin'?undefined:'#1e1e1e',
+    backgroundColor: process.platform === 'darwin' ? undefined : '#1e1e1e',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

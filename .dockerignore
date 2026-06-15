@@ -7,6 +7,7 @@ __pycache__/
 .git
 .gitignore
 frontend/node_modules/
+node_modules/
 frontend/dist/
 *.log
 .aider*

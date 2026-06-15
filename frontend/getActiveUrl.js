@@ -21,62 +21,6 @@ function getActiveUrl() {
         resolve(output.trim() || '');
       });
     } else if (platform === 'darwin') {
-      // macOS: try Chrome, Arc, Brave, Edge, Firefox, Safari in order.
-      // Returns the first URL that matches Amazon or eBay.
-      // Falls back to whichever browser is frontmost if none match.
-      const script = `
-        set supportedDomains to {"amazon.", "ebay."}
-        set browsers to {
-          {"Google Chrome", "URL of active tab of front window"},
-          {"Arc", "URL of active tab of window 1"},
-          {"Brave Browser", "URL of active tab of front window"},
-          {"Microsoft Edge", "URL of active tab of front window"},
-          {"Firefox", "URL of active tab of front window"}
-        }
-
-        -- First pass: find a supported-marketplace URL in a running browser
-        repeat with browserPair in browsers
-          set bName to item 1 of browserPair
-          set bCmd  to item 2 of browserPair
-          try
-            tell application bName
-              set tabUrl to (do shell script "echo ''")
-              try
-                set tabUrl to (get ${"{bCmd}"})
-              end try
-              repeat with dom in supportedDomains
-                if tabUrl contains dom then
-                  return tabUrl
-                end if
-              end repeat
-            end tell
-          end try
-        end repeat
-
-        -- Second pass: return whatever the frontmost browser has open
-        repeat with browserPair in browsers
-          set bName to item 1 of browserPair
-          set bCmd  to item 2 of browserPair
-          try
-            tell application bName
-              if it is running then
-                return (get ${"{bCmd}"})
-              end if
-            end tell
-          end try
-        end repeat
-
-        -- Safari fallback
-        try
-          tell application "Safari"
-            return URL of current tab of front window
-          end tell
-        end try
-
-        return ""
-      `;
-
-      // Use a simpler, more reliable approach: try each browser directly
       _tryBrowsersMac(resolve);
     } else {
       // Linux: xdotool fallback
@@ -156,29 +100,4 @@ if (require.main === module) {
   getActiveUrl().then((url) => console.log(url));
 }
 
-const EventEmitter = require('events');
-const emitter = new EventEmitter();
-
-/**
- * Starts polling for the active URL.
- * Calls `callback` whenever the URL changes to one that looks like
- * an Amazon or eBay product page.
- */
-function startUrlPolling(callback, intervalMs = 2000) {
-  let lastUrl = '';
-  const timer = setInterval(async () => {
-    try {
-      const url = await getActiveUrl();
-      if (url && url !== lastUrl) {
-        lastUrl = url;
-        callback(url);
-        emitter.emit('urlChanged', url);
-      }
-    } catch (e) {
-      // ignore polling errors silently
-    }
-  }, intervalMs);
-  return () => clearInterval(timer);
-}
-
-module.exports = { getActiveUrl, startUrlPolling, emitter };
+module.exports = { getActiveUrl };
