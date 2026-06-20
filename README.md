@@ -5,7 +5,7 @@
       <video src="https://github.com/user-attachments/assets/ddae5e9f-4c1e-467c-8047-de4eda39c38a" width="100%" controls></video> 
     </td>
     <td width="50%" align="center" style="vertical-align: top;">
-      <img width="2880" height="1704" alt="nectar price history" src="https://github.com/user-attachments/assets/df83ff3c-324b-439e-b0ee 169f1a7cd1f1">
+      <img width="2880" height="1704" alt="nectar price history" src="https://github.com/user-attachments/assets/f6fddc62-5f93-4d36-bbc6-846302878deb" />
     </td>
   </tr>
 </table>
