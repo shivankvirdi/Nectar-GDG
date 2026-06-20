@@ -97,7 +97,7 @@ flowchart LR
     A3 --> T1 --> T2 --> G3
     G3 -- "narrative · drop call · chart callouts" --> R3
 ```
-**Note on Price History:** The price trend chart and "likely to drop" call are generated, not scraped from real marketplace history. Nectar deterministically synthesizes a 30-day series anchored to the actual scraped price (so the chart always ends at the true current price), with a seeded wiggle, drift, and one simulated dip for realism. Gemini then writes a narrative and confidence score based on that synthetic series. This is a placeholder for a future real price-tracking integration and should not be used to make real purchasing-timing decisions.
+> **Note on Price History:** The price trend chart and "likely to drop" call are generated, not scraped from real marketplace history. Nectar deterministically synthesizes a 30-day series anchored to the actual scraped price (so the chart always ends at the true current price), with a seeded wiggle, drift, and one simulated dip for realism. Gemini then writes a narrative and confidence score based on that synthetic series. This is a placeholder for a future real price-tracking integration and should not be used to make real purchasing-timing decisions.
 
 # How to Use
 ## Clone Repository
