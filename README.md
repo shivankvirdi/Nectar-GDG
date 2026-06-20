@@ -90,7 +90,7 @@ flowchart LR
         GAPI["Gemini API\ngemini-2.5-flash and flash-lite"]
   end
 
-    USER(["Person browsing\nAmazon or eBay"]) --> E2
+    USER(["Amazon or eBay"]) --> E2
     E2 --> E1
     E1 --> R1
 
