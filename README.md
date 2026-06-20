@@ -13,6 +13,14 @@
   </table>
 </div>
 
+<p align="center">
+  <nobr>
+    <video src="https://github.com" height="250" controls style="vertical-align: middle;"></video>
+    <img src="https://github.com" height="250" alt="nectar price history" style="vertical-align: middle; margin-left: 10px;">
+  </nobr>
+</p>
+
+
 E-commerce lacks trustworthy product intelligence, with consumers losing billions to misleading/inflated reviews and poor purchasing decisions every year. That's why we built Nectar, a desktop overlay application that helps consumers make smarter online purchasing decisions by analyzing Amazon and eBay products in real time. The app combines review authenticity detection, AI review summaries/product verdicts, personalized recommendations, brand reputation analysis, estimated price trends, and product comparison tools to identify trustworthy products and flag potentially misleading listings. By increasing transparency in e-commerce, Nectar reduces decision fatigue and empowers users to shop with greater confidence and accuracy.
 
 ## Features
