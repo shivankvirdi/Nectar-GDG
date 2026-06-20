@@ -2,8 +2,8 @@
 
 <p align="center">
   <nobr>
-    <video src="[https://github.com](https://github.com/user-attachments/assets/1417cf5b-78a4-4967-b080-403c6544bf80)" height="250" controls style="vertical-align: middle;"></video>
-    <img src="[https://github.com](https://github.com/user-attachments/assets/5b95d33c-e470-4400-8a1d-8a8c21465292)" height="250" alt="nectar price history" style="vertical-align: middle; margin-left: 10px;">
+    <video src="https://github.com](https://github.com/user-attachments/assets/1417cf5b-78a4-4967-b080-403c6544bf80" height="250" controls style="vertical-align: middle;"></video>
+    <img src="https://github.com/user-attachments/assets/5b95d33c-e470-4400-8a1d-8a8c21465292" height="250" alt="nectar price history" style="vertical-align: middle; margin-left: 10px;">
   </nobr>
 </p>
 
