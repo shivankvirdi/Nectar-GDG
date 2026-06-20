@@ -34,6 +34,7 @@ E-commerce lacks trustworthy product intelligence, with consumers losing billion
 ## Architecture Diagram
 ```mermaid
 ---
+---
 config:
   layout: dagre
   theme: redux-dark-color
