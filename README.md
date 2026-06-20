@@ -1,11 +1,15 @@
 # Nectar - GDG Solutions Challenge NA 2026
 
-<p align="center">
-  <nobr>
-    <video src="https://github.com/user-attachments/assets/1417cf5b-78a4-4967-b080-403c6544bf80" height="250" controls style="vertical-align: middle;"></video>
-    <img src="https://github.com/user-attachments/assets/5b95d33c-e470-4400-8a1d-8a8c21465292" height="250" alt="nectar price history" style="vertical-align: middle; margin-left: 10px;">
-  </nobr>
-</p>
+<table width="100%">
+  <tr>
+    <td width="50%" align="center" style="vertical-align: top;">
+      <video src="https://github.com/user-attachments/assets/ddae5e9f-4c1e-467c-8047-de4eda39c38a" width="100%" controls></video>
+    </td>
+    <td width="50%" align="center" style="vertical-align: top;">
+      <img width="2880" height="1704" alt="nectar price history" src="https://github.com/user-attachments/assets/df83ff3c-324b-439e-b0ee-169f1a7cd1f1">
+    </td>
+  </tr>
+</table>
 
 
 E-commerce lacks trustworthy product intelligence, with consumers losing billions to misleading/inflated reviews and poor purchasing decisions every year. That's why we built Nectar, a desktop overlay application that helps consumers make smarter online purchasing decisions by analyzing Amazon and eBay products in real time. The app combines review authenticity detection, AI review summaries/product verdicts, personalized recommendations, brand reputation analysis, estimated price trends, and product comparison tools to identify trustworthy products and flag potentially misleading listings. By increasing transparency in e-commerce, Nectar reduces decision fatigue and empowers users to shop with greater confidence and accuracy.
