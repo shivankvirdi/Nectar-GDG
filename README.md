@@ -6,7 +6,7 @@ https://github.com/user-attachments/assets/f8b34e39-cb66-4d10-819a-a570b8969f3d
 
 
 
-E-commerce lacks trustworthy product intelligence, with consumers losing billions to misleading/inflated reviews and poor purchasing decisions every year. That's why we built Nectar, a desktop overlay application that helps consumers make smarter online purchasing decisions by analyzing Amazon and eBay products in real time. The app combines review authenticity detection, AI review summaries, personalized recommendations/discovery, brand reputation analysis, estimated price trends, and product comparison tools to identify trustworthy products and flag potentially misleading listings. By increasing transparency in e-commerce, Nectar reduces decision fatigue and empowers users to shop with greater confidence and accuracy.
+E-commerce lacks trustworthy product intelligence, with consumers losing billions to misleading/inflated reviews and poor purchasing decisions every year. That's why we built Nectar, a desktop overlay application that helps consumers make smarter online purchasing decisions by analyzing Amazon and eBay products in real time. The app combines review authenticity detection, AI review summaries/product verdicts, personalized recommendations, brand reputation analysis, estimated price trends, and product comparison tools to identify trustworthy products and flag potentially misleading listings. By increasing transparency in e-commerce, Nectar reduces decision fatigue and empowers users to shop with greater confidence and accuracy.
 
 ## Features
 - AI-powered product analysis
@@ -15,7 +15,6 @@ E-commerce lacks trustworthy product intelligence, with consumers losing billion
 - Personalized product recommendations
 - Product comparison tools
 - Scan history and recommendation memory
-- AI Product Discovery chatbot
 - Estimated price trends and AI price-timing metrics
 - Amazon and eBay support
 
@@ -27,7 +26,7 @@ E-commerce lacks trustworthy product intelligence, with consumers losing billion
 - NLP/Scoring: NLTK --> VADER, custom review-integrity logic
 - Marketplace Data: Canopy API, ScraperAPI
 - Reputation Data: Google Places API
-- Storage: Browser localStorage for scan history/recommendation, chatbot conversation history, and price intelligence
+- Storage: Browser localStorage for scan history/recommendations and price intelligence
 - Deployment: Docker, Google Cloud Run, Cloud Build
 
 ---
@@ -44,90 +43,60 @@ config:
     fontFamily: '''Source Code Pro Variable'', monospace'
 ---
 flowchart LR
- subgraph ELECTRON["Electron Shell (Desktop App)"]
-        E1["Frameless glass overlay window\nalways-on-top · auto-resize via IPC"]
-        E2["Active browser tab detector\nAppleScript (Mac) · PowerShell (Win) · xdotool (Linux)"]
+ subgraph USER_LAYER["User + Browser"]
+        USER(["Amazon / eBay product page"])
   end
-
- subgraph REACT["React + TypeScript UI"]
-        R1["Scan / Results / Compare views"]
-        R2["Smart Recommendations panel\n+ Scan History"]
-        R3["AI Discovery Chat\nimage upload · saved conversations"]
-        R4["Estimated Price Intelligence panel\nproduct selector · chart · stats"]
+ subgraph ELECTRON["Electron Shell"]
+        E1["Frameless glass overlay\nalways-on-top + IPC resize"]
+        E2["URL detection\nAppleScript + PowerShell + xdotool"]
   end
-
- subgraph API["FastAPI Backend (Cloud Run)"]
-        A1["POST /current-url\nPOST /cancel-scan"]
-        A2["POST /recommendations\nPOST /explain-score"]
-        A3["POST /shopping-chat"]
-        A4["POST /price-trend"]
+ subgraph REACT["React + TypeScript Dashboard"]
+        R1["Home\nScan + results + compare"]
+        R2["Smart Recommendations\nGemini-planned search terms + filters"]
+        R3["Price History\nEstimated trend chart + AI narrative"]
+        R4["Scan History\nSaved products + comparison context"]
   end
-
- subgraph PIPELINE["Analysis Pipeline"]
-        P1["Marketplace adapter registry\npicks Amazon or eBay adapter from URL"]
-        P2["Recommendation ranker\nrelevance filter · dedupe · brand/marketplace diversity"]
-        P3["Price intelligence builder\nbuilds estimated 30-day series · low/high/avg/movement"]
+ subgraph API["FastAPI on Cloud Run + Secret Manager"]
+        A1["/current-url + /cancel-scan"]
+        A2["/explain-score"]
+        A3["/recommendations"]
+        A4["/price-trend"]
   end
-
- subgraph NLP["NLP Scoring Engine"]
-        N1["Review integrity analyzer\nVADER sentiment · verified-purchase ratio · mismatch flags"]
-        N2["Reputation scorer\nBayesian blend, prior score = 68"]
-        N3["Keyword extractor\nlemmatization · TF-IDF · curated bigrams · negation pairs"]
-        N4["Overall trust score\nAmazon: 40% rating / 35% integrity / 25% reputation\neBay: 30% rating / 25% integrity / 45% seller rep"]
+ subgraph PIPELINE["Marketplace + Analysis Pipeline"]
+        P1["Marketplace adapter registry\nAmazon + eBay"]
+        CANOPY["Canopy API\nAmazon GraphQL"]
+        SCRAPER["ScraperAPI\neBay structured search"]
+        P2["Fetch + normalize\nKeyword inference + dedupe"]
   end
-
- subgraph GEMINI["Gemini AI Reasoning"]
-        G1["Verdict generator\noutputs BUY / COMPARE / SKIP + pros/cons"]
-        G2["Query builder & score explainer\nturns scan history + filters into a search query"]
-        G3["Discovery chat reasoner\nanswers conversationally first, offers a search only if useful"]
-        G4["Price trend narrator\nwrites a likely-to-drop call with confidence"]
+ subgraph NLP["NLP + Scoring Engine"]
+        N1["Review integrity\nVADER + flags + star/text match\nverified purchases"]
+        N2["Reputation scoring\nBayesian blend\nprior = 68"]
+        N3["WordNet + TF-IDF\nboost words + bigrams + negation pairs"]
+        N4["Overall score weights\nAmazon 40/35/25\neBay 30/25/45"]
   end
-
- subgraph EXTERNAL["External Data Sources"]
-        CANOPY["Canopy API\nAmazon GraphQL product + review data"]
-        SCRAPER["ScraperAPI\neBay structured product + search data"]
-        PLACES["Google Places API\nbrand lookup · public review signals"]
-        GAPI["Gemini API\ngemini-2.5-flash and flash-lite"]
+ subgraph GEMINI["Gemini AI"]
+        G1["Verdict generation\nBUY / COMPARE / SKIP"]
+        G2["Score explainer\nmetric-specific rationale"]
+        G3["Recommendation planner\nquery + 3-5 category-locked search terms"]
+        G4["Price trend narrative\ntrajectory + likely-to-drop call"]
   end
-
-    USER(["Amazon or eBay"]) --> E2
-    E2 --> E1
-    E1 --> R1
-
-    R1 -- "1. user submits product URL" --> A1
-    A1 -- "2. fetch listing data" --> P1
-    P1 -- "Amazon listing" --> CANOPY
-    P1 -- "eBay listing" --> SCRAPER
-    P1 -- "3. normalized reviews" --> N1
-    P1 -- "3. normalized reviews" --> N2
-    P1 -- "3. normalized reviews" --> N3
-    N1 -- "integrity score" --> N4
-    N2 -- "reputation score" --> N4
-    N3 -- "keyword signals" --> N4
-    N4 -- "4. scores + review snippets" --> G1
-    G1 -- "Gemini API call" --> GAPI
-    G1 -- "5. verdict + trust score" --> R1
-
-    R2 -- "1. filters, prompt, marketplace" --> A2
-    A2 -- "2. build search query" --> G2
-    G2 -- "Gemini API call" --> GAPI
-    G2 -- "3. search query" --> P2
-    P2 -- "4. searches via" --> P1
-    P2 -- "5. ranked, deduped picks" --> R2
-
-    R3 -- "1. message + optional image" --> A3
-    A3 -- "2. reason about intent" --> G3
-    G3 -- "Gemini API call" --> GAPI
-    G3 -- "3. chat reply + optional search offer" --> R3
-    R3 -. "user accepts the offered search" .-> R2
-
-    R4 -- "1. selected past scan" --> A4
-    A4 -- "2. build price series" --> P3
-    P3 -- "3. series + stats" --> G4
-    G4 -- "Gemini API call" --> GAPI
-    G4 -- "4. trend narrative" --> R4
-
-    N2 -- "brand/seller lookup" --> PLACES
+    USER --> E1 --> R1
+    E2 --> R1
+    R1 -- "HTTP + X-Nectar-Secret" --> A1
+    R1 --> R4
+    R4 --> R2
+    R2 -- "filter + prompt + history" --> A3
+    R3 -- "selected scan" --> A4
+    A1 --> P1
+    A3 --> G3 --> P1
+    A4 --> G4 --> R3
+    P1 --> CANOPY --> P2
+    P1 --> SCRAPER --> P2
+    P2 --> N1 --> N4 --> G1 --> R1
+    P2 --> N2 --> N4
+    P2 --> N3 --> N4
+    A2 --> G2 --> R1
+    P2 -- "ranked, deduped products" --> A3 --> R2
 ```
 
 # How to Use
