@@ -13,7 +13,7 @@ steps:
       - '--region=us-west1'
       - '--platform=managed'
       - '--allow-unauthenticated'
-      - '--set-secrets=CANOPY_API_KEY=CANOPY_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GOOGLE_PLACES_API_KEY=GOOGLE_PLACES_API_KEY:latest'
+      - '--set-secrets=CANOPY_API_KEY=CANOPY_API_KEY:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GOOGLE_PLACES_API_KEY=GOOGLE_PLACES_API_KEY:latest,SCRAPERAPI_KEY=SCRAPERAPI_KEY:latest,NECTAR_API_SECRET=NECTAR_API_SECRET:latest'
 
 options:
   logging: CLOUD_LOGGING_ONLY

@@ -25,47 +25,104 @@ _SHOPPING_GUARD_TERMS = {
     "markdown", "savings", "save", "promo", "promotion",
     "expensive", "affordable", "recommend", "recommendation", "alternative", "compare",
     "similar", "brand", "product", "products", "quality", "durable", "durability",
-    "rating", "reviews", "under", "over", "headphones", "earbuds", "speaker", "laptop",
+    "rating", "reviews", "under", "over", "headphones", "earbuds", "speaker", "laptop", "laptops",
     "airpods", "apple", "sony", "bose", "jbl", "anker", "soundcore", "samsung",
-    "keyboard", "mouse", "monitor", "camera", "charger", "case", "watch", "phone",
-    "tablet", "vacuum", "air fryer", "coffee", "backpack", "bottle",
+    "keyboard", "keyboards", "mouse", "mice", "monitor", "monitors", "camera", "cameras",
+    "charger", "chargers", "case", "cases", "watch", "watches", "phone", "phones",
+    "tablet", "tablets", "vacuum", "vacuums", "air fryer", "coffee", "backpack", "backpacks", "bottle", "best",
+    "popular", "current", "top", "avoid", "water", "shoes", "boots", "shirt",
+    "clothing", "skincare", "cleanser", "bottles", "students", "school", "college",
+    "work", "gaming", "portable", "budget", "reviews",
 }
 
+_PRODUCT_DISCOVERY_RE = re.compile(
+    r"\b(find|search|show|shop|get|recommend|recommendations?|best|top|popular|current|"
+    r"under|below|cheaper|budget|alternatives?|similar\s+to|compare\s+options?)\b",
+    re.IGNORECASE,
+)
+_BRAND_AVOIDANCE_RE = re.compile(r"\b(brands?\s+to\s+avoid|avoid\s+brands?|what\s+brands?\s+should\s+i\s+avoid)\b", re.IGNORECASE)
 
-def _is_quota_exhausted(error: Exception) -> bool:
-    message = str(error).upper()
-    return "RESOURCE_EXHAUSTED" in message or "429" in message or "QUOTA" in message
+
+def _shopping_word_forms(text: str) -> set[str]:
+    words = set(re.findall(r"[a-z0-9]+", str(text or "").lower()))
+    singularized = {
+        word[:-1]
+        for word in words
+        if len(word) > 3 and word.endswith("s")
+    }
+    return words | singularized
 
 
-def _clean_metadata_value(value) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, (int, float)):
-        return str(value)
-    if isinstance(value, dict):
-        for key in ("display", "text", "formatted", "raw", "label", "description", "name"):
-            text = _clean_metadata_value(value.get(key))
-            if text:
-                return text
-        raw_value = value.get("value") or value.get("amount") or value.get("extracted")
-        currency = value.get("currency")
-        if isinstance(raw_value, (int, float)):
-            if currency and re.search(r"delivery|day", str(currency), re.IGNORECASE):
-                return f"Delivery in {raw_value:g} days"
-            if raw_value == 0:
-                return "free"
-            if currency and str(currency).upper() not in {"USD", "$"}:
-                return f"{raw_value:g} {currency}"
-            return f"${raw_value:.2f}"
-        return str(raw_value).strip() if raw_value else ""
-    return re.sub(r"\s+", " ", str(value)).strip()
+def _looks_like_product_discovery_request(text: str) -> bool:
+    text = str(text or "").strip()
+    if not text:
+        return False
+    if _BRAND_AVOIDANCE_RE.search(text):
+        return False
+    words = _shopping_word_forms(text)
+    return bool(_PRODUCT_DISCOVERY_RE.search(text)) and bool(words & _SHOPPING_GUARD_TERMS)
+
+
+def _compact_scan_memory(history: list[dict], limit: int = 8) -> list[dict]:
+    memory = []
+    for index, item in enumerate(history[:limit]):
+        analysis = item.get("analysis") if isinstance(item, dict) else {}
+        if not isinstance(analysis, dict):
+            continue
+        review_integrity = analysis.get("reviewIntegrity") or {}
+        seller_integrity = analysis.get("sellerReviewIntegrity") or {}
+        brand_reputation = analysis.get("brandReputation") or {}
+        review_keywords = review_integrity.get("commonKeywords", []) if isinstance(review_integrity, dict) else []
+        seller_keywords = seller_integrity.get("commonKeywords", []) if isinstance(seller_integrity, dict) else []
+        brand_keywords = brand_reputation.get("commonKeywords", []) if isinstance(brand_reputation, dict) else []
+        similar_products = analysis.get("similarProducts") or []
+        memory.append({
+            "recencyRank": index + 1,
+            "scannedAt": item.get("scannedAt"),
+            "url": item.get("url"),
+            "title": analysis.get("title"),
+            "brand": analysis.get("brand"),
+            "productKeyword": analysis.get("productKeyword"),
+            "price": analysis.get("price"),
+            "rating": analysis.get("rating"),
+            "reviewCount": analysis.get("reviewCount"),
+            "overallScore": analysis.get("overallScore"),
+            "marketplace": analysis.get("marketplace"),
+            "aiVerdict": (analysis.get("aiAnalysis") or {}).get("verdict") if isinstance(analysis.get("aiAnalysis"), dict) else "",
+            "positiveSignals": [
+                keyword.get("word")
+                for keyword in (review_keywords + seller_keywords + brand_keywords)
+                if isinstance(keyword, dict) and keyword.get("sentiment") == "positive"
+            ][:8],
+            "negativeSignals": [
+                keyword.get("word")
+                for keyword in (review_keywords + seller_keywords + brand_keywords)
+                if isinstance(keyword, dict) and keyword.get("sentiment") == "negative"
+            ][:8],
+            "nearbyAlternatives": [
+                {
+                    "title": product.get("title"),
+                    "brand": product.get("brand"),
+                    "price": product.get("price"),
+                    "rating": product.get("rating"),
+                    "reviewCount": product.get("reviewCount"),
+                    "marketplace": product.get("marketplace"),
+                }
+                for product in similar_products[:4]
+                if isinstance(product, dict)
+            ],
+        })
+    return memory
 
 
 def _looks_like_shopping_prompt(prompt: str, recent_items: list[dict]) -> bool:
     if not prompt:
         return True
 
-    words = set(re.findall(r"[a-z0-9]+", prompt.lower()))
+    if _looks_like_product_discovery_request(prompt) or _BRAND_AVOIDANCE_RE.search(prompt):
+        return True
+
+    words = _shopping_word_forms(prompt)
     if words & _SHOPPING_GUARD_TERMS:
         return True
 
@@ -87,46 +144,7 @@ def build_recommendation_query(
     filter_mode = filter_mode if filter_mode in ("overall", "durability", "price", "quality") else "overall"
     refinement_prompt = (refinement_prompt or "").strip()
 
-    recent_items = []
-    for index, item in enumerate(history[:8]):
-        analysis = item.get("analysis") if isinstance(item, dict) else {}
-        if not isinstance(analysis, dict):
-            continue
-        review_integrity = analysis.get("reviewIntegrity") or {}
-        seller_integrity = analysis.get("sellerReviewIntegrity") or {}
-        brand_reputation = analysis.get("brandReputation") or {}
-        review_keywords = review_integrity.get("commonKeywords", []) if isinstance(review_integrity, dict) else []
-        seller_keywords = seller_integrity.get("commonKeywords", []) if isinstance(seller_integrity, dict) else []
-        brand_keywords = brand_reputation.get("commonKeywords", []) if isinstance(brand_reputation, dict) else []
-        similar_products = analysis.get("similarProducts") or []
-        recent_items.append({
-            "recencyRank": index + 1,
-            "scannedAt": item.get("scannedAt"),
-            "title": analysis.get("title"),
-            "brand": analysis.get("brand"),
-            "productKeyword": analysis.get("productKeyword"),
-            "price": analysis.get("price"),
-            "rating": analysis.get("rating"),
-            "reviewCount": analysis.get("reviewCount"),
-            "overallScore": analysis.get("overallScore"),
-            "marketplace": analysis.get("marketplace"),
-            "positiveSignals": [
-                keyword.get("word")
-                for keyword in (review_keywords + seller_keywords + brand_keywords)
-                if isinstance(keyword, dict) and keyword.get("sentiment") == "positive"
-            ][:8],
-            "nearbyAlternatives": [
-                {
-                    "title": product.get("title"),
-                    "brand": product.get("brand"),
-                    "price": product.get("price"),
-                    "rating": product.get("rating"),
-                    "marketplace": product.get("marketplace"),
-                }
-                for product in similar_products[:4]
-                if isinstance(product, dict)
-            ],
-        })
+    recent_items = _compact_scan_memory(history, 8)
 
     fallback_term = "popular products"
     for item in recent_items:
@@ -137,6 +155,46 @@ def build_recommendation_query(
         )
         if fallback_term and fallback_term != "unknown":
             break
+
+    suffix_by_filter = {
+        "overall": "best value",
+        "durability": "durable reliable",
+        "price": "budget affordable deal",
+        "quality": "top rated premium",
+    }
+
+    def fallback_search_terms(base: str) -> list[str]:
+        base = re.sub(r"\s+", " ", str(base or "").strip())
+        if not base:
+            base = fallback_term
+        suffix = suffix_by_filter[filter_mode]
+        terms = [base]
+        if suffix and suffix not in base.lower():
+            terms.append(f"{base} {suffix}".strip())
+        if re.search(r"\blaptops?\b|\bchromebooks?\b|\bnotebooks?\b", base, re.IGNORECASE):
+            terms.extend([
+                "student laptop durable affordable",
+                "best rated laptop for students",
+                "budget laptop 16gb ram ssd",
+            ])
+        elif re.search(r"\bwater bottles?\b|\btumbler\b|\bbottle\b", base, re.IGNORECASE):
+            terms.extend([
+                "insulated water bottle leakproof",
+                "top rated water bottle under 50",
+                "durable stainless steel water bottle",
+            ])
+        elif re.search(r"\bheadphones?\b|\bearbuds?\b|\bairpods?\b", base, re.IGNORECASE):
+            terms.extend([
+                "top rated wireless headphones",
+                "best value noise cancelling headphones",
+                "wireless earbuds strong reviews",
+            ])
+        cleaned: list[str] = []
+        for term in terms:
+            term = re.sub(r"\s+", " ", term).strip()
+            if term and term.lower() not in {item.lower() for item in cleaned}:
+                cleaned.append(term[:120])
+        return cleaned[:5]
 
     prompt = f"""You are Nectar's smart shopping recommender.
 
@@ -160,7 +218,9 @@ Task:
 - Favor product categories, features, price tiers, quality signals, and marketplaces that repeat in recent history.
 - Use nearbyAlternatives as evidence of what the user has already been shown; search for directly connected products without simply repeating the exact same listing.
 - If a photo is included, use its visible product style/brand/category as a refinement.
-- Create one concise marketplace search query that should return 5 products the user would like.
+- Create one concise primary marketplace query and 3 to 5 searchTerms that should return 5 products the user would like.
+- searchTerms should be varied but category-locked: include the user's exact category, then useful alternates with budget, quality, durability, rating, or feature words.
+- Do not put unrelated scan-history categories into searchTerms when the user asks for a specific product category.
 - Prefer cross-brand alternatives by default. Do not include a brand from scan memory in the query unless the user explicitly asks for that brand or same-brand products.
 - If the user asks for a specific brand, honor it.
 - Tune the query for the filter:
@@ -171,7 +231,7 @@ Task:
 - Prefer concrete categories like "noise cancelling headphones" over vague terms.
 
 Schema:
-{{"allowed":true,"query":"string","reason":"string"}}
+{{"allowed":true,"query":"string","searchTerms":["string"],"reason":"string"}}
 """
 
     schema = {
@@ -179,9 +239,10 @@ Schema:
         "properties": {
             "allowed": {"type": "boolean"},
             "query": {"type": "string"},
+            "searchTerms": {"type": "array", "items": {"type": "string"}},
             "reason": {"type": "string"},
         },
-        "required": ["allowed", "query", "reason"],
+        "required": ["allowed", "query", "searchTerms", "reason"],
     }
 
     try:
@@ -211,6 +272,7 @@ Schema:
                 fallback_query = refinement_prompt or fallback_term
                 return {
                     "query": fallback_query[:120],
+                    "searchTerms": fallback_search_terms(fallback_query),
                     "reason": "Using the product request directly.",
                 }
             return {
@@ -223,8 +285,16 @@ Schema:
         query = str(result.get("query") or "").strip()
         if not query:
             query = fallback_term
+        search_terms = [
+            str(term or "").strip()[:120]
+            for term in (result.get("searchTerms") or [])
+            if str(term or "").strip()
+        ]
+        if not search_terms:
+            search_terms = fallback_search_terms(query)
         return {
             "query": query[:120],
+            "searchTerms": search_terms[:5],
             "reason": str(result.get("reason") or "Based on recent scan history.").strip()[:220],
         }
     except Exception as e:
@@ -236,16 +306,102 @@ Schema:
                 "query": "",
                 "reason": "Image refinement could not be processed.",
             }
-        suffix_by_filter = {
-            "overall": "best value",
-            "durability": "durable reliable",
-            "price": "budget deal",
-            "quality": "top rated premium",
-        }
         prompt_term = refinement_prompt if refinement_prompt else fallback_term
         return {
-            "query": f"{prompt_term} {suffix_by_filter[filter_mode]}".strip()[:120],
+            "query": str(prompt_term).strip()[:120],
+            "searchTerms": fallback_search_terms(prompt_term),
             "reason": "Using the product request and selected filter.",
+        }
+
+
+def build_price_trend_narrative(
+    analysis: dict,
+    points: list[dict],
+    insights: list[dict],
+) -> dict:
+    """Use Gemini to summarize a price trajectory and drop likelihood."""
+    title = analysis.get("title") or "this product"
+    prompt = f"""You are Nectar's price intelligence analyst.
+
+Return JSON only.
+
+Product:
+{json.dumps({
+    "title": title,
+    "brand": analysis.get("brand"),
+    "price": analysis.get("price"),
+    "rating": analysis.get("rating"),
+    "reviewCount": analysis.get("reviewCount"),
+    "overallScore": analysis.get("overallScore"),
+    "marketplace": analysis.get("marketplace"),
+}, ensure_ascii=False)}
+
+Price series:
+{json.dumps(points, ensure_ascii=False)}
+
+Computed insights:
+{json.dumps(insights, ensure_ascii=False)}
+
+Task:
+- Write a concise trajectory narrative grounded in the series.
+- Make a likelyToDrop call: true only when the recent movement, volatility, or current premium suggests waiting could pay off.
+- Give confidence from 0 to 1.
+- Include 2 to 4 short chart callouts users can scan.
+
+Schema:
+{{"narrative":"string","likelyToDrop":true,"confidence":0.0,"callouts":["string"]}}
+"""
+
+    schema = {
+        "type": "object",
+        "properties": {
+            "narrative": {"type": "string"},
+            "likelyToDrop": {"type": "boolean"},
+            "confidence": {"type": "number"},
+            "callouts": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["narrative", "likelyToDrop", "confidence", "callouts"],
+    }
+
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-lite",
+            contents=[prompt],
+            config=types.GenerateContentConfig(
+                temperature=0.35,
+                response_mime_type="application/json",
+                response_json_schema=schema,
+            ),
+        )
+        result = json.loads((response.text or "").strip())
+        return {
+            "narrative": str(result.get("narrative") or "").strip()[:900],
+            "likelyToDrop": bool(result.get("likelyToDrop")),
+            "confidence": max(0.0, min(1.0, float(result.get("confidence") or 0.0))),
+            "callouts": [
+                str(callout).strip()[:120]
+                for callout in (result.get("callouts") or [])
+                if str(callout).strip()
+            ][:4],
+        }
+    except Exception as e:
+        print(f"[Price Trend] Gemini trend narrative failed: {e}")
+        if len(points) >= 2:
+            first = points[0].get("price")
+            last = points[-1].get("price")
+            delta = (last or 0) - (first or 0)
+        else:
+            delta = 0
+        likely = delta > 0
+        return {
+            "narrative": (
+                "Recent pricing is estimated from the current listing and product context. "
+                f"The trajectory is {'above its starting point' if delta > 0 else 'stable to slightly softer'}, "
+                "so use this as a directional signal rather than live marketplace history."
+            ),
+            "likelyToDrop": likely,
+            "confidence": 0.56 if likely else 0.48,
+            "callouts": [str(item.get("label") or "") for item in insights if item.get("label")][:4],
         }
 
 

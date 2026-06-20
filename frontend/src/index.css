@@ -8,20 +8,24 @@
    =============================================================== */
 
 :root {
-  --blur-amount:   14px;
-  --tint-opacity:  0.48;
-  --tint-color:    255, 254, 243;   /* warm white — change to e.g. 220,235,255 for cool blue */
-  --tint-sat:      2.0;
+  --blur-amount:   22px;
+  --tint-opacity:  0.38;
+  --tint-color:    255, 253, 246;   /* warm white — change to e.g. 220,235,255 for cool blue */
+  --tint-sat:      2.25;
 
   /* Derived glass tokens — don't need to touch these normally */
   --glass-bg:            rgba(var(--tint-color), var(--tint-opacity));
-  --glass-bg-deep:       rgba(var(--tint-color), calc(var(--tint-opacity) + 0.15));
-  --glass-surface:       rgba(var(--tint-color), calc(var(--tint-opacity) - 0.2));
-  --glass-surface-hover: rgba(var(--tint-color), calc(var(--tint-opacity) + 0.15));
-  ---glass-border: rgba(255,255,255,.20);
-  --glass-border-accent: rgba(249, 115, 22, 0.38);
+  --glass-bg-deep:       rgba(255, 254, 250, 0.62);
+  --glass-surface:       rgba(255, 255, 255, 0.42);
+  --glass-surface-hover: rgba(255, 255, 255, 0.66);
+  --glass-border:        rgba(255, 255, 255, 0.46);
+  --glass-border-soft:   rgba(255, 255, 255, 0.30);
+  --glass-border-accent: rgba(249, 146, 76, 0.42);
+  --glass-sheen:         rgba(255, 255, 255, 0.58);
+  --glass-blue:          rgba(104, 181, 255, 0.16);
+  --glass-amber:         rgba(255, 185, 92, 0.16);
 
-  --blur: blur(var(--blur-amount)) saturate(var(--tint-sat)) brightness(1.04);
+  --blur: blur(var(--blur-amount)) saturate(var(--tint-sat)) brightness(1.10);
 
   /* Brand */
   --brand:      #ff8c42;

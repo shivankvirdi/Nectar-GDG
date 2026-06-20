@@ -23,7 +23,7 @@ declare global {
 
 const DEV_PREVIEW = import.meta.env.DEV && true
 const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
-const NECTAR_SECRET = import.meta.env.VITE_NECTAR_SECRET || ''
+const NECTAR_SECRET = import.meta.env.NECTAR_API_SECRET || ''
 
 const EXIT_ANIMATION_MS = 720
 const DELETE_ENTRY_DELAY_MS = 240
@@ -41,6 +41,7 @@ const MAX_SCAN_HISTORY = 10
 
 const RECOMMENDER_FILTERS = ['overall', 'durability', 'price', 'quality'] as const
 const RECOMMENDER_MARKETPLACES = ['all', 'amazon', 'ebay'] as const
+const DASHBOARD_TABS = ['home', 'trends'] as const
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -128,6 +129,29 @@ type Analysis = {
 type Recommendation = NonNullable<NonNullable<Analysis['aiAnalysis']>['recommendation']>
 type RecommenderFilter = typeof RECOMMENDER_FILTERS[number]
 type RecommenderMarketplace = typeof RECOMMENDER_MARKETPLACES[number]
+type DashboardTab = typeof DASHBOARD_TABS[number]
+
+type PricePoint = {
+  date: string
+  price: number
+}
+
+type PriceInsight = {
+  type: string
+  label: string
+  date?: string
+  price?: number
+}
+
+type PriceIntelligence = {
+  points: PricePoint[]
+  insights: PriceInsight[]
+  narrative: string
+  likelyToDrop: boolean
+  confidence: number
+  callouts: string[]
+  generatedAt: string
+}
 
 function AutoSizingWindow({ children }: { children: ReactNode }) {
   const panelRef = useRef<HTMLDivElement | null>(null)
@@ -211,6 +235,7 @@ type ScanRecord = {
   scannedAt: string
   url: string
   analysis: Analysis
+  priceIntelligence?: PriceIntelligence
 }
 
 type RecommendationResponse = {
@@ -221,6 +246,16 @@ type RecommendationResponse = {
   reason?: string
   marketplace?: RecommenderMarketplace
   products?: SimilarProduct[]
+}
+
+type PriceTrendResponse = {
+  ok?: boolean
+  points?: PricePoint[]
+  insights?: PriceInsight[]
+  narrative?: string
+  likelyToDrop?: boolean
+  confidence?: number
+  callouts?: string[]
 }
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
@@ -577,6 +612,86 @@ function productMatchesMarketplace(product: SimilarProduct, marketplace: Recomme
   return marketplace === 'all' || getProductMarketplace(product) === marketplace
 }
 
+const RECOMMENDATION_TITLE_STOPWORDS = new Set([
+  'and', 'with', 'for', 'the', 'new', 'from', 'pack', 'black', 'white', 'blue',
+  'red', 'green', 'gray', 'grey', 'size', 'large', 'small', 'medium', 'inch',
+  'inches', 'oz', 'ounce', 'ounces', 'men', 'mens', 'women', 'womens', '2024',
+  '2025', '2026',
+])
+
+function getRecommendationTitleTokens(value?: string): Set<string> {
+  const words = String(value ?? '').toLowerCase().match(/[a-z0-9]+/g) ?? []
+  return new Set(words.filter((word) => word.length > 2 && !RECOMMENDATION_TITLE_STOPWORDS.has(word)))
+}
+
+function getRecommendationIdentityKeys(product: SimilarProduct): string[] {
+  const rawKeys = [
+    product.listingId,
+    product.asin,
+    product.listingUrl,
+    product.productUrl,
+    product.amazonUrl,
+  ].map((value) => String(value ?? '').trim().toLowerCase()).filter(Boolean)
+  const titleTokens = [...getRecommendationTitleTokens(product.title)].sort().slice(0, 12)
+  return titleTokens.length ? [...rawKeys, `title:${titleTokens.join(' ')}`] : rawKeys
+}
+
+function productLooksLikeScannedItem(product: SimilarProduct, scannedProducts: SimilarProduct[]): boolean {
+  const productKeys = new Set(getRecommendationIdentityKeys(product))
+  const productTokens = getRecommendationTitleTokens(product.title)
+
+  return scannedProducts.some((scanned) => {
+    const scannedKeys = getRecommendationIdentityKeys(scanned)
+    if (scannedKeys.some((key) => productKeys.has(key))) return true
+
+    const scannedTokens = getRecommendationTitleTokens(scanned.title)
+    if (productTokens.size < 4 || scannedTokens.size < 4) return false
+    const overlap = [...productTokens].filter((token) => scannedTokens.has(token)).length
+    const union = new Set([...productTokens, ...scannedTokens]).size
+    return overlap / Math.max(1, union) >= 0.88
+  })
+}
+
+function diversifyRecommendationProducts(
+  products: SimilarProduct[],
+  history: ScanRecord[],
+  filter: RecommenderFilter,
+  marketplace: RecommenderMarketplace,
+  limit = 5,
+): SimilarProduct[] {
+  const scannedProducts = history.map(scanRecordToProduct).filter((product): product is SimilarProduct => Boolean(product))
+  const sortedProducts = sortFallbackProducts(
+    products.filter((product) => productMatchesMarketplace(product, marketplace) && hasDisplayablePrice(product)),
+    filter,
+  )
+  const selected: SimilarProduct[] = []
+  const deferred: SimilarProduct[] = []
+  const seen = new Set<string>()
+  const brandCounts = new Map<string, number>()
+  const marketplaceCounts = new Map<string, number>()
+
+  for (const product of sortedProducts) {
+    if (productLooksLikeScannedItem(product, scannedProducts)) continue
+    const keys = getRecommendationIdentityKeys(product)
+    const dedupeKey = keys[0] ?? product.title ?? `${product.brand ?? 'unknown'}-${product.price ?? 'unknown'}`
+    if (seen.has(dedupeKey)) continue
+    keys.forEach((key) => seen.add(key))
+    seen.add(dedupeKey)
+
+    const brand = String(product.brand ?? '').trim().toLowerCase()
+    const source = getProductMarketplace(product)
+    const brandLimitReached = Boolean(brand) && (brandCounts.get(brand) ?? 0) >= 1
+    const marketplaceLimitReached = marketplace === 'all' && source !== 'all' && (marketplaceCounts.get(source) ?? 0) >= 3
+    const target = brandLimitReached || marketplaceLimitReached ? deferred : selected
+    target.push(product)
+    if (!brandLimitReached && brand) brandCounts.set(brand, (brandCounts.get(brand) ?? 0) + 1)
+    if (!marketplaceLimitReached && source !== 'all') marketplaceCounts.set(source, (marketplaceCounts.get(source) ?? 0) + 1)
+    if (selected.length >= limit) break
+  }
+
+  return [...selected, ...deferred].slice(0, limit)
+}
+
 function getHistoryRecommendationFallback(
   history: ScanRecord[],
   filter: RecommenderFilter,
@@ -584,37 +699,77 @@ function getHistoryRecommendationFallback(
 ): SimilarProduct[] {
   const seen = new Set<string>()
   const candidates: { product: SimilarProduct; score: number }[] = []
+  const scannedProducts = history.map(scanRecordToProduct).filter((product): product is SimilarProduct => Boolean(product))
 
   for (const [recordIndex, record] of history.entries()) {
     const recencyWeight = Math.max(0, 10 - recordIndex) * 14
-    const scannedProduct = scanRecordToProduct(record)
-    const sourceProducts = [
-      ...(scannedProduct ? [scannedProduct] : []),
-      ...(record.analysis.similarProducts ?? []),
-    ]
+    const sourceProducts = record.analysis.similarProducts ?? []
 
     for (const [productIndex, product] of sourceProducts.entries()) {
       const key = product.listingId ?? product.asin ?? product.listingUrl ?? product.productUrl ?? product.title
       if (!productMatchesMarketplace(product, marketplace)) continue
       if (!hasDisplayablePrice(product)) continue
+      if (productLooksLikeScannedItem(product, scannedProducts)) continue
       if (!key || seen.has(key)) continue
       seen.add(key)
-      const scannedProductBonus = productIndex === 0 && scannedProduct ? 10 : 0
       const nearbyAlternativeBonus = Math.max(0, 4 - productIndex) * 3
       candidates.push({
         product,
-        score: getFallbackProductRank(product, filter) + recencyWeight + scannedProductBonus + nearbyAlternativeBonus,
+        score: getFallbackProductRank(product, filter) + recencyWeight + nearbyAlternativeBonus,
       })
     }
   }
 
-  return candidates
+  return diversifyRecommendationProducts(candidates
     .sort((a, b) => b.score - a.score)
-    .map((candidate) => candidate.product)
-    .slice(0, 5)
+    .map((candidate) => candidate.product), history, filter, marketplace)
 }
 
-// ─── Mock Data (dev only) ─────────────────────────────────────────────────────
+function getPersonalizedRecommendationReasons(analysis: Analysis | null | undefined, product: SimilarProduct): string[] {
+  const reasons: string[] = []
+  const comparison = compareProductAgainstCurrent(analysis, product)
+  const rating = getNumericValue(product.rating)
+  const reviews = getNumericValue(product.reviewCount)
+
+  if (analysis && comparison.priceDiff !== null) {
+    if (comparison.priceDiff < 0) reasons.push(`${formatPriceDifference(comparison.priceDiff)} vs scan`)
+    else if (comparison.priceDiff === 0) reasons.push('Matches scan price')
+  }
+  if (rating !== null && rating >= 4.6) reasons.push('Strong rating')
+  if (reviews !== null && reviews >= 1000) reasons.push('Review depth')
+  if (product.marketplace) reasons.push(product.marketplace === 'ebay' ? 'eBay option' : 'Amazon option')
+
+  return reasons.slice(0, 3)
+}
+
+function formatShortDate(date: string): string {
+  const parsed = new Date(date)
+  if (Number.isNaN(parsed.getTime())) return date
+  return parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+function formatChartPrice(value?: number): string {
+  return typeof value === 'number' && Number.isFinite(value) ? `$${value.toFixed(2)}` : '--'
+}
+
+function getDistinctPriceCallouts(callouts: string[], insights: PriceInsight[]): string[] {
+  const seen = new Set<string>()
+  const normalized = [...callouts, ...insights.map((insight) => insight.label)]
+    .map((callout) => String(callout || '').trim())
+    .filter(Boolean)
+
+  return normalized.filter((callout) => {
+    const key = callout
+      .toLowerCase()
+      .replace(/\$\d+(?:\.\d{1,2})?/g, '$')
+      .replace(/\b\d+(?:\.\d+)?\b/g, '#')
+      .replace(/\s+/g, ' ')
+      .trim()
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  }).slice(0, 4)
+}
 
 const mockAnalysis: Analysis = {
   title: 'Hydro Flask 32 oz Water Bottle',
@@ -1015,6 +1170,7 @@ export function ProductRecommendationScroller({ analysis, products }: { analysis
           const hasRating = product.rating !== null && product.rating !== undefined && product.rating !== ''
           const reviewText = product.reviewCount ? ` · ${product.reviewCount.toLocaleString()} reviews` : ''
           const marketplaceLabel = product.marketplace === 'ebay' ? 'eBay listing' : 'Marketplace listing'
+          const reasons = getPersonalizedRecommendationReasons(analysis, product)
           return (
             <a
               key={product.listingId ?? product.asin ?? i}
@@ -1050,6 +1206,13 @@ export function ProductRecommendationScroller({ analysis, products }: { analysis
               <p className="similar-card-rating">
                 {hasRating ? `Rating ${product.rating}${reviewText}` : marketplaceLabel}
               </p>
+              {reasons.length > 0 && (
+                <div className="similar-card-reasons" aria-label="Why Nectar recommended this">
+                  {reasons.map((reason) => (
+                    <span key={reason}>{reason}</span>
+                  ))}
+                </div>
+              )}
             </a>
           )
         })}
@@ -1354,6 +1517,250 @@ function SmartRecommendationsSection({
 }
 
 // ─── Scan History Section ─────────────────────────────────────────────────────
+
+function DashboardSidebar({
+  activeTab,
+  onTabChange,
+}: {
+  activeTab: DashboardTab
+  onTabChange: (tab: DashboardTab) => void
+}) {
+  const tabs: { id: DashboardTab; label: string }[] = [
+    { id: 'home', label: 'Home' },
+    { id: 'trends', label: 'Price History' },
+  ]
+
+  return (
+    <aside className="dashboard-sidebar" aria-label="Dashboard tabs">
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          className={`dashboard-tab-btn dashboard-tab-btn--${tab.id} ${activeTab === tab.id ? 'dashboard-tab-btn--active' : ''}`}
+          onClick={() => onTabChange(tab.id)}
+          title={tab.label}
+          aria-label={tab.label}
+          aria-current={activeTab === tab.id ? 'page' : undefined}
+        >
+          <span>{tab.label}</span>
+        </button>
+      ))}
+    </aside>
+  )
+}
+
+function MiniPriceChart({ data }: { data: PriceIntelligence }) {
+  const width = 760
+  const height = 318
+  const padding = { top: 38, right: 42, bottom: 74, left: 64 }
+  const points = data.points.filter((point) => Number.isFinite(point.price))
+  const prices = points.map((point) => point.price)
+  const min = Math.min(...prices)
+  const max = Math.max(...prices)
+  const range = Math.max(1, max - min)
+  const xFor = (index: number) => padding.left + (index / Math.max(1, points.length - 1)) * (width - padding.left - padding.right)
+  const yFor = (price: number) => padding.top + ((max - price) / range) * (height - padding.top - padding.bottom)
+  const path = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${xFor(index).toFixed(2)} ${yFor(point.price).toFixed(2)}`).join(' ')
+  const annotationPriority = ['high', 'low', 'drop-watch', 'average', 'momentum']
+  const priorityFor = (type: string) => {
+    const index = annotationPriority.indexOf(type)
+    return index >= 0 ? index : annotationPriority.length
+  }
+  const placedAnnotations: Array<PriceInsight & {
+    x: number
+    y: number
+    labelX: number
+    labelY: number
+    anchor: 'start' | 'middle' | 'end'
+    stemY: number
+  }> = []
+
+  data.insights
+    .filter((insight) => insight.date && typeof insight.price === 'number')
+    .sort((a, b) => priorityFor(a.type) - priorityFor(b.type))
+    .forEach((insight) => {
+      const index = points.findIndex((point) => point.date === insight.date)
+      if (index < 0 || typeof insight.price !== 'number') return
+      const x = xFor(index)
+      const y = yFor(insight.price)
+      const tooClose = placedAnnotations.some((placed) => (
+        Math.abs(placed.x - x) < 118 && Math.abs(placed.y - y) < 58
+      ))
+      if (tooClose || placedAnnotations.length >= 3) return
+
+      const isRightEdge = x > width - 170
+      const isLeftEdge = x < padding.left + 120
+      const isBottom = y > height - padding.bottom - 34
+      const labelX = isRightEdge ? x - 12 : isLeftEdge ? x + 16 : x
+      const labelY = isBottom ? y - 44 : Math.max(18, y - 26)
+      placedAnnotations.push({
+        ...insight,
+        x,
+        y,
+        labelX,
+        labelY,
+        anchor: isRightEdge ? 'end' : isLeftEdge ? 'start' : 'middle',
+        stemY: isBottom ? y - 14 : labelY + 8,
+      })
+    })
+
+  return (
+    <div className="price-chart-shell">
+      <svg viewBox={`0 0 ${width} ${height}`} className="price-chart" role="img" aria-label="Price trend chart">
+        <line x1={padding.left} y1={padding.top} x2={padding.left} y2={height - padding.bottom} className="price-chart-axis" />
+        <line x1={padding.left} y1={height - padding.bottom} x2={width - padding.right} y2={height - padding.bottom} className="price-chart-axis" />
+        {[0, 0.5, 1].map((step) => {
+          const y = padding.top + step * (height - padding.top - padding.bottom)
+          const value = max - step * range
+          return (
+            <g key={step}>
+              <line x1={padding.left} y1={y} x2={width - padding.right} y2={y} className="price-chart-grid" />
+              <text x={padding.left - 9} y={y + 4} textAnchor="end" className="price-chart-label">{formatChartPrice(value)}</text>
+            </g>
+          )
+        })}
+        <path d={path} className="price-chart-line" />
+        {points.map((point, index) => (
+          <circle key={`${point.date}-${index}`} cx={xFor(index)} cy={yFor(point.price)} r={index === points.length - 1 ? 5 : 2.2} className="price-chart-dot" />
+        ))}
+        {placedAnnotations.map((insight) => {
+          return (
+            <g key={`${insight.type}-${insight.date}`} className="price-chart-annotation">
+              <line x1={insight.x} y1={insight.y - 8} x2={insight.x} y2={insight.stemY} />
+              <circle cx={insight.x} cy={insight.y} r={5.5} />
+              <text x={insight.labelX} y={insight.labelY} textAnchor={insight.anchor}>{insight.label}</text>
+            </g>
+          )
+        })}
+        {points[0] && <text x={padding.left} y={height - 28} className="price-chart-date-label">{formatShortDate(points[0].date)}</text>}
+        {points[points.length - 1] && <text x={width - padding.right} y={height - 28} textAnchor="end" className="price-chart-date-label">{formatShortDate(points[points.length - 1].date)}</text>}
+      </svg>
+    </div>
+  )
+}
+
+function PriceIntelligencePanel({
+  scanHistory,
+  selectedScanId,
+  isLoading,
+  onSelectScan,
+  onGenerate,
+}: {
+  scanHistory: ScanRecord[]
+  selectedScanId: string
+  isLoading: boolean
+  onSelectScan: (id: string) => void
+  onGenerate: (record: ScanRecord) => void
+}) {
+  const selectedScan = scanHistory.find((record) => record.id === selectedScanId) ?? scanHistory[0]
+  const intelligence = selectedScan?.priceIntelligence
+  const trendPrices = intelligence?.points.map((point) => point.price).filter((price) => Number.isFinite(price)) ?? []
+  const firstTrendPrice = trendPrices[0]
+  const currentTrendPrice = trendPrices[trendPrices.length - 1]
+  const trendLow = trendPrices.length ? Math.min(...trendPrices) : null
+  const trendHigh = trendPrices.length ? Math.max(...trendPrices) : null
+  const trendAverage = trendPrices.length ? trendPrices.reduce((sum, price) => sum + price, 0) / trendPrices.length : null
+  const trendMove = firstTrendPrice != null && currentTrendPrice != null ? currentTrendPrice - firstTrendPrice : null
+  const selectedAnalysis = selectedScan?.analysis
+  const historyMetrics = [
+    { label: 'Current', value: selectedAnalysis?.price ?? formatChartPrice(currentTrendPrice) },
+    { label: 'Lowest', value: formatChartPrice(trendLow ?? undefined) },
+    { label: 'Highest', value: formatChartPrice(trendHigh ?? undefined) },
+    { label: 'Average', value: formatChartPrice(trendAverage ?? undefined) },
+    { label: '30-day move', value: trendMove == null ? '--' : `${trendMove >= 0 ? '+' : '-'}$${Math.abs(trendMove).toFixed(2)}` },
+    { label: 'Trust score', value: selectedAnalysis?.overallScore != null ? `${selectedAnalysis.overallScore}/100` : '--' },
+    { label: 'Rating', value: selectedAnalysis?.rating != null ? `${selectedAnalysis.rating}/5` : '--' },
+    { label: 'Reviews', value: selectedAnalysis?.reviewCount != null ? selectedAnalysis.reviewCount.toLocaleString() : '--' },
+  ]
+
+  useEffect(() => {
+    if (selectedScan && !selectedScan.priceIntelligence && !isLoading) onGenerate(selectedScan)
+  }, [selectedScan?.id])
+
+  return (
+    <section className="dashboard-tab-panel price-panel">
+      <div className="price-panel-header">
+        <div>
+          <h2>Trend / Price Intelligence</h2>
+          <p>Select a scanned product to inspect estimated trajectory and AI price timing.</p>
+        </div>
+        {selectedScan && (
+          <button type="button" className="tool-clear-btn" onClick={() => onGenerate(selectedScan)} disabled={isLoading}>
+            Refresh
+          </button>
+        )}
+      </div>
+      {scanHistory.length === 0 ? (
+        <div className="tool-empty price-empty">
+          <strong>No scans yet.</strong>
+          <span>Scan a product to unlock trend intelligence.</span>
+        </div>
+      ) : (
+        <div className="price-panel-grid">
+          <div className="price-product-list" role="listbox" aria-label="Products with price charts">
+            {scanHistory.map((record) => (
+              <button
+                key={record.id}
+                type="button"
+                className={`price-product-option ${record.id === selectedScan?.id ? 'price-product-option--active' : ''}`}
+                onClick={() => onSelectScan(record.id)}
+                role="option"
+                aria-selected={record.id === selectedScan?.id}
+              >
+                <span>{record.analysis.title ?? 'Untitled product'}</span>
+                <strong>{record.analysis.price ?? 'No price'}</strong>
+              </button>
+            ))}
+          </div>
+          <div className="price-detail">
+            <div className="price-current-card">
+              <div>
+                <span>Current scan</span>
+                <h3>{selectedScan?.analysis.title ?? 'Select a product'}</h3>
+              </div>
+              <strong>{selectedScan?.analysis.price ?? '--'}</strong>
+            </div>
+            <div className="price-metric-grid" aria-label="Price history metrics">
+              {historyMetrics.map((metric) => (
+                <div key={metric.label} className="price-metric-card">
+                  <span>{metric.label}</span>
+                  <strong>{metric.value}</strong>
+                </div>
+              ))}
+            </div>
+            {isLoading && !intelligence ? (
+              <div className="price-loading">
+                <SkeletonLine height={220} />
+                <SkeletonLine width="70%" />
+              </div>
+            ) : intelligence ? (
+              <>
+                <MiniPriceChart data={intelligence} />
+                <div className="price-insight-row">
+                  <div className={`price-drop-call ${intelligence.likelyToDrop ? 'price-drop-call--wait' : 'price-drop-call--buy'}`}>
+                    <span>{intelligence.likelyToDrop ? 'Likely to drop' : 'Likely stable'}</span>
+                    <strong>{Math.round((intelligence.confidence || 0) * 100)}% confidence</strong>
+                  </div>
+                  <p>{intelligence.narrative}</p>
+                </div>
+                <div className="price-callouts">
+                  {getDistinctPriceCallouts(intelligence.callouts, intelligence.insights).map((callout) => (
+                    <span key={callout}>{callout}</span>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="tool-empty price-empty">
+                <strong>Trend intelligence is ready to generate.</strong>
+                <span>Select refresh to build a chart for this product.</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
 
 function ScanHistorySection({
   scanHistory,
@@ -1871,6 +2278,7 @@ export default function App() {
   const [isExpanded, setIsExpanded] = useState(() => (
     typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('dashboard')
   ))
+  const [dashboardTab, setDashboardTab] = useState<DashboardTab>('home')
 
   const handleToggleExpand = async () => {
     if (!window.electronAPI?.toggleExpand) {
@@ -1897,6 +2305,8 @@ export default function App() {
   const [recommendationMessage, setRecommendationMessage] = useState('')
   const [recommendationsLoading, setRecommendationsLoading] = useState(false)
   const [recommendationsFading, setRecommendationsFading] = useState(false)
+  const [selectedPriceScanId, setSelectedPriceScanId] = useState('')
+  const [priceTrendLoadingId, setPriceTrendLoadingId] = useState('')
 
   const scanAbortRef = useRef<AbortController | null>(null)
   const scanIdRef = useRef<string | null>(null)
@@ -1977,7 +2387,12 @@ export default function App() {
         setRecommendationMessage(data.message || 'Sorry, I cannot help you with that')
         return
       }
-      const apiProducts = Array.isArray(data.products) ? data.products.slice(0, 5) : []
+      const apiProducts = diversifyRecommendationProducts(
+        Array.isArray(data.products) ? data.products : [],
+        historyForRequest,
+        filterForRequest,
+        marketplaceForRequest,
+      )
       if (apiProducts.length) {
         setRecommendedProducts(apiProducts)
         setRecommendationMessage('')
@@ -1985,15 +2400,8 @@ export default function App() {
       }
       // API returned no products
       if (isExplicitRefinement) {
-        setRecommendationMessage(
-          previousProducts.length
-            ? 'No fresh matches found. Showing previous picks.'
-            : fallbackProducts.length
-              ? 'No fresh matches found. Showing recent-history picks.'
-              : 'No products found. Try a broader phrase or different filter.'
-        )
-        if (previousProducts.length) setRecommendedProducts(previousProducts)
-        else if (fallbackProducts.length) setRecommendedProducts(fallbackProducts)
+        setRecommendationMessage('No fresh marketplace matches found for that request. Try a broader phrase or a different marketplace.')
+        setRecommendedProducts([])
         return
       }
       setRecommendedProducts(fallbackProducts)
@@ -2002,15 +2410,8 @@ export default function App() {
       if (!isLatestRecommendationRequest()) return
       console.error(err)
       if (isExplicitRefinement) {
-        setRecommendationMessage(
-          previousProducts.length
-            ? 'Search timed out. Showing previous picks.'
-            : fallbackProducts.length
-              ? 'Search timed out. Showing recent-history picks.'
-              : 'Search timed out. Try again or broaden the prompt.'
-        )
-        if (previousProducts.length) setRecommendedProducts(previousProducts)
-        else if (fallbackProducts.length) setRecommendedProducts(fallbackProducts)
+        setRecommendationMessage('Search timed out before finding matching products. Try again, broaden the prompt, or switch marketplaces.')
+        setRecommendedProducts([])
       } else {
         setRecommendedProducts(fallbackProducts)
         setRecommendationMessage('')
@@ -2044,6 +2445,13 @@ export default function App() {
       scanAbortRef.current?.abort()
     }
   }, [])
+
+  useEffect(() => {
+    if (!selectedPriceScanId && scanHistory[0]) setSelectedPriceScanId(scanHistory[0].id)
+    if (selectedPriceScanId && !scanHistory.some((record) => record.id === selectedPriceScanId)) {
+      setSelectedPriceScanId(scanHistory[0]?.id ?? '')
+    }
+  }, [scanHistory, selectedPriceScanId])
 
   useEffect(() => {
     // Use pendingHistoryRef when a fresh scan just completed so recommendations
@@ -2207,6 +2615,7 @@ export default function App() {
       setRecommendationImageDataUrl('')
       setRecommendationImageName('')
       setRecommendationMessage('')
+      setSelectedPriceScanId(record.id)
       // FIX: store the fresh history so the useEffect picks it up correctly,
       // then let the effect fire naturally via setScanHistory (no manual fetch call,
       // no skip flag, no stale fallback assignment).
@@ -2420,6 +2829,41 @@ export default function App() {
     return <CompareView records={compareRecords} onBack={() => setView('home')} />
   }
 
+  const handleGeneratePriceTrend = async (record: ScanRecord) => {
+    if (!record || priceTrendLoadingId === record.id) return
+    setPriceTrendLoadingId(record.id)
+    try {
+      const response = await fetch(`${API_BASE}/price-trend`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Nectar-Secret': NECTAR_SECRET },
+        body: JSON.stringify({ scan: record }),
+      })
+      const data: PriceTrendResponse = await response.json()
+      if (!response.ok || !data.points?.length) return
+      const priceIntelligence: PriceIntelligence = {
+        points: data.points,
+        insights: data.insights ?? [],
+        narrative: data.narrative ?? 'Price trend intelligence is available for this scan.',
+        likelyToDrop: Boolean(data.likelyToDrop),
+        confidence: data.confidence ?? 0,
+        callouts: data.callouts ?? [],
+        generatedAt: new Date().toISOString(),
+      }
+      const applyTrend = (item: ScanRecord | null) => item?.id === record.id ? { ...item, priceIntelligence } : item
+      const nextHistory = scanHistory.map((item) => item.id === record.id ? { ...item, priceIntelligence } : item)
+      setScanHistory(nextHistory)
+      setCurrentSavedScan((item) => applyTrend(item))
+      setPreviousSavedScan((item) => applyTrend(item))
+      await storageSet({
+        [SCAN_HISTORY_KEY]: nextHistory,
+        ...(currentSavedScan?.id === record.id ? { [CURRENT_SCAN_KEY]: { ...currentSavedScan, priceIntelligence } } : {}),
+        ...(previousSavedScan?.id === record.id ? { [PREVIOUS_SCAN_KEY]: { ...previousSavedScan, priceIntelligence } } : {}),
+      })
+    } finally {
+      setPriceTrendLoadingId('')
+    }
+  }
+
   const recommendationsSection = (
     <SmartRecommendationsSection
       key={`recommendations-${loading ? 'loading' : hasScanned ? 'post-scan' : 'launch'}`}
@@ -2496,7 +2940,7 @@ export default function App() {
     </SectionCard>
   )
 
-  const dashboardLayout = (
+  const homeDashboardLayout = (
     <>
       <div className="dashboard-column dashboard-column--primary">
         <div className="cascade-item cascade-delay-1">{historySection}</div>
@@ -2524,6 +2968,21 @@ export default function App() {
           </div>
         )}
       </div>
+    </>
+  )
+
+  const dashboardLayout = (
+    <>
+      {dashboardTab === 'home' && homeDashboardLayout}
+      {dashboardTab === 'trends' && (
+        <PriceIntelligencePanel
+          scanHistory={scanHistory}
+          selectedScanId={selectedPriceScanId}
+          isLoading={Boolean(priceTrendLoadingId)}
+          onSelectScan={setSelectedPriceScanId}
+          onGenerate={handleGeneratePriceTrend}
+        />
+      )}
     </>
   )
 
@@ -2563,6 +3022,7 @@ export default function App() {
             <p>SMART PRODUCT ANALYZER</p>
           </div>
         </div>
+        {isExpanded && <DashboardSidebar activeTab={dashboardTab} onTabChange={setDashboardTab} />}
         <div className={`window-controls ${windowControlsVisible ? 'visible' : ''}`}>
           <button className="window-control window-control-expand" onClick={handleToggleExpand} title={isExpanded ? 'Collapse' : 'Expand to dashboard'} />
           <button className="window-control window-control-minimize" onClick={() => window.electronAPI?.minimizeWindow?.()} title="Minimize" />
@@ -2570,7 +3030,10 @@ export default function App() {
         </div>
       </header>
 
-      <div className={`content${isExpanded ? ' content--dashboard' : ''}${isExpanded && hasScanned ? ' content--dashboard-results' : ''}`} key="home-view">
+      <div
+        className={`content${isExpanded ? ' content--dashboard' : ''}${isExpanded && hasScanned && dashboardTab === 'home' ? ' content--dashboard-results' : ''}${isExpanded && dashboardTab !== 'home' ? ' content--dashboard-tool' : ''}`}
+        key="home-view"
+      >
         {isExpanded ? dashboardLayout : popupLayout}
       </div>
     </AutoSizingWindow>

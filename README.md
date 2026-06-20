@@ -42,43 +42,60 @@ config:
     fontFamily: '''Source Code Pro Variable'', monospace'
 ---
 flowchart LR
+ subgraph USER_LAYER["User + Browser"]
+        USER(["Amazon / eBay product page"])
+  end
  subgraph ELECTRON["Electron Shell"]
-        E1["Frameless glass overlay\nalways-on-top · IPC resize"]
-        E2["URL detection\nAppleScript · PS · xdotool"]
+        E1["Frameless glass overlay\nalways-on-top + IPC resize"]
+        E2["URL detection\nAppleScript + PowerShell + xdotool"]
   end
- subgraph REACT["React + TypeScript"]
-        R1["Scan · Results · Compare"]
-        R2["Recommendations · History"]
+ subgraph REACT["React + TypeScript Dashboard"]
+        R1["Home\nScan + results + compare"]
+        R2["Smart Recommendations\nGemini-planned search terms + filters"]
+        R3["Price History\nEstimated trend chart + AI narrative"]
+        R4["Scan History\nSaved products + comparison context"]
   end
- subgraph API["FastAPI · Cloud Run · Secret Manager"]
-        A1["/current-url · /cancel-scan"]
-        A2["/explain-score\n/recommendations"]
+ subgraph API["FastAPI on Cloud Run + Secret Manager"]
+        A1["/current-url + /cancel-scan"]
+        A2["/explain-score"]
+        A3["/recommendations"]
+        A4["/price-trend"]
   end
- subgraph PIPELINE["Analysis Pipeline"]
-        P1["Marketplace adapter registry\nAmazon · eBay"]
-        P2["Fetch · normalise\nKeyword inference"]
+ subgraph PIPELINE["Marketplace + Analysis Pipeline"]
+        P1["Marketplace adapter registry\nAmazon + eBay"]
+        CANOPY["Canopy API\nAmazon GraphQL"]
+        SCRAPER["ScraperAPI\neBay structured search"]
+        P2["Fetch + normalize\nKeyword inference + dedupe"]
   end
- subgraph NLP["NLP Engine"]
-        N1["Review integrity\nVADER scoring · flags\n· star ↔ text match\n· verified purchases"]
-        N2["Reputation scoring\nBayesian blend · prior = 68, prior × (1 − conf) + signal × conf"]
-        N3["WordNet lemmatization · TF-IDF scoring + boost words · bigrams · negation pairs"]
-        N4["Overall score %'s\nRating/Integrity/Rep\nAmazon 40/35/25\neBay  30/25/45"]
+ subgraph NLP["NLP + Scoring Engine"]
+        N1["Review integrity\nVADER + flags + star/text match\nverified purchases"]
+        N2["Reputation scoring\nBayesian blend\nprior = 68"]
+        N3["WordNet + TF-IDF\nboost words + bigrams + negation pairs"]
+        N4["Overall score weights\nAmazon 40/35/25\neBay 30/25/45"]
   end
- subgraph AILAY["Gemini AI · gemini-2.5-flash"]
-        G1["Verdict · BUY / COMPARE / SKIP"]
-        G2["Score explainer\nRec query builder"]
+ subgraph GEMINI["Gemini AI"]
+        G1["Verdict generation\nBUY / COMPARE / SKIP"]
+        G2["Score explainer\nmetric-specific rationale"]
+        G3["Recommendation planner\nquery + 3-5 category-locked search terms"]
+        G4["Price trend narrative\ntrajectory + likely-to-drop call"]
   end
-    USER(["Amazon / eBay"]) --> E1
-    E1 --> R1
+    USER --> E1 --> R1
+    E2 --> R1
+    R1 -- "HTTP + X-Nectar-Secret" --> A1
+    R1 --> R4
+    R4 --> R2
+    R2 -- "filter + prompt + history" --> A3
+    R3 -- "selected scan" --> A4
     A1 --> P1
-    P1 --> N1 & CANOPY["Canopy API\nAmazon GraphQL"] & SCRAPER["ScraperAPI\neBay structured"]
-    N1 --> G1
-    G1 -- verdict · scores --> R1
-    N2 --> PLACES["Google Places\nBrand lookup · Review\nsignals · Insights"]
-    G1 --> G2
-    G2 --> GAPI["Gemini API\ngemini-2.5-flash ·  flash lite fallback · context + snippets"]
-    R1 -- "HTTP · X-Nectar-Secret" --> A1
-    R2 --> A2
+    A3 --> G3 --> P1
+    A4 --> G4 --> R3
+    P1 --> CANOPY --> P2
+    P1 --> SCRAPER --> P2
+    P2 --> N1 --> N4 --> G1 --> R1
+    P2 --> N2 --> N4
+    P2 --> N3 --> N4
+    A2 --> G2 --> R1
+    P2 -- "ranked, deduped products" --> A3 --> R2
 ```
 
 # How to Use
@@ -118,7 +135,7 @@ npm run build
 ### Use Hosted Backend (Requires a secret password): 
 The backend is already deployed on Google Cloud!
 1. Create file frontend/.env.production
-2. Set VITE_API_URL=https://nectar-gdg-93066440894.us-west1.run.app and VITE_NECTAR_SECRET to the password\
+2. Set VITE_API_URL=https://nectar-gdg-93066440894.us-west1.run.app and NECTAR_API_SECRET to the password\
    (contact maintainers for access)
 3. Run electron:
 ```
@@ -137,10 +154,12 @@ CANOPY_API_KEY=your_api_key_here
 GEMINI_API_KEY=your_api_key_here
 GOOGLE_PLACES_API_KEY=your_api_key_here
 SCRAPERAPI_KEY=your_api_key_here
+NECTAR_API_SECRET=your_shared_secret_here
 ```
 2. Set frontend/.env.production to:
 ```powershell
 VITE_API_URL=http://127.0.0.1:8000
+NECTAR_API_SECRET=your_shared_secret_here
 ```
 3. Rebuild frontend:
 ```powershell

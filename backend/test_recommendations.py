@@ -366,6 +366,123 @@ class RecommendationTests(unittest.TestCase):
         self.assertEqual(fake_amazon.calls, ["running shoes"])
         self.assertEqual(fake_ebay.calls, [])
 
+    def test_explicit_laptop_prompt_does_not_search_history_terms(self):
+        laptop_query = "durable but cheap laptops for students"
+        fake_amazon = FakeAdapter(
+            "amazon",
+            {
+                laptop_query: [],
+                "Hydro Flask Water Bottle Insulated": [
+                    {
+                        "title": "Hydro Flask Water Bottle Insulated",
+                        "asin": "B0BOTTLEHISTORY",
+                        "price": {"display": "$49.95", "value": 49.95},
+                        "rating": 4.6,
+                        "ratingsTotal": 8343,
+                        "brand": "Hydro Flask",
+                    }
+                ],
+            },
+        )
+        fake_ebay = FakeAdapter("ebay", {})
+        history = [
+            {
+                "analysis": {
+                    "title": "Hydro Flask Water Bottle Insulated",
+                    "productKeyword": "Hydro Flask Water Bottle Insulated",
+                    "brand": "Hydro Flask",
+                    "price": "$49.95",
+                }
+            }
+        ]
+
+        with (
+            patch.object(app_main, "MARKETPLACE_ADAPTERS", [fake_amazon, fake_ebay]),
+            patch.object(app_main, "NECTAR_SECRET", ""),
+        ):
+            response = TestClient(app_main.app).post(
+                "/recommendations",
+                json={"history": history, "filter": "overall", "prompt": laptop_query, "marketplace": "all"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["products"], [])
+        self.assertEqual(fake_amazon.calls[0], laptop_query)
+        self.assertEqual(fake_ebay.calls[0], laptop_query)
+        self.assertNotIn("Hydro Flask Water Bottle Insulated", fake_amazon.calls)
+        self.assertNotIn("Hydro Flask Water Bottle Insulated", fake_ebay.calls)
+        self.assertGreaterEqual(len(fake_amazon.calls), 2)
+
+    def test_explicit_laptop_prompt_rejects_unrelated_marketplace_results(self):
+        fake_amazon = FakeAdapter(
+            "amazon",
+            [
+                {
+                    "title": "Hydro Flask Water Bottle Insulated Stainless Steel",
+                    "asin": "B0WRONGBOTTLE",
+                    "price": {"display": "$49.95", "value": 49.95},
+                    "rating": 4.6,
+                    "ratingsTotal": 8343,
+                    "brand": "Hydro Flask",
+                }
+            ],
+        )
+        fake_ebay = FakeAdapter("ebay", [])
+
+        with (
+            patch.object(app_main, "MARKETPLACE_ADAPTERS", [fake_amazon, fake_ebay]),
+            patch.object(app_main, "NECTAR_SECRET", ""),
+        ):
+            response = TestClient(app_main.app).post(
+                "/recommendations",
+                json={"history": [], "filter": "overall", "prompt": "most popular laptops for students"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["products"], [])
+
+    def test_recommendations_use_gemini_search_terms_for_refined_prompts(self):
+        fake_amazon = FakeAdapter(
+            "amazon",
+            {
+                "cheap student laptops": [],
+                "student laptop durable affordable": [
+                    {
+                        "title": "HP Pavilion Student Laptop 16GB RAM 512GB SSD",
+                        "asin": "B0SMARTPLAN1",
+                        "price": {"display": "$489.99", "value": 489.99},
+                        "rating": 4.5,
+                        "ratingsTotal": 2400,
+                        "brand": "HP",
+                    }
+                ],
+            },
+        )
+        fake_ebay = FakeAdapter("ebay", {})
+
+        with (
+            patch.object(app_main, "MARKETPLACE_ADAPTERS", [fake_amazon, fake_ebay]),
+            patch.object(app_main, "NECTAR_SECRET", ""),
+            patch.object(
+                app_main,
+                "build_recommendation_query",
+                return_value={
+                    "query": "cheap student laptops",
+                    "searchTerms": ["cheap student laptops", "student laptop durable affordable"],
+                    "reason": "Gemini planned a durable student laptop search.",
+                },
+            ),
+        ):
+            response = TestClient(app_main.app).post(
+                "/recommendations",
+                json={"history": [], "filter": "overall", "prompt": "best durable but cheap laptops for students"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        products = response.json()["products"]
+        self.assertEqual([product["listingId"] for product in products], ["B0SMARTPLAN1"])
+        self.assertIn("student laptop durable affordable", fake_amazon.calls)
+
     def test_recommendations_all_marketplace_can_include_both_sources(self):
         amazon_results = [
             {
@@ -441,6 +558,53 @@ class RecommendationTests(unittest.TestCase):
         self.assertEqual([product["marketplace"] for product in amazon_products], ["amazon"])
         self.assertEqual([product["marketplace"] for product in ebay_products], ["ebay"])
 
+    def test_recommendations_skip_exact_scan_history_repeats(self):
+        fake_amazon = FakeAdapter(
+            "amazon",
+            [
+                {
+                    "title": "Hydro Flask Water Bottle 32 Oz Shale Gray",
+                    "asin": "B0SCANNEDITEM",
+                    "price": {"display": "$49.95", "value": 49.95},
+                    "rating": 4.6,
+                    "ratingsTotal": 8343,
+                    "brand": "Hydro Flask",
+                },
+                {
+                    "title": "Owala FreeSip Insulated Stainless Steel Water Bottle 32 Oz",
+                    "asin": "B0FRESHITEM",
+                    "price": {"display": "$29.99", "value": 29.99},
+                    "rating": 4.7,
+                    "ratingsTotal": 12000,
+                    "brand": "Owala",
+                },
+            ],
+        )
+        fake_ebay = FakeAdapter("ebay", [])
+        history = [
+            {
+                "analysis": {
+                    "title": "Hydro Flask Water Bottle 32 Oz Shale Gray",
+                    "asin": "B0SCANNEDITEM",
+                    "brand": "Hydro Flask",
+                    "price": "$49.95",
+                    "marketplace": "amazon",
+                }
+            }
+        ]
+
+        with (
+            patch.object(app_main, "MARKETPLACE_ADAPTERS", [fake_amazon, fake_ebay]),
+            patch.object(app_main, "NECTAR_SECRET", ""),
+        ):
+            response = TestClient(app_main.app).post(
+                "/recommendations",
+                json={"history": history, "filter": "overall", "prompt": "best current water bottles"},
+            )
+
+        products = response.json()["products"]
+        self.assertEqual([product["listingId"] for product in products], ["B0FRESHITEM"])
+
     def test_recent_history_products_win_over_stale_fast_history_terms(self):
         heartleaf_results = [
             {
@@ -504,13 +668,9 @@ class RecommendationTests(unittest.TestCase):
         self.assertEqual(len(products), 5)
         titles = [product["title"] for product in products]
         self.assertTrue(any("Heartleaf" in title for title in titles))
-        self.assertTrue(any("Headphones" in title for title in titles))
-        self.assertLess(
-            min(index for index, title in enumerate(titles) if "Heartleaf" in title),
-            min(index for index, title in enumerate(titles) if "Headphones" in title),
-        )
+        self.assertFalse(any("Headphones" in title for title in titles))
         self.assertIn("Heartleaf Pore Control Cleansing Oil", fake_ebay.calls)
-        self.assertIn("headphones", fake_ebay.calls)
+        self.assertNotIn("headphones", fake_ebay.calls)
 
     def test_similar_products_cleaner_keeps_valid_adapter_results(self):
         cleaned = clean_similar_products(
@@ -525,6 +685,33 @@ class RecommendationTests(unittest.TestCase):
         )
 
         self.assertEqual([item["asin"] for item in cleaned], ["B0EARBUDS1"])
+
+    def test_price_trend_endpoint_returns_points_and_ai_call(self):
+        with (
+            patch.object(app_main, "NECTAR_SECRET", ""),
+            patch.object(
+                app_main,
+                "build_price_trend_narrative",
+                return_value={
+                    "narrative": "Stable with one recent dip.",
+                    "likelyToDrop": False,
+                    "confidence": 0.62,
+                    "callouts": ["Lowest in 30 days"],
+                },
+            ) as trend_builder,
+        ):
+            response = TestClient(app_main.app).post(
+                "/price-trend",
+                json={"analysis": {"title": "Hydro Flask", "price": "$49.95"}},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(len(body["points"]), 30)
+        self.assertTrue(body["insights"])
+        self.assertEqual(body["narrative"], "Stable with one recent dip.")
+        trend_builder.assert_called_once()
 
 
 if __name__ == "__main__":
