@@ -6,7 +6,7 @@ https://github.com/user-attachments/assets/f8b34e39-cb66-4d10-819a-a570b8969f3d
 
 
 
-E-commerce lacks trustworthy product intelligence, with consumers losing billions to misleading/inflated reviews and poor purchasing decisions every year. That's why we built Nectar, a desktop overlay application that helps consumers make smarter online purchasing decisions by analyzing Amazon and eBay products in real time. The app combines review authenticity detection, AI review summaries, personalized recommendations, brand reputation analysis, and product comparison tools to identify trustworthy products and flag potentially misleading listings. By increasing transparency in e-commerce, Nectar reduces decision fatigue and empowers users to shop with greater confidence and accuracy.
+E-commerce lacks trustworthy product intelligence, with consumers losing billions to misleading/inflated reviews and poor purchasing decisions every year. That's why we built Nectar, a desktop overlay application that helps consumers make smarter online purchasing decisions by analyzing Amazon and eBay products in real time. The app combines review authenticity detection, AI review summaries/product verdicts, personalized recommendations, brand reputation analysis, estimated price trends, and product comparison tools to identify trustworthy products and flag potentially misleading listings. By increasing transparency in e-commerce, Nectar reduces decision fatigue and empowers users to shop with greater confidence and accuracy.
 
 ## Features
 - AI-powered product analysis
@@ -15,6 +15,7 @@ E-commerce lacks trustworthy product intelligence, with consumers losing billion
 - Personalized product recommendations
 - Product comparison tools
 - Scan history and recommendation memory
+- Estimated price trends and AI price-timing metrics
 - Amazon and eBay support
 
 ## Technologies Used
@@ -25,7 +26,7 @@ E-commerce lacks trustworthy product intelligence, with consumers losing billion
 - NLP/Scoring: NLTK --> VADER, custom review-integrity logic
 - Marketplace Data: Canopy API, ScraperAPI
 - Reputation Data: Google Places API
-- Storage: Browser localStorage for scan history and recommendation memory
+- Storage: Browser localStorage for scan history/recommendations and price intelligence
 - Deployment: Docker, Google Cloud Run, Cloud Build
 
 ---
