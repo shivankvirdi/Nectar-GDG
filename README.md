@@ -148,7 +148,7 @@ npm run electron:start
 ```
 
 ### Use Local Backend
-1. Create .env in ROOT directory, follow .env.example, and add keys ('Nectar-GDG/.env')\
+1. Follow .env.example & add keys ('Nectar-GDG/.env')\
 2. Set frontend/.env.production to:
 ```powershell
 VITE_API_URL=http://127.0.0.1:8000
