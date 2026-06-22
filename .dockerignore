@@ -12,3 +12,5 @@ frontend/dist/
 *.log
 .aider*
 .DS_Store
+
+frontend/.env.production

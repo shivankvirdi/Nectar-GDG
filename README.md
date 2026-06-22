@@ -136,8 +136,12 @@ npm run build
 ### Use Hosted Backend (Requires a secret password): 
 The backend is already deployed on Google Cloud!
 1. Create file frontend/.env.production
-2. Set VITE_API_URL=https://nectar-gdg-93066440894.us-west1.run.app and NECTAR_API_SECRET to the password\
-   (contact maintainers for access)
+2.
+``` 
+VITE_API_URL=https://nectar-gdg-93066440894.us-west1.run.app
+NECTAR_API_SECRET=...
+#contact maintainers for password access
+```
 3. Run electron:
 ```
 cd frontend
@@ -145,18 +149,12 @@ npm run electron:start
 ```
 
 ### Use Local Backend
-1. Create .env in ROOT directory and add keys ('Nectar-GDG/.env')\
+1. Create .env in ROOT directory, follow .env.example, and add keys ('Nectar-GDG/.env')\
 https://www.canopyapi.co/ (GraphQL API)\
 https://www.scraperapi.com/ \
 https://aistudio.google.com/app/api-keys \
 https://console.cloud.google.com/marketplace/product/google/places.googleapis.com
-```
-CANOPY_API_KEY=your_api_key_here
-GEMINI_API_KEY=your_api_key_here
-GOOGLE_PLACES_API_KEY=your_api_key_here
-SCRAPERAPI_KEY=your_api_key_here
-NECTAR_API_SECRET=your_shared_secret_here
-```
+
 2. Set frontend/.env.production to:
 ```powershell
 VITE_API_URL=http://127.0.0.1:8000
