@@ -318,11 +318,18 @@ def _numeric_count(value: Any) -> int:
 def _availability_text(item: dict[str, Any]) -> str:
     fields = [
         item.get("availability"),
+        item.get("availability_message"),
+        item.get("availabilityMessage"),
+        item.get("availabilityText"),
         item.get("availabilityStatus"),
         item.get("stock"),
+        item.get("stock_status"),
         item.get("stockStatus"),
+        item.get("status"),
         item.get("condition"),
         item.get("title"),
+        item.get("name"),
+        item.get("product_title"),
     ]
     return " ".join(str(field or "") for field in fields).lower()
 
@@ -390,7 +397,15 @@ def _normalize_recommendation_product(item: dict[str, Any], adapter) -> dict[str
         "marketplace": adapter.name,
         "brand": item.get("brand") or item.get("seller_name") or item.get("store_name") or _infer_brand_from_title(title),
         "rating": item.get("rating"),
-        "reviewCount": item.get("ratingsTotal") or item.get("reviewCount"),
+        "reviewCount": (
+            item.get("ratingsTotal")
+            or item.get("ratings_total")
+            or item.get("ratingCount")
+            or item.get("rating_count")
+            or item.get("reviewCount")
+            or item.get("review_count")
+            or item.get("reviews")
+        ),
         "price": price_display,
         "priceValue": price_value,
         "isPrime": item.get("isPrime"),
@@ -593,8 +608,8 @@ def _ordered_recommendation_adapters(prompt: str, preferred_marketplace: str):
         return sorted(
             adapters,
             key=lambda adapter: (
-                0 if adapter.name == "amazon" else 1,
                 0 if adapter.name == preferred_marketplace else 1,
+                0 if adapter.name == "amazon" else 1,
             ),
         )
     return sorted(

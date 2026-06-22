@@ -43,6 +43,10 @@ BRAND_HINTS = {
 }
 
 
+def _scraperapi_key() -> str:
+    return os.getenv("SCRAPERAPI_KEY") or SCRAPERAPI_KEY or ""
+
+
 def _ensure_dict(value, fallback: dict | None = None) -> dict:
     """Safely coerce *value* to a dict."""
     if fallback is None:
@@ -235,7 +239,8 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
     def fetch_product_profile(self, listing_id: str) -> dict:
         print(f"[eBay/ScraperAPI] Fetching product for item ID: {listing_id}")
 
-        if not SCRAPERAPI_KEY:
+        api_key = _scraperapi_key()
+        if not api_key:
             raise RuntimeError("Missing SCRAPERAPI_KEY environment variable.")
 
         session = _make_session()
@@ -246,7 +251,7 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
                 print(f"[eBay/ScraperAPI] Attempt {attempt} for {listing_id}")
                 resp = session.get(
                     PRODUCT_URL,
-                    params={"api_key": SCRAPERAPI_KEY, "product_id": listing_id},
+                    params={"api_key": api_key, "product_id": listing_id},
                     timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
                 )
 
@@ -305,14 +310,15 @@ class EbayScraperAPIAdapter(MarketplaceAdapter):
         return self._empty_profile(listing_id)
 
     def search_similar_products(self, search_term: str) -> list:
-        if not SCRAPERAPI_KEY:
+        api_key = _scraperapi_key()
+        if not api_key:
             return []
 
         session = _make_session()
         try:
             resp = session.get(
                 SEARCH_URL,
-                params={"api_key": SCRAPERAPI_KEY, "query": search_term},
+                params={"api_key": api_key, "query": search_term},
                 timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
             )
         except requests.exceptions.RequestException as exc:

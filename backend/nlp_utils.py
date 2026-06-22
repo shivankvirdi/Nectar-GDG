@@ -9,22 +9,84 @@ import re
 import math
 from collections import Counter
 
-import nltk
-nltk.download("vader_lexicon",              quiet=True)
-nltk.download("stopwords",                  quiet=True)
-nltk.download("punkt",                      quiet=True)
-nltk.download("punkt_tab",                  quiet=True)
-nltk.download("wordnet",                    quiet=True)
-nltk.download("averaged_perceptron_tagger", quiet=True)
-
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 from nltk.corpus import stopwords
 from nltk.tokenize import sent_tokenize
 from nltk.stem import WordNetLemmatizer
 
-sia        = SentimentIntensityAnalyzer()
-lemmatizer = WordNetLemmatizer()
-STOP_WORDS = set(stopwords.words("english"))
+FALLBACK_STOP_WORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "from",
+    "had", "has", "have", "he", "her", "his", "i", "in", "is", "it", "its",
+    "me", "my", "not", "of", "on", "or", "our", "she", "so", "that", "the",
+    "their", "them", "they", "this", "to", "was", "we", "were", "with", "you",
+    "your",
+}
+
+
+class _FallbackSentimentIntensityAnalyzer:
+    _positive = {
+        "amazing", "best", "comfortable", "durable", "easy", "excellent",
+        "fast", "good", "great", "happy", "love", "loved", "perfect",
+        "quality", "recommend", "reliable", "strong", "works",
+    }
+    _negative = {
+        "bad", "broken", "cheap", "defective", "disappointed", "failed",
+        "hard", "hate", "late", "poor", "refund", "slow", "terrible",
+        "uncomfortable", "weak", "worse", "worst",
+    }
+
+    def polarity_scores(self, text: str) -> dict[str, float]:
+        words = re.findall(r"[a-z']+", str(text or "").lower())
+        if not words:
+            return {"neg": 0.0, "neu": 1.0, "pos": 0.0, "compound": 0.0}
+        positives = sum(1 for word in words if word in self._positive)
+        negatives = sum(1 for word in words if word in self._negative)
+        total = max(1, positives + negatives)
+        compound = max(-1.0, min(1.0, (positives - negatives) / total))
+        return {
+            "neg": negatives / len(words),
+            "neu": max(0.0, 1.0 - ((positives + negatives) / len(words))),
+            "pos": positives / len(words),
+            "compound": compound,
+        }
+
+
+class _FallbackLemmatizer:
+    def lemmatize(self, word: str) -> str:
+        word = word.lower()
+        if len(word) > 4 and word.endswith("ies"):
+            return word[:-3] + "y"
+        if len(word) > 3 and word.endswith("s"):
+            return word[:-1]
+        return word
+
+
+def _build_sentiment_analyzer():
+    try:
+        return SentimentIntensityAnalyzer()
+    except LookupError:
+        return _FallbackSentimentIntensityAnalyzer()
+
+
+def _build_stop_words() -> set[str]:
+    try:
+        return set(stopwords.words("english"))
+    except LookupError:
+        return set(FALLBACK_STOP_WORDS)
+
+
+def _build_lemmatizer():
+    try:
+        candidate = WordNetLemmatizer()
+        candidate.lemmatize("tests")
+        return candidate
+    except LookupError:
+        return _FallbackLemmatizer()
+
+
+sia        = _build_sentiment_analyzer()
+lemmatizer = _build_lemmatizer()
+STOP_WORDS = _build_stop_words()
 
 # Words that negate the following token — shared across both modules.
 NEGATION_WORDS = {

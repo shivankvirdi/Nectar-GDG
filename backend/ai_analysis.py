@@ -12,10 +12,25 @@ from google.genai import types
 load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if not GEMINI_API_KEY:
-    raise RuntimeError("❌ GEMINI_API_KEY is missing from your .env file")
+_gemini_client = None
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+
+def _get_gemini_client():
+    global _gemini_client
+    api_key = os.getenv("GEMINI_API_KEY") or GEMINI_API_KEY
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY is missing from your environment.")
+    if _gemini_client is None:
+        _gemini_client = genai.Client(api_key=api_key)
+    return _gemini_client
+
+
+def _generate_content(*, model: str, contents: list | str, config):
+    return _get_gemini_client().models.generate_content(
+        model=model,
+        contents=contents,
+        config=config,
+    )
 
 UNRELATED_RECOMMENDATION_MESSAGE = "Sorry, I cannot help you with that"
 
@@ -256,7 +271,7 @@ Schema:
                     mime_type=mime_type,
                 ))
 
-        response = client.models.generate_content(
+        response = _generate_content(
             model="gemini-2.5-flash-lite",
             contents=contents,
             config=types.GenerateContentConfig(
@@ -364,7 +379,7 @@ Schema:
     }
 
     try:
-        response = client.models.generate_content(
+        response = _generate_content(
             model="gemini-2.5-flash-lite",
             contents=[prompt],
             config=types.GenerateContentConfig(
@@ -533,7 +548,7 @@ Rules:
                 try:
                     print(f"[AI Analysis] Trying {model_name} (attempt {attempt + 1})")
 
-                    response = client.models.generate_content(
+                    response = _generate_content(
                         model=model_name,
                         contents=prompt,
                         config=types.GenerateContentConfig(
@@ -711,7 +726,7 @@ Return JSON only in this exact shape:
             for attempt in range(3):
                 try:
                     print(f"[AI Explain] Trying {model_name} (attempt {attempt + 1})")
-                    response = client.models.generate_content(
+                    response = _generate_content(
                         model=model_name,
                         contents=prompt,
                         config=types.GenerateContentConfig(

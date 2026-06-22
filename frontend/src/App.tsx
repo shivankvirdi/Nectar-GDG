@@ -2511,7 +2511,7 @@ export default function App() {
     if (!scanId) return
     fetch(`${API_BASE}/cancel-scan`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Nectar-Secret': NECTAR_SECRET },
       body: JSON.stringify({ scanId }),
     }).catch(() => { })
   }

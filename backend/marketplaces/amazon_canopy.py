@@ -17,13 +17,18 @@ load_dotenv()
 API_KEY = os.getenv("CANOPY_API_KEY")
 CANOPY_URL = "https://graphql.canopyapi.co/"
 
-if not API_KEY:
-    raise RuntimeError("Missing CANOPY_API_KEY environment variable.")
+def _canopy_api_key() -> str:
+    api_key = os.getenv("CANOPY_API_KEY") or API_KEY or ""
+    if not api_key:
+        raise RuntimeError("Missing CANOPY_API_KEY environment variable.")
+    return api_key
 
-HEADERS = {
-    "Content-Type": "application/json",
-    "API-KEY": API_KEY,
-}
+
+def _canopy_headers() -> dict[str, str]:
+    return {
+        "Content-Type": "application/json",
+        "API-KEY": _canopy_api_key(),
+    }
 
 # Timeout config — connect fast, give the read plenty of room
 CONNECT_TIMEOUT = 10   # seconds to establish TCP connection
@@ -190,7 +195,7 @@ class AmazonCanopyAdapter(MarketplaceAdapter):
             response = session.post(
                 CANOPY_URL,
                 json=payload,
-                headers=HEADERS,
+                headers=_canopy_headers(),
                 timeout=(SEARCH_CONNECT_TIMEOUT, SEARCH_READ_TIMEOUT),
             )
         except requests.exceptions.Timeout:
@@ -258,7 +263,7 @@ class AmazonCanopyAdapter(MarketplaceAdapter):
                 response = session.post(
                     CANOPY_URL,
                     json=payload,
-                    headers=HEADERS,
+                    headers=_canopy_headers(),
                     timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
                 )
 
@@ -339,7 +344,7 @@ class AmazonCanopyAdapter(MarketplaceAdapter):
             response = session.post(
                 CANOPY_URL,
                 json={"query": test_query},
-                headers=HEADERS,
+                headers=_canopy_headers(),
                 timeout=(5, 10)
             )
             print(f"Canopy test response: {response.status_code}")

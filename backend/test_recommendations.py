@@ -1,7 +1,20 @@
+# Run all tests:
+# .\.venv\Scripts\python.exe -m unittest backend.test_recommendations
+
+#Run all tests with test names shown:
+# .\.venv\Scripts\python.exe -m unittest -v backend.test_recommendations
+
+import re
+import os
 import unittest
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
+
+os.environ["GEMINI_API_KEY"] = "unit-test-disabled"
+os.environ["CANOPY_API_KEY"] = "unit-test-disabled"
+os.environ["SCRAPERAPI_KEY"] = "unit-test-disabled"
+os.environ["GOOGLE_PLACES_API_KEY"] = "unit-test-disabled"
 
 from backend import main as app_main
 from backend.marketplaces.amazon_canopy import AmazonCanopyAdapter, SEARCH_RESULT_LIMIT
@@ -66,10 +79,64 @@ class CapturingSession:
 
 
 class RecommendationTests(unittest.TestCase):
+    def setUp(self):
+        self.query_patcher = patch.object(
+            app_main,
+            "build_recommendation_query",
+            side_effect=self._default_recommendation_query,
+        )
+        self.query_builder = self.query_patcher.start()
+        self.addCleanup(self.query_patcher.stop)
+
+    def _default_recommendation_query(
+        self,
+        history,
+        filter_mode="overall",
+        refinement_prompt="",
+        image_data_url="",
+    ):
+        query = str(refinement_prompt or "").strip()
+        if not query:
+            query = "popular products"
+            for item in history[:8]:
+                analysis = item.get("analysis") if isinstance(item, dict) else {}
+                if not isinstance(analysis, dict):
+                    continue
+                candidate = analysis.get("productKeyword") or analysis.get("title")
+                if candidate and candidate != "unknown":
+                    query = str(candidate)
+                    break
+
+        suffix_by_filter = {
+            "overall": "best value",
+            "durability": "durable reliable",
+            "price": "budget affordable deal",
+            "quality": "top rated premium",
+        }
+        terms = [query]
+        suffix = suffix_by_filter.get(filter_mode, "best value")
+        if suffix and suffix not in query.lower():
+            terms.append(f"{query} {suffix}")
+        if re.search(r"\blaptops?\b|\bchromebooks?\b|\bnotebooks?\b", query, re.IGNORECASE):
+            terms.append("student laptop durable affordable")
+        elif re.search(r"\bwater bottles?\b|\btumbler\b|\bbottle\b", query, re.IGNORECASE):
+            terms.append("insulated water bottle leakproof")
+        elif re.search(r"\bheadphones?\b|\bearbuds?\b|\bairpods?\b", query, re.IGNORECASE):
+            terms.append("top rated wireless headphones")
+
+        deduped_terms = []
+        for term in terms:
+            if term.lower() not in {item.lower() for item in deduped_terms}:
+                deduped_terms.append(term)
+        return {"query": query, "searchTerms": deduped_terms[:5], "reason": "Test query plan."}
+
     def test_canopy_search_limits_product_results_for_speed(self):
         session = CapturingSession()
 
-        with patch("backend.marketplaces.amazon_canopy._make_session", return_value=session):
+        with (
+            patch("backend.marketplaces.amazon_canopy._make_session", return_value=session),
+            patch("backend.marketplaces.amazon_canopy._canopy_headers", return_value={"API-KEY": "dummy-test-key"}),
+        ):
             results = AmazonCanopyAdapter().search_similar_products("running shoes")
 
         self.assertEqual(len(results), 1)
@@ -110,6 +177,35 @@ class RecommendationTests(unittest.TestCase):
 
         self.assertIsNotNone(product)
         self.assertEqual(product["image"], "https://images.amazon.test/skin1004.jpg")
+
+    def test_normalization_rejects_unavailable_marketplace_aliases(self):
+        adapter = FakeAdapter("amazon", [])
+        product = app_main._normalize_recommendation_product(
+            {
+                "title": "Sony Noise Cancelling Headphones",
+                "asin": "B0UNAVAILABLE",
+                "price": {"display": "$99.99", "value": 99.99},
+                "availability_message": "Currently unavailable",
+            },
+            adapter,
+        )
+
+        self.assertIsNone(product)
+
+    def test_normalization_keeps_review_count_aliases_for_ranking(self):
+        adapter = FakeAdapter("ebay", [])
+        product = app_main._normalize_recommendation_product(
+            {
+                "product_title": "Bluetooth Headphones True Wireless Earbuds",
+                "product_url": "https://www.ebay.com/itm/266123456789",
+                "item_price": {"value": 19.95, "currency": "USD"},
+                "reviews": "1,234",
+            },
+            adapter,
+        )
+
+        self.assertIsNotNone(product)
+        self.assertEqual(product["reviewCount"], "1,234")
 
     def test_ebay_adapter_search_normalizer_preserves_name_title(self):
         adapter = EbayScraperAPIAdapter()
@@ -204,6 +300,36 @@ class RecommendationTests(unittest.TestCase):
 
         self.assertEqual(len(products), 5)
         self.assertIn("ebay", {product["marketplace"] for product in products})
+
+    def test_adapter_order_prefers_recent_history_marketplace(self):
+        fake_amazon = FakeAdapter("amazon", [])
+        fake_ebay = FakeAdapter("ebay", [])
+
+        with patch.object(app_main, "MARKETPLACE_ADAPTERS", [fake_amazon, fake_ebay]):
+            ordered = app_main._ordered_recommendation_adapters("", "ebay")
+
+        self.assertEqual([adapter.name for adapter in ordered], ["ebay", "amazon"])
+
+    def test_nectar_secret_allows_health_but_protects_api_routes(self):
+        fake_amazon = FakeAdapter("amazon", [])
+        fake_ebay = FakeAdapter("ebay", [])
+
+        with (
+            patch.object(app_main, "MARKETPLACE_ADAPTERS", [fake_amazon, fake_ebay]),
+            patch.object(app_main, "NECTAR_SECRET", "required-secret"),
+        ):
+            client = TestClient(app_main.app)
+            health = client.get("/health")
+            blocked = client.post("/recommendations", json={"history": [], "prompt": "headphones"})
+            allowed = client.post(
+                "/recommendations",
+                headers={"X-Nectar-Secret": "required-secret"},
+                json={"history": [], "prompt": "headphones"},
+            )
+
+        self.assertEqual(health.status_code, 200)
+        self.assertEqual(blocked.status_code, 401)
+        self.assertEqual(allowed.status_code, 200)
 
     def test_recommendations_endpoint_returns_products_from_stubbed_marketplaces(self):
         fake_ebay = FakeAdapter(
