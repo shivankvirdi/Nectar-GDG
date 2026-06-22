@@ -136,7 +136,6 @@ npm run build
 ### Use Hosted Backend (Requires a secret password): 
 The backend is already deployed on Google Cloud!
 1. Create file frontend/.env.production
-2.
 ``` 
 VITE_API_URL=https://nectar-gdg-93066440894.us-west1.run.app
 NECTAR_API_SECRET=...
