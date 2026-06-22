@@ -1,10 +1,15 @@
 # Nectar - GDG Solutions Challenge NA 2026
 
-
-
-https://github.com/user-attachments/assets/f8b34e39-cb66-4d10-819a-a570b8969f3d
-
-
+<table width="100%">
+  <tr>
+    <td width="50%" align="center" style="vertical-align: top;">
+      <video src="https://github.com/user-attachments/assets/ddae5e9f-4c1e-467c-8047-de4eda39c38a" width="100%" controls></video> 
+    </td>
+    <td width="50%" align="center" style="vertical-align: top;">
+      <img width="100%" alt="nectar price history" src="https://github.com/user-attachments/assets/f6fddc62-5f93-4d36-bbc6-846302878deb" />
+    </td>
+  </tr>
+</table>
 
 E-commerce lacks trustworthy product intelligence, with consumers losing billions to misleading/inflated reviews and poor purchasing decisions every year. That's why we built Nectar, a desktop overlay application that helps consumers make smarter online purchasing decisions by analyzing Amazon and eBay products in real time. The app combines review authenticity detection, AI review summaries/product verdicts, personalized recommendations, brand reputation analysis, estimated price trends, and product comparison tools to identify trustworthy products and flag potentially misleading listings. By increasing transparency in e-commerce, Nectar reduces decision fatigue and empowers users to shop with greater confidence and accuracy.
 
@@ -34,6 +39,7 @@ E-commerce lacks trustworthy product intelligence, with consumers losing billion
 ## Architecture Diagram
 ```mermaid
 ---
+---
 config:
   layout: dagre
   theme: redux-dark-color
@@ -43,61 +49,55 @@ config:
     fontFamily: '''Source Code Pro Variable'', monospace'
 ---
 flowchart LR
- subgraph USER_LAYER["User + Browser"]
-        USER(["Amazon / eBay product page"])
-  end
  subgraph ELECTRON["Electron Shell"]
-        E1["Frameless glass overlay\nalways-on-top + IPC resize"]
-        E2["URL detection\nAppleScript + PowerShell + xdotool"]
+        E1["Frameless glass overlay\nalways-on-top · IPC resize"]
+        E2["URL detection\nAppleScript · PS · xdotool"]
   end
- subgraph REACT["React + TypeScript Dashboard"]
-        R1["Home\nScan + results + compare"]
-        R2["Smart Recommendations\nGemini-planned search terms + filters"]
-        R3["Price History\nEstimated trend chart + AI narrative"]
-        R4["Scan History\nSaved products + comparison context"]
+ subgraph REACT["React + TypeScript"]
+        R1["Scan · Results · Compare"]
+        R2["Recommendations · History"]
+        R3["Price History\nTrend chart · AI narrative"]
   end
- subgraph API["FastAPI on Cloud Run + Secret Manager"]
-        A1["/current-url + /cancel-scan"]
-        A2["/explain-score"]
-        A3["/recommendations"]
-        A4["/price-trend"]
+ subgraph API["FastAPI · Cloud Run · Secret Manager"]
+        A1["/current-url · /cancel-scan"]
+        A2["/explain-score\n/recommendations"]
+        A3["/price-trend"]
   end
- subgraph PIPELINE["Marketplace + Analysis Pipeline"]
-        P1["Marketplace adapter registry\nAmazon + eBay"]
-        CANOPY["Canopy API\nAmazon GraphQL"]
-        SCRAPER["ScraperAPI\neBay structured search"]
-        P2["Fetch + normalize\nKeyword inference + dedupe"]
+ subgraph PIPELINE["Analysis Pipeline"]
+        P1["Marketplace adapter registry\nAmazon · eBay"]
+        P2["Fetch · normalise\nKeyword inference"]
   end
- subgraph NLP["NLP + Scoring Engine"]
-        N1["Review integrity\nVADER + flags + star/text match\nverified purchases"]
-        N2["Reputation scoring\nBayesian blend\nprior = 68"]
-        N3["WordNet + TF-IDF\nboost words + bigrams + negation pairs"]
-        N4["Overall score weights\nAmazon 40/35/25\neBay 30/25/45"]
+ subgraph NLP["NLP Engine"]
+        N1["Review integrity\nVADER scoring · flags\n· star ↔ text match\n· verified purchases"]
+        N2["Reputation scoring\nBayesian blend · prior = 68, prior × (1 − conf) + signal × conf"]
+        N3["WordNet lemmatization · TF-IDF scoring + boost words · bigrams · negation pairs"]
+        N4["Overall score %'s\nRating/Integrity/Rep\nAmazon 40/35/25\neBay  30/25/45"]
   end
- subgraph GEMINI["Gemini AI"]
-        G1["Verdict generation\nBUY / COMPARE / SKIP"]
-        G2["Score explainer\nmetric-specific rationale"]
-        G3["Recommendation planner\nquery + 3-5 category-locked search terms"]
-        G4["Price trend narrative\ntrajectory + likely-to-drop call"]
+ subgraph TREND["Price Intelligence"]
+        T1["Seeded trend generator\n30-day series · hash seed"]
+        T2["Insight detector\nlow · high · average\nmomentum · drop-watch"]
   end
-    USER --> E1 --> R1
-    E2 --> R1
-    R1 -- "HTTP + X-Nectar-Secret" --> A1
-    R1 --> R4
-    R4 --> R2
-    R2 -- "filter + prompt + history" --> A3
-    R3 -- "selected scan" --> A4
+ subgraph AILAY["Gemini AI · gemini-2.5-flash"]
+        G1["Verdict · BUY / COMPARE / SKIP"]
+        G2["Score explainer\nRec query builder"]
+        G3["Price trend narrative\nlikely-to-drop · confidence · callouts"]
+  end
+    USER(["Amazon / eBay"]) --> E1
+    E1 --> R1
     A1 --> P1
-    A3 --> G3 --> P1
-    A4 --> G4 --> R3
-    P1 --> CANOPY --> P2
-    P1 --> SCRAPER --> P2
-    P2 --> N1 --> N4 --> G1 --> R1
-    P2 --> N2 --> N4
-    P2 --> N3 --> N4
-    A2 --> G2 --> R1
-    P2 -- "ranked, deduped products" --> A3 --> R2
+    P1 --> N1 & CANOPY["Canopy API\nAmazon GraphQL"] & SCRAPER["ScraperAPI\neBay structured"]
+    N1 --> G1
+    G1 -- verdict · scores --> R1
+    N2 --> PLACES["Google Places\nBrand lookup · Review\nsignals · Insights"]
+    G1 --> G2
+    G2 --> GAPI["Gemini API\ngemini-2.5-flash ·  flash lite fallback · context + snippets"]
+    R1 -- "HTTP · X-Nectar-Secret" --> A1
+    R2 --> A2
+    R3 -- "selected scan" --> A3
+    A3 --> T1 --> T2 --> G3
+    G3 -- "narrative · drop call · chart callouts" --> R3
 ```
+> **Note on Price History:** The price trend chart and "likely to drop" call are generated, not scraped from real marketplace history. Nectar deterministically synthesizes a 30-day series anchored to the actual scraped price (so the chart always ends at the true current price), with a seeded wiggle, drift, and one simulated dip for realism. Gemini then writes a narrative and confidence score based on that synthetic series. This is a placeholder for a future real price-tracking integration and should not be used to make real purchasing-timing decisions.
 
 # How to Use
 ## Clone Repository
