@@ -109,7 +109,7 @@ git clone https://github.com/shivankvirdi/Nectar-GDG.git
 cd Nectar-GDG
 ```
 ## Backend Setup
-Skip this section if you're only using the hosted backend
+> Skip this section if you're only using the hosted backend
 ```powershell
 cd backend
 python -m venv .venv
