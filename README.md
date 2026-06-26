@@ -128,42 +128,39 @@ Install Node.js (http://nodejs.org/en/download) and add to PATH
 cd frontend
 npm install
 ```
-### Build Frontend Assets
-```powershell
-npm run build
-```
-## Running Nectar
+## Choosing Backend
+Before building, choose your backend (see below) and create `frontend/.env.production` accordingly
 ### Use Hosted Backend (Requires a secret password): 
-The backend is already deployed on Google Cloud!
-1. Create file frontend/.env.production
+The backend is already deployed on Google Cloud!\
+Create file `frontend/.env.production`:
 ``` 
 VITE_API_URL=https://nectar-gdg-93066440894.us-west1.run.app
 NECTAR_API_SECRET=...
 # contact maintainers for password access
 ```
-3. Run electron:
+2. Run electron:
 ```
 cd frontend
+npm run build
 npm run electron:start
 ```
 
 ### Use Local Backend
-1. Follow .env.example & add keys ('Nectar-GDG/.env')\
-2. Set frontend/.env.production to:
+1. Follow .env.example & add keys to `Nectar-GDG/.env` (repo root)
+2. Create file `frontend/.env.production`:
 ```powershell
 VITE_API_URL=http://127.0.0.1:8000
 # no password
 ```
-3. Rebuild frontend:
+## Build frontend assets:
 ```powershell
-cd frontend
 npm run build
 ```
-4. Run backend and electron:
+## Running Nectar:
 ```powershell
 #Terminal 1 in frontend directory
 npm run electron:start
-#Terminal 2 in ROOT
+#Terminal 2 in ROOT — only if using local backend
 uvicorn backend.main:app --reload
 ```
 ## Troubleshooting
