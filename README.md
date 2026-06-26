@@ -138,13 +138,6 @@ VITE_API_URL=https://nectar-gdg-93066440894.us-west1.run.app
 NECTAR_API_SECRET=...
 # contact maintainers for password access
 ```
-2. Run electron:
-```
-cd frontend
-npm run build
-npm run electron:start
-```
-
 ### Use Local Backend
 1. Follow .env.example & add keys to `Nectar-GDG/.env` (repo root)
 2. Create file `frontend/.env.production`:
@@ -158,9 +151,9 @@ npm run build
 ```
 ## Running Nectar:
 ```powershell
-#Terminal 1 in frontend directory
+# Terminal 1 in frontend directory
 npm run electron:start
-#Terminal 2 in ROOT — only if using local backend
+# Terminal 2 in ROOT — only if using local backend (run concurrently with Terminal 1)
 uvicorn backend.main:app --reload
 ```
 ## Troubleshooting
