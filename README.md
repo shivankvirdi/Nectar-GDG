@@ -177,4 +177,4 @@ http://127.0.0.1:8000 (for localhost)
 https://nectar-gdg-93066440894.us-west1.run.app (for Google Cloud)
 ```
 ---
-Project led by Shivank Virdi and co-developed with Jaycob Pakingan, Iyanna Arches, Aanya Agarwal, & Kaylana Chuan. We hope you enjoy using our application!
+Project led by Shivank Virdi and co-developed with Iyanna Arches, Jaycob Pakingan, Aanya Agarwal, & Kaylana Chuan. We hope you enjoy using our application!
