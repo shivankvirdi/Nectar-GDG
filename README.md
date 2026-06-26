@@ -109,6 +109,7 @@ git clone https://github.com/shivankvirdi/Nectar-GDG.git
 cd Nectar-GDG
 ```
 ## Backend Setup
+Skip this section if you're only using the hosted backend
 ```powershell
 cd backend
 python -m venv .venv
@@ -128,9 +129,9 @@ Install Node.js (http://nodejs.org/en/download) and add to PATH
 cd frontend
 npm install
 ```
-## Choosing Backend
+### Choosing Backend
 Before building, choose your backend (see below) and create `frontend/.env.production` accordingly
-### Use Hosted Backend (Requires a secret password): 
+#### Use Hosted Backend (Requires a secret password): 
 The backend is already deployed on Google Cloud!\
 Create file `frontend/.env.production`:
 ``` 
@@ -138,14 +139,14 @@ VITE_API_URL=https://nectar-gdg-93066440894.us-west1.run.app
 NECTAR_API_SECRET=...
 # contact maintainers for password access
 ```
-### Use Local Backend
+#### Use Local Backend
 1. Follow .env.example & add keys to `Nectar-GDG/.env` (repo root)
 2. Create file `frontend/.env.production`:
 ```powershell
 VITE_API_URL=http://127.0.0.1:8000
 # no password
 ```
-## Build frontend assets:
+### Build frontend assets:
 ```powershell
 npm run build
 ```
@@ -153,7 +154,8 @@ npm run build
 ```powershell
 # Terminal 1 in frontend directory
 npm run electron:start
-# Terminal 2 in ROOT — only if using local backend (run concurrently with Terminal 1)
+# Terminal 2 in ROOT — only if using local backend (run alongside Terminal 1)
+# Make sure backend/.venv is activated first
 uvicorn backend.main:app --reload
 ```
 ## Troubleshooting
