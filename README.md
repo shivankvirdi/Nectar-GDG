@@ -131,7 +131,7 @@ npm install
 ```
 ### Choosing Backend
 Before building, choose your backend (see below) and create `frontend/.env.production` accordingly
-#### Use Hosted Backend (Requires a secret password): 
+#### Use Hosted Backend (Requires a secret password)
 The backend is already deployed on Google Cloud!\
 Create file `frontend/.env.production`:
 ``` 
