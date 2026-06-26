@@ -160,18 +160,18 @@ uvicorn backend.main:app --reload
 ```
 ## Troubleshooting
 ### Electron won't start
-Delete node_modules and reinstall:
+Delete `node_modules` and reinstall:
 ```
 npm install
 ```
 ### Backend fails to start
 Verify:
-- CANOPY_API_KEY
-- GEMINI_API_KEY
-- GOOGLE_PLACES_API_KEY
-- SCRAPERAPI_KEY
+- `CANOPY_API_KEY`
+- `GEMINI_API_KEY`
+- `GOOGLE_PLACES_API_KEY`
+- `SCRAPERAPI_KEY`
 ### CORS or connection issues
-#### Verify VITE_API_URL matches correct URL.
+#### Verify `VITE_API_URL` matches correct URL.
 ```text
 http://127.0.0.1:8000 (for localhost)
 https://nectar-gdg-93066440894.us-west1.run.app (for Google Cloud)
