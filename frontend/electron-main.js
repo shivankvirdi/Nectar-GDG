@@ -8,7 +8,13 @@ const {
 
 let mainWindow
 
-const ICON_PATH = path.join(__dirname, 'dist', 'Icons', 'icon128.png')
+function getTaskbarIconPath(isDev) {
+  const iconPath = isDev
+    ? path.join(__dirname, 'public', 'icons', 'taskbar-logo.png')
+    : path.join(__dirname, 'dist', 'icons', 'taskbar-logo.png')
+
+  return fs.existsSync(iconPath) ? iconPath : undefined
+}
 const DEFAULT_WIDTH = 375
 const DEFAULT_HEIGHT = 358
 const MIN_WINDOW_HEIGHT = DEFAULT_HEIGHT
@@ -154,6 +160,8 @@ function createWindow() {
   const { width: screenWidth } = screen.getPrimaryDisplay().workAreaSize
   const isMac = process.platform === 'darwin'
   const isWin = process.platform === 'win32'
+  const isDev = process.argv.includes('--dev')
+  const taskbarIconPath = getTaskbarIconPath(isDev)
 
   mainWindow = new BrowserWindow({
     width:  DEFAULT_WIDTH,
@@ -169,7 +177,7 @@ function createWindow() {
     x: screenWidth - DEFAULT_WIDTH - 24,
     y: 40,
     title: 'Nectar',
-    icon: ICON_PATH,
+    icon: taskbarIconPath,
     skipTaskbar: false,
     backgroundColor: process.platform === 'darwin' ? undefined : '#1e1e1e',
     webPreferences: {
@@ -191,7 +199,6 @@ function createWindow() {
     app.setAppUserModelId('com.nectar.app')
   }
 
-  const isDev = process.argv.includes('--dev')
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173')
     mainWindow.webContents.openDevTools({ mode: 'detach' })

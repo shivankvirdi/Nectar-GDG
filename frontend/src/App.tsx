@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import './App.css'
-import logoSrc from '/Icons/logo.png'
+
+const brandLogoSrc = `${import.meta.env.BASE_URL}icons/header-logo.png`
 
 // ─── Electron API ─────────────────────────────────────────────────────────────
 
@@ -2135,7 +2136,7 @@ function CompareView({ records, onBack }: { records: [ScanRecord, ScanRecord]; o
     <AutoSizingWindow>
       <header className="top-header">
         <div className="brand-row">
-          <img src={logoSrc} alt="Nectar logo" className="brand-logo" />
+          <img src={brandLogoSrc} alt="Nectar logo" className="brand-logo" />
           <div className="brand-block">
             <h1>Nectar</h1>
             <p>PRODUCT COMPARISON</p>
@@ -3016,7 +3017,7 @@ export default function App() {
         onMouseLeave={() => setWindowControlsVisible(false)}
       >
         <div className="brand-row">
-          <img src={logoSrc} alt="Nectar logo" className="brand-logo" />
+          <img src={brandLogoSrc} alt="Nectar logo" className="brand-logo" />
           <div className="brand-block">
             <h1>Nectar</h1>
             <p>SMART PRODUCT ANALYZER</p>

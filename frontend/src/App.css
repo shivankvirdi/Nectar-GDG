@@ -124,10 +124,10 @@ button,
 }
 
 .brand-logo {
-  width: 28px;
-  height: 28px;
+  width: 34px;
+  height: 34px;
   object-fit: contain;
-  border-radius: 8px;
+  border-radius: 9px;
   flex-shrink: 0;
 }
 
