@@ -49,7 +49,7 @@ config:
     fontFamily: '''Source Code Pro Variable'', monospace'
 ---
 flowchart LR
-    A["<br/><img src='frontend/public/icons/taskbar-logo.png' width='50px' />"]
+    A["<img src="https://github.com/user-attachments/assets/5ab7c2bb-3334-4314-a9b9-63f6f7c7e47f" width='50' />"]
     subgraph ELECTRON["Electron Shell"]
         E1["Frameless glass overlay<br/>always-on-top · IPC resize"]
         E2["URL detection<br/>AppleScript · PS · xdotool"]
