@@ -1,4 +1,4 @@
-<img width="2939" height="1750" alt="transparent-logo" src="https://github.com/user-attachments/assets/d96e9323-8eaf-40d4-9ae4-6e0a81b7296a" />
+<img width="4000" height="2151" alt="colored-logo" src="https://github.com/user-attachments/assets/16f37d8e-4db0-4c01-be25-36844072743c" />
 
 <table width="100%">
   <tr>
