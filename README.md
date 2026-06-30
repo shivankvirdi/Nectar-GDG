@@ -49,9 +49,9 @@ config:
     fontFamily: '''Source Code Pro Variable'', monospace'
 ---
 flowchart LR
- subgraph ELECTRON["Electron Shell"]
-        E1["Frameless glass overlay\nalways-on-top · IPC resize"]
-        E2["URL detection\nAppleScript · PS · xdotool"]
+  subgraph ELECTRON["Electron Shell"]
+      E1["Frameless glass overlay<br/>always-on-top · IPC resize"]
+      E2["URL detection<br/>AppleScript · PS · xdotool"]
   end
  subgraph REACT["React + TypeScript"]
         R1["Scan · Results · Compare"]
