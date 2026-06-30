@@ -1,4 +1,4 @@
-# Nectar - GDG Solutions Challenge NA 2026
+<img width="4000" height="2151" alt="colored-logo" src="https://github.com/user-attachments/assets/16f37d8e-4db0-4c01-be25-36844072743c" />
 
 <table width="100%">
   <tr>
