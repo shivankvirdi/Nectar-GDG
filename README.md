@@ -11,7 +11,7 @@
   </tr>
 </table>
 
-E-commerce lacks trustworthy product intelligence, with consumers losing billions to misleading/inflated reviews and poor purchasing decisions every year. That's why we built Nectar, a desktop overlay application that helps consumers make smarter online purchasing decisions by analyzing Amazon and eBay products in real time. The app combines review authenticity detection, AI review summaries/product verdicts, personalized recommendations, brand reputation analysis, estimated price trends, and product comparison tools to identify trustworthy products and flag potentially misleading listings. By increasing transparency in e-commerce, Nectar reduces decision fatigue and empowers users to shop with greater confidence and accuracy.
+E-commerce lacks trustworthy product intelligence, with consumers losing $245 billion to poor purchasing decisions yearly in the US alone. That's why we built Nectar, a desktop overlay application that helps consumers make smarter online purchasing decisions by analyzing products on Amazon and eBay in real time. The app combines review authenticity detection, AI review summaries/product verdicts, personalized recommendations, brand reputation analysis, estimated price trends, and product comparison tools to identify trustworthy products and flag potentially misleading listings. By increasing transparency in e-commerce, Nectar reduces decision fatigue and empowers users to shop with greater confidence and accuracy.
 
 ## Features
 - AI-powered product analysis
@@ -109,6 +109,7 @@ git clone https://github.com/shivankvirdi/Nectar-GDG.git
 cd Nectar-GDG
 ```
 ## Backend Setup
+> Skip this section if you're only using the hosted backend
 ```powershell
 cd backend
 python -m venv .venv
@@ -128,61 +129,52 @@ Install Node.js (http://nodejs.org/en/download) and add to PATH
 cd frontend
 npm install
 ```
-### Build Frontend Assets
-```powershell
-npm run build
-```
-## Running Nectar
-### Use Hosted Backend (Requires a secret password): 
-The backend is already deployed on Google Cloud!
-1. Create file frontend/.env.production
+### Choosing Backend
+Before building, choose your backend (see below) and create `frontend/.env.production` accordingly
+#### Use Hosted Backend (Requires a secret password)
+The backend is already deployed on Google Cloud!\
+Create file `frontend/.env.production`:
 ``` 
 VITE_API_URL=https://nectar-gdg-93066440894.us-west1.run.app
 NECTAR_API_SECRET=...
 # contact maintainers for password access
 ```
-3. Run electron:
-```
-cd frontend
-npm run electron:start
-```
-
-### Use Local Backend
-1. Follow .env.example & add keys ('Nectar-GDG/.env')\
-2. Set frontend/.env.production to:
+#### Use Local Backend
+1. Follow .env.example & add keys to `Nectar-GDG/.env` (repo root)
+2. Create file `frontend/.env.production`:
 ```powershell
 VITE_API_URL=http://127.0.0.1:8000
 # no password
 ```
-3. Rebuild frontend:
+### Build frontend assets:
 ```powershell
-cd frontend
 npm run build
 ```
-4. Run backend and electron:
+## Running Nectar:
 ```powershell
-#Terminal 1 in frontend directory
+# Terminal 1 in frontend directory
 npm run electron:start
-#Terminal 2 in ROOT
+# Terminal 2 in ROOT — only if using local backend (run alongside Terminal 1)
+# Make sure backend/.venv is activated first
 uvicorn backend.main:app --reload
 ```
 ## Troubleshooting
 ### Electron won't start
-Delete node_modules and reinstall:
+Delete `node_modules` and reinstall:
 ```
 npm install
 ```
 ### Backend fails to start
 Verify:
-- CANOPY_API_KEY
-- GEMINI_API_KEY
-- GOOGLE_PLACES_API_KEY
-- SCRAPERAPI_KEY
+- `CANOPY_API_KEY`
+- `GEMINI_API_KEY`
+- `GOOGLE_PLACES_API_KEY`
+- `SCRAPERAPI_KEY`
 ### CORS or connection issues
-#### Verify VITE_API_URL matches correct URL.
+#### Verify `VITE_API_URL` matches correct URL.
 ```text
 http://127.0.0.1:8000 (for localhost)
 https://nectar-gdg-93066440894.us-west1.run.app (for Google Cloud)
 ```
 ---
-Project led by Shivank Virdi and co-developed with Jaycob Pakingan, Iyanna Arches, Aanya Agarwal, & Kaylana Chuan. We hope you enjoy using our application!
+Project led by Shivank Virdi and co-developed with Iyanna Arches, Jaycob Pakingan, Aanya Agarwal, & Kaylana Chuan. We hope you enjoy using our application!
