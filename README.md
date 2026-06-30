@@ -1,5 +1,4 @@
-<img width="4000" height="4000" alt="colored-logo" src="https://github.com/user-attachments/assets/0e502ccc-3f12-46d3-9665-b7e27e88e7b1" />
-# Nectar - GDG Solutions Challenge NA 2026
+<img width="2939" height="1750" alt="transparent-logo" src="https://github.com/user-attachments/assets/d96e9323-8eaf-40d4-9ae4-6e0a81b7296a" />
 
 <table width="100%">
   <tr>
