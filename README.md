@@ -49,10 +49,10 @@ config:
     fontFamily: '''Source Code Pro Variable'', monospace'
 ---
 flowchart LR
-A["Logo Here <br/> <img src='C:\Users\shiva\Downloads\ballers\Nectar-GDG\frontend\public\icons\taskbar-logo.png' width='50px' />"]
- subgraph ELECTRON["Electron Shell"]
-        E1["Frameless glass overlay\nalways-on-top · IPC resize"]
-        E2["URL detection\nAppleScript · PS · xdotool"]
+    A["<br/><img src='frontend/public/icons/taskbar-logo.png' width='50px' />"]
+    subgraph ELECTRON["Electron Shell"]
+        E1["Frameless glass overlay<br/>always-on-top · IPC resize"]
+        E2["URL detection<br/>AppleScript · PS · xdotool"]
   end
  subgraph REACT["React + TypeScript"]
         R1["Scan · Results · Compare"]
