@@ -1,6 +1,4 @@
 {
- "name": "nectar-gdg",
- "version": "0.1.0",
  "main": "electron-main.js",
  "dependencies": {
   "@vitejs/plugin-react": "^6.0.1",
