@@ -1,26 +1,40 @@
 <p align="center">
-  <img width="160" alt="Nectar app icon" src="frontend/public/icons/header-logo.png" />
+  <img width="150" alt="Nectar app icon" src="frontend/public/icons/header-logo.png" />
 </p>
 
 <h1 align="center">Nectar</h1>
 
 <p align="center">
-  <strong>Nectar is a desktop overlay that helps shoppers make smarter Amazon and eBay purchasing decisions with AI product analysis, review integrity checks, reputation scoring, recommendations, comparisons, and price intelligence.</strong>
+  <strong>Smart Product Analyzer for Amazon and eBay shoppers</strong>
 </p>
 
 <p align="center">
-  <img alt="Build Status" src="https://img.shields.io/github/checks-status/shivankvirdi/Nectar-GDG/main" />
+  <a href="https://github.com/shivankvirdi/Nectar-GDG/commits/main">
+    <img alt="Cloud Run build status" src="https://img.shields.io/github/check-runs/shivankvirdi/Nectar-GDG/main?label=cloud%20run%20build" />
+  </a>
+  <img alt="Version" src="https://img.shields.io/github/package-json/v/shivankvirdi/Nectar-GDG/main?filename=frontend%2Fpackage.json&label=version" />
+  <img alt="License" src="https://img.shields.io/github/license/shivankvirdi/Nectar-GDG" />
+</p>
+
+<p align="center">
+  Nectar is a desktop overlay that helps shoppers make smarter purchasing decisions with AI product analysis, review integrity checks, reputation scoring, recommendations, comparisons, and price intelligence.
 </p>
 
 ---
 
 <table width="100%">
   <tr>
-    <td width="50%" align="center" style="vertical-align: top;">
-      <video src="https://github.com/user-attachments/assets/ddae5e9f-4c1e-467c-8047-de4eda39c38a" width="100%" controls></video> 
+    <td width="58%" align="center">
+      <strong>Live product scan</strong>
+      <br />
+      <br />
+      <video src="https://github.com/user-attachments/assets/ddae5e9f-4c1e-467c-8047-de4eda39c38a" width="100%" controls></video>
     </td>
-    <td width="50%" align="center" style="vertical-align: top;">
-      <img width="100%" alt="nectar price history" src="https://github.com/user-attachments/assets/f6fddc62-5f93-4d36-bbc6-846302878deb" />
+    <td width="42%" align="center">
+      <strong>Price intelligence</strong>
+      <br />
+      <br />
+      <img width="100%" alt="Nectar price history dashboard" src="https://github.com/user-attachments/assets/f6fddc62-5f93-4d36-bbc6-846302878deb" />
     </td>
   </tr>
 </table>
