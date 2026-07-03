@@ -9,11 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="React" src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=061826" />
-  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white" />
-  <img alt="Electron" src="https://img.shields.io/badge/Electron-desktop-47848F?logo=electron&logoColor=white" />
-  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-backend-009688?logo=fastapi&logoColor=white" />
-  <img alt="Gemini" src="https://img.shields.io/badge/Gemini-AI-8E75B2?logo=googlegemini&logoColor=white" />
+  <img alt="Build Status" src="https://storage.googleapis.com/project-7ea3a77c-d96a-4001-a96-cloudbuild-badges/rmgpgab-nectar-gdg-us-west1-shivankvirdi-Nectar-GDG--masqe.svg" />
 </p>
 
 ---
