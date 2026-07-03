@@ -29,7 +29,6 @@
     </td>
     <td width="42%" align="center">
       <strong>Price intelligence</strong>
-      <br />
       <img width="100%" alt="Nectar price history dashboard" src="https://github.com/user-attachments/assets/f6fddc62-5f93-4d36-bbc6-846302878deb" />
     </td>
   </tr>
