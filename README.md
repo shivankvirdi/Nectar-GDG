@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img alt="Build Status" src="https://storage.googleapis.com/project-7ea3a77c-d96a-4001-a96-cloudbuild-badges/rmgpgab-nectar-gdg-us-west1-shivankvirdi-Nectar-GDG--masqe.svg" />
+  <img alt="Build Status" src="https://storage.googleapis.com/project-7ea3a77c-d96a-4001-a96-cloudbuild-badges/rmgpgab-nectar-gdg-us-west1-shivankvirdi-Nectar-GDG--mapmw.svg" />
 </p>
 
 ---
