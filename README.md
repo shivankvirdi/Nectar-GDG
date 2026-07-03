@@ -16,7 +16,7 @@
 <br/>
 
 ## The Problem
-E-commerce lacks trustworthy product intelligence, with consumers losing $245 billion to poor purchasing decisions yearly in the US alone. That's why we built Nectar, a desktop overlay application that helps consumers make smarter online purchasing decisions by analyzing products on Amazon and eBay in real time. The app combines review authenticity detection, AI review summaries/product verdicts, personalized recommendations, brand reputation analysis, estimated price trends, and product comparison tools to identify trustworthy products and flag potentially misleading listings. By increasing transparency in e-commerce, Nectar reduces decision fatigue and empowers users to shop with greater confidence and accuracy.
+E-commerce lacks trustworthy product intelligence, with consumers losing $245 billion to poor purchasing decisions yearly in the US alone. Roughly 30% of online reviews are estimated to be fake or inauthentic, with Amazon reviews at 43%, and 74% of consumers say they've struggled to differentiate authentic listings and reviews from fake ones. More so, nearly half of all identified fake reviews are at a full five-star rating. Nectar combines review authenticity detection, AI review summaries/product verdicts, personalized recommendations, brand reputation analysis, estimated price trends, and product comparison tools to identify trustworthy products and flag potentially misleading listings. By increasing transparency in e-commerce, Nectar reduces decision fatigue and empowers users to shop with greater confidence and accuracy.
 
 ## Features
 - AI-powered product analysis
