@@ -1,15 +1,22 @@
-<img width="4000" height="2151" alt="colored-logo" src="https://github.com/user-attachments/assets/16f37d8e-4db0-4c01-be25-36844072743c" />
+<div align="center">
+  <img width="20%" height="20%" alt="Untitled design" src="https://github.com/user-attachments/assets/23aaa718-415f-4fa3-ac9d-64e48edfade8" />
+  <br/>
 
-<table width="100%">
-  <tr>
-    <td width="50%" align="center" style="vertical-align: top;">
-      <video src="https://github.com/user-attachments/assets/ddae5e9f-4c1e-467c-8047-de4eda39c38a" width="100%" controls></video> 
-    </td>
-    <td width="50%" align="center" style="vertical-align: top;">
-      <img width="100%" alt="nectar price history" src="https://github.com/user-attachments/assets/f6fddc62-5f93-4d36-bbc6-846302878deb" />
-    </td>
-  </tr>
-</table>
+  <h1 align="center">Nectar</h1>
+
+  <p align="center">
+    <strong>Nectar is a desktop overlay that helps shoppers make smarter purchasing decisions with AI product analysis, review integrity checks, reputation scoring, recommendations, comparisons, and price intelligence.</strong>
+    <br />
+    <br />
+    <a href="https://youtu.be/jGSsKkUSxdU" target="_blank" rel="noopener noreferrer">  
+      <img alt="Static Badge" src="https://img.shields.io/badge/View%20Demo%20-%20orange?logo=youtube">
+    </a>
+    <img alt="GitHub License" src="https://img.shields.io/github/license/shivankvirdi/Nectar-GDG">
+    <img alt="Build Status" src="https://img.shields.io/github/status/contexts/shivankvirdi/Nectar-GDG/main?label=build">
+  </p>
+</div>
+
+
 
 E-commerce lacks trustworthy product intelligence, with consumers losing $245 billion to poor purchasing decisions yearly in the US alone. That's why we built Nectar, a desktop overlay application that helps consumers make smarter online purchasing decisions by analyzing products on Amazon and eBay in real time. The app combines review authenticity detection, AI review summaries/product verdicts, personalized recommendations, brand reputation analysis, estimated price trends, and product comparison tools to identify trustworthy products and flag potentially misleading listings. By increasing transparency in e-commerce, Nectar reduces decision fatigue and empowers users to shop with greater confidence and accuracy.
 
