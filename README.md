@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="160" alt="Nectar app icon" src="frontend/public/icons/header-logo.png" />
+  <img width="160" alt="Nectar app icon" src="frontend/public/icons/taskbar-logo.png" />
 </p>
 
 <h1 align="center">Nectar</h1>
