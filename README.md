@@ -24,7 +24,7 @@
 
 <table width="100%">
   <tr>
-    <td width="58%" align="center">
+    <td width="40%" align="center">
       <video src="https://github.com/user-attachments/assets/ddae5e9f-4c1e-467c-8047-de4eda39c38a" width="100%" controls></video>
     </td>
     <td width="42%" align="center">
