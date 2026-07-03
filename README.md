@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/shivankvirdi/Nectar-GDG/commits/main">
-    <img alt="Cloud Run build status" src="https://img.shields.io/github/check-runs/shivankvirdi/Nectar-GDG/main?label=cloud%20run%20build" />
+    <img alt="Build Status" src="https://img.shields.io/github/check-runs/shivankvirdi/Nectar-GDG/main?label=cloud%20run%20build" />
   </a>
   <img alt="Version" src="https://img.shields.io/github/package-json/v/shivankvirdi/Nectar-GDG/main?filename=frontend%2Fpackage.json&label=version" />
   <img alt="License" src="https://img.shields.io/github/license/shivankvirdi/Nectar-GDG" />
@@ -25,9 +25,6 @@
 <table width="100%">
   <tr>
     <td width="58%" align="center">
-      <strong>Live product scan</strong>
-      <br />
-      <br />
       <video src="https://github.com/user-attachments/assets/ddae5e9f-4c1e-467c-8047-de4eda39c38a" width="100%" controls></video>
     </td>
     <td width="42%" align="center">
