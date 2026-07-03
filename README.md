@@ -8,15 +8,7 @@
     <strong>Nectar is a desktop overlay that helps shoppers make smarter purchasing decisions with AI product analysis, review integrity checks, reputation scoring, recommendations, comparisons, and price intelligence.</strong>
     <br />
     <br />
-    <a href="https://youtu.be/jGSsKkUSxdU" target="_blank" rel="noopener noreferrer">  
-      <img alt="Static Badge" src="https://img.shields.io/badge/View%20Demo%20-%20orange?logo=youtube">
-    </a>
-    <a href="https://github.com/shivankvirdi/Nectar-GDG/commits/main/" target="_blank" rel="noopener noreferrer"> 
-      <img alt="Build Status" src="https://img.shields.io/github/check-runs/shivankvirdi/Nectar-GDG/main?label=build">
-    </a>
-    <a href="https://github.com/shivankvirdi/Nectar-GDG/blob/main/LICENSE" target="_blank" rel="noopener noreferrer"> 
-      <img alt="GitHub License" src="https://img.shields.io/github/license/shivankvirdi/Nectar-GDG?cacheSeconds=300">
-    </a>
+    <a href="https://youtu.be/jGSsKkUSxdU" target="_blank" rel="noopener noreferrer"><img alt="Static Badge" src="https://img.shields.io/badge/View%20Demo%20-%20orange?logo=youtube"></a> <a href="https://github.com/shivankvirdi/Nectar-GDG/commits/main/" target="_blank" rel="noopener noreferrer"><img alt="Build Status" src="https://img.shields.io/github/check-runs/shivankvirdi/Nectar-GDG/main?label=build"></a> <a href="https://github.com/shivankvirdi/Nectar-GDG/blob/main/LICENSE" target="_blank" rel="noopener noreferrer"><img alt="GitHub License" src="https://img.shields.io/github/license/shivankvirdi/Nectar-GDG?cacheSeconds=300"></a>
   </p>
 </div>
 
