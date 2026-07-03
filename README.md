@@ -1,15 +1,11 @@
 <p align="center">
-  <img width="160" alt="Nectar app icon" src="frontend/public/icons/taskbar-logo.png" />
+  <img width="160" alt="Nectar app icon" src="frontend/public/icons/header-logo.png" />
 </p>
 
 <h1 align="center">Nectar</h1>
 
 <p align="center">
-  <strong>Smart Product Analyzer</strong>
-</p>
-
-<p align="center">
-  Nectar is a desktop overlay that helps shoppers make smarter Amazon and eBay purchasing decisions with AI product analysis, review integrity checks, reputation scoring, recommendations, comparisons, and price intelligence.
+  <strong>Nectar is a desktop overlay that helps shoppers make smarter Amazon and eBay purchasing decisions with AI product analysis, review integrity checks, reputation scoring, recommendations, comparisons, and price intelligence.</strong>
 </p>
 
 <p align="center">
