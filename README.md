@@ -18,7 +18,7 @@
   </p>
 </div>
 
-<img width="1217" height="720" alt="nectar-ss" src="./docs/nectar-ss.png" />
+<img width="1217" height="720" alt="nectar-ss" src="./docs/nectar-dashboard.png" />
 <br/>
 
 
