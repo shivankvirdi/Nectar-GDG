@@ -14,7 +14,9 @@
     <a href="https://github.com/shivankvirdi/Nectar-GDG/commits/main/" target="_blank" rel="noopener noreferrer"> 
       <img alt="Build Status" src="https://img.shields.io/github/check-runs/shivankvirdi/Nectar-GDG/main?label=build">
     </a>
-    <img alt="GitHub License" src="https://img.shields.io/github/license/shivankvirdi/Nectar-GDG?cacheSeconds=300">
+    <a href="https://github.com/shivankvirdi/Nectar-GDG/blob/main/LICENSE" target="_blank" rel="noopener noreferrer"> 
+      <img alt="GitHub License" src="https://img.shields.io/github/license/shivankvirdi/Nectar-GDG?cacheSeconds=300">
+    </a>
   </p>
 </div>
 
