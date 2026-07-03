@@ -10,8 +10,18 @@
     <br />
     <a href="https://youtu.be/jGSsKkUSxdU" target="_blank" rel="noopener noreferrer"><img alt="Static Badge" src="https://img.shields.io/badge/View%20Demo%20-%20orange?logo=youtube"></a> <a href="https://github.com/shivankvirdi/Nectar-GDG/commits/main/" target="_blank" rel="noopener noreferrer"><img alt="Build Status" src="https://img.shields.io/github/check-runs/shivankvirdi/Nectar-GDG/main?label=build"></a> <a href="https://github.com/shivankvirdi/Nectar-GDG/blob/main/LICENSE" target="_blank" rel="noopener noreferrer"><img alt="GitHub License" src="https://img.shields.io/github/license/shivankvirdi/Nectar-GDG?cacheSeconds=300"></a>
   </p>
-</div>
 
+  <p align="center">
+  <a href="#the-problem">Problem</a> •
+  <a href="#features">Features</a> •
+  <a href="#technologies-used">Technologies</a> •
+  <a href="#architecture-diagram">Architecture</a> •
+  <a href="#how-to-use">How to Use</a> •
+  <a href="#running-nectar">Running</a> •
+  <a href="#troubleshooting">Troubleshooting</a>
+    
+</p>
+</div>
 <img width="1217" height="720" alt="nectar-ss" src="./docs/nectar-ss.png" />
 <br/>
 
