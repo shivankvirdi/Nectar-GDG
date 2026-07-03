@@ -1,4 +1,26 @@
-<img width="4000" height="2151" alt="colored-logo" src="https://github.com/user-attachments/assets/16f37d8e-4db0-4c01-be25-36844072743c" />
+<p align="center">
+  <img width="160" alt="Nectar app icon" src="frontend/public/icons/header-logo.png" />
+</p>
+
+<h1 align="center">Nectar</h1>
+
+<p align="center">
+  <strong>Smart Product Analyzer</strong>
+</p>
+
+<p align="center">
+  Nectar is a desktop overlay that helps shoppers make smarter Amazon and eBay purchasing decisions with AI product analysis, review integrity checks, reputation scoring, recommendations, comparisons, and price intelligence.
+</p>
+
+<p align="center">
+  <img alt="React" src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=061826" />
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white" />
+  <img alt="Electron" src="https://img.shields.io/badge/Electron-desktop-47848F?logo=electron&logoColor=white" />
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-backend-009688?logo=fastapi&logoColor=white" />
+  <img alt="Gemini" src="https://img.shields.io/badge/Gemini-AI-8E75B2?logo=googlegemini&logoColor=white" />
+</p>
+
+---
 
 <table width="100%">
   <tr>
