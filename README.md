@@ -16,7 +16,7 @@
   <a href="#features">Features</a> •
   <a href="#technologies-used">Technologies</a> •
   <a href="#architecture-diagram">Architecture</a> •
-  <a href="#how-to-use">How to Use</a> •
+  <a href="#getting-started">Getting Started</a> •
   <a href="#running-nectar">How to Run</a> •
   <a href="#troubleshooting">Troubleshooting</a>
     
