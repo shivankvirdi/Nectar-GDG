@@ -114,8 +114,8 @@ flowchart LR
 ```
 > **Note on Price History:** The price trend chart and "likely to drop" call are generated, not scraped from real marketplace history. Nectar deterministically synthesizes a 30-day series anchored to the actual scraped price (so the chart always ends at the true current price), with a seeded wiggle, drift, and one simulated dip for realism. Gemini then writes a narrative and confidence score based on that synthetic series. This is a placeholder for a future real price-tracking integration and should not be used to make real purchasing-timing decisions.
 
-# Getting Started
-## Clone Repository
+## Getting Started
+### Clone Repository
 Requirements:
 - Python 3.11+
 - Node.js 20+
@@ -123,30 +123,30 @@ Requirements:
 git clone https://github.com/shivankvirdi/Nectar-GDG.git
 cd Nectar-GDG
 ```
-## Backend Setup
+### Backend Setup
 > Skip this section if you're only using the hosted backend
 ```powershell
 cd backend
 python -m venv .venv
 ```
-### Activate virtual environment
+#### Activate virtual environment
 ```powershell
 .venv\Scripts\activate # Windows
 source .venv/bin/activate # Mac/Linux
 ```
-### Install dependencies
+#### Install dependencies
 ```powershell
 pip install -r requirements.txt
 ```
-## Frontend Setup
+### Frontend Setup
 Install Node.js (http://nodejs.org/en/download) and add to PATH
 ```powershell
 cd frontend
 npm install
 ```
-### Choosing Backend
+#### Choosing Backend
 Before building, choose your backend (see below) and create `frontend/.env.production` accordingly
-#### Use Hosted Backend (Requires a secret password)
+##### Use Hosted Backend (Requires a secret password)
 The backend is already deployed on Google Cloud!\
 Create file `frontend/.env.production`:
 ``` 
@@ -154,14 +154,14 @@ VITE_API_URL=https://nectar-gdg-93066440894.us-west1.run.app
 NECTAR_API_SECRET=...
 # contact maintainers for password access
 ```
-#### Use Local Backend
+##### Use Local Backend
 1. Follow .env.example & add keys to `Nectar-GDG/.env` (repo root)
 2. Create file `frontend/.env.production`:
 ```powershell
 VITE_API_URL=http://127.0.0.1:8000
 # no password
 ```
-### Build frontend assets:
+#### Build frontend assets:
 ```powershell
 npm run build
 ```
