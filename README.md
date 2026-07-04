@@ -144,7 +144,7 @@ Install Node.js (http://nodejs.org/en/download) and add to PATH
 cd frontend
 npm install
 ```
-*Before building, choose your backend (see below) and create `frontend/.env.production` accordingly*
+> Before building, choose your backend (see below) and create `frontend/.env.production` accordingly
 #### Use Hosted Backend (Requires a secret password)
 The backend is already deployed on Google Cloud!\
 Create file `frontend/.env.production`:
