@@ -117,8 +117,8 @@ flowchart LR
 ## Getting Started
 ### Clone Repository
 Requirements:
-- Python 3.11+
-- Node.js 20+
+- `Python` 3.11+
+- `Node.js` 20+
 ```powershell
 git clone https://github.com/shivankvirdi/Nectar-GDG.git
 cd Nectar-GDG
