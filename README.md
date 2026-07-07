@@ -39,14 +39,14 @@ E-commerce lacks trustworthy product intelligence, with consumers losing $245 bi
 - Amazon and eBay support
 
 ## Technologies Used
-- Frontend: React, TypeScript, Vite, CSS
-- Desktop Shell: Electron
-- Backend: FastAPI, Python
+- Frontend: `React.js`, `TypeScript`, `Vite`, `CSS`
+- Desktop Shell: `Electron.js`
+- Backend: FastAPI, `Python`
 - AI: Google Gemini
-- NLP/Scoring: NLTK --> VADER, custom review-integrity logic
+- NLP/Scoring: `NLTK` --> `VADER`, custom review-integrity logic
 - Marketplace Data: Canopy API, ScraperAPI
 - Reputation Data: Google Places API
-- Storage: Browser localStorage for scan history/recommendations and price intelligence
+- Storage: Browser `localStorage` for scan history/recommendations and price intelligence
 - Deployment: Docker, Google Cloud Run, Cloud Build
 
 ---
