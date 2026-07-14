@@ -5,24 +5,28 @@
   <h1 align="center">Nectar</h1>
 
   <p align="center">
-    <strong>Nectar is a desktop overlay that helps shoppers make smarter purchasing decisions with AI product analysis, review integrity checks, reputation scoring, recommendations, comparisons, and price intelligence.</strong>
+    Nectar is a desktop overlay that helps shoppers make smarter purchasing decisions with AI product analysis, review integrity checks, reputation scoring, recommendations, comparisons, and price intelligence.
     <br />
     <br />
-    <a href="https://youtu.be/jGSsKkUSxdU" target="_blank" rel="noopener noreferrer">  
-      <img alt="Static Badge" src="https://img.shields.io/badge/View%20Demo%20-%20orange?logo=youtube">
-    </a>
-    <a href="https://github.com/shivankvirdi/Nectar-GDG/commits/main/" target="_blank" rel="noopener noreferrer"> 
-      <img alt="Build Status" src="https://img.shields.io/github/check-runs/shivankvirdi/Nectar-GDG/main?label=build">
-    </a>
-    <img alt="GitHub License" src="https://img.shields.io/github/license/shivankvirdi/Nectar-GDG?cacheSeconds=300">
+    <a href="https://youtu.be/jGSsKkUSxdU" target="_blank" rel="noopener noreferrer"><img alt="Static Badge" src="https://img.shields.io/badge/View%20Demo%20-%20orange?logo=youtube"></a> <a href="https://github.com/shivankvirdi/Nectar-GDG/commits/main/" target="_blank" rel="noopener noreferrer"><img alt="Build Status" src="https://img.shields.io/github/check-runs/shivankvirdi/Nectar-GDG/main?logo=googlecloud"></a> <a href="https://github.com/shivankvirdi/Nectar-GDG/blob/main/LICENSE" target="_blank" rel="noopener noreferrer"><img alt="GitHub License" src="https://img.shields.io/github/license/shivankvirdi/Nectar-GDG?cacheSeconds=300"></a>
   </p>
-</div>
 
+  <p align="center">
+  <a href="#the-problem">Problem</a> •
+  <a href="#features">Features</a> •
+  <a href="#technologies-used">Technologies</a> •
+  <a href="#architecture-diagram">Architecture</a> •
+  <a href="#getting-started">Getting Started</a> •
+  <a href="#running-nectar">How to Run</a> •
+  <a href="#troubleshooting">Troubleshooting</a>
+    
+</p>
+</div>
 <img width="1217" height="720" alt="nectar-ss" src="./docs/nectar-ss.png" />
 <br/>
 
-
-E-commerce lacks trustworthy product intelligence, with consumers losing $245 billion to poor purchasing decisions yearly in the US alone. That's why we built Nectar, a desktop overlay application that helps consumers make smarter online purchasing decisions by analyzing products on Amazon and eBay in real time. The app combines review authenticity detection, AI review summaries/product verdicts, personalized recommendations, brand reputation analysis, estimated price trends, and product comparison tools to identify trustworthy products and flag potentially misleading listings. By increasing transparency in e-commerce, Nectar reduces decision fatigue and empowers users to shop with greater confidence and accuracy.
+## The Problem
+E-commerce lacks trustworthy product intelligence, with consumers losing $245 billion to poor purchasing decisions yearly in the US alone. Roughly 30% of online reviews are estimated to be fake or inauthentic, with Amazon reviews at 43%, and 74% of consumers say they've struggled to differentiate authentic listings and reviews from fake ones. More so, nearly half of all identified fake reviews are at a full five-star rating. Nectar combines review authenticity detection, AI review summaries/product verdicts, personalized recommendations, brand reputation analysis, estimated price trends, and product comparison tools to identify trustworthy products and flag potentially misleading listings. By increasing transparency in e-commerce, Nectar reduces decision fatigue and empowers users to shop with greater confidence and accuracy.
 
 ## Features
 - AI-powered product analysis
@@ -35,14 +39,14 @@ E-commerce lacks trustworthy product intelligence, with consumers losing $245 bi
 - Amazon and eBay support
 
 ## Technologies Used
-- Frontend: React, TypeScript, Vite, CSS
-- Desktop Shell: Electron
-- Backend: FastAPI, Python
+- Frontend: `React.js`, `TypeScript`, `Vite`, `CSS`
+- Desktop Shell: `Electron.js`
+- Backend: FastAPI, `Python`
 - AI: Google Gemini
-- NLP/Scoring: NLTK --> VADER, custom review-integrity logic
+- NLP/Scoring: `NLTK` --> `VADER`, custom review-integrity logic
 - Marketplace Data: Canopy API, ScraperAPI
 - Reputation Data: Google Places API
-- Storage: Browser localStorage for scan history/recommendations and price intelligence
+- Storage: Browser `localStorage` for scan history/recommendations and price intelligence
 - Deployment: Docker, Google Cloud Run, Cloud Build
 
 ---
@@ -110,38 +114,37 @@ flowchart LR
 ```
 > **Note on Price History:** The price trend chart and "likely to drop" call are generated, not scraped from real marketplace history. Nectar deterministically synthesizes a 30-day series anchored to the actual scraped price (so the chart always ends at the true current price), with a seeded wiggle, drift, and one simulated dip for realism. Gemini then writes a narrative and confidence score based on that synthetic series. This is a placeholder for a future real price-tracking integration and should not be used to make real purchasing-timing decisions.
 
-# How to Use
-## Clone Repository
+## Getting Started
+### Clone Repository
 Requirements:
-- Python 3.11+
-- Node.js 20+
+- `Python` 3.11+
+- `Node.js` 20+
 ```powershell
 git clone https://github.com/shivankvirdi/Nectar-GDG.git
 cd Nectar-GDG
 ```
-## Backend Setup
-> Skip this section if you're only using the hosted backend
+### Backend Setup
+> Skip to **Frontend Setup** if you're only using the hosted backend
 ```powershell
 cd backend
 python -m venv .venv
 ```
-### Activate virtual environment
+#### Activate virtual environment
 ```powershell
 .venv\Scripts\activate # Windows
 source .venv/bin/activate # Mac/Linux
 ```
-### Install dependencies
+#### Install dependencies
 ```powershell
 pip install -r requirements.txt
 ```
-## Frontend Setup
+### Frontend Setup
 Install Node.js (http://nodejs.org/en/download) and add to PATH
 ```powershell
 cd frontend
 npm install
 ```
-### Choosing Backend
-Before building, choose your backend (see below) and create `frontend/.env.production` accordingly
+> Before building, choose your backend (see below) and create `frontend/.env.production` accordingly
 #### Use Hosted Backend (Requires a secret password)
 The backend is already deployed on Google Cloud!\
 Create file `frontend/.env.production`:
@@ -150,7 +153,7 @@ VITE_API_URL=https://nectar-gdg-93066440894.us-west1.run.app
 NECTAR_API_SECRET=...
 # contact maintainers for password access
 ```
-#### Use Local Backend
+#### Use Local Backend (your own API keys)
 1. Follow .env.example & add keys to `Nectar-GDG/.env` (repo root)
 2. Create file `frontend/.env.production`:
 ```powershell
