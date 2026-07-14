@@ -122,7 +122,8 @@ PRODUCT_KEYWORDS = [
     "hair straightener", "curling iron", "electric razor", "massage gun",
     "smart scale", "blood pressure monitor", "pulse oximeter",
     "backpack", "laptop bag", "laptop sleeve", "cable organizer",
-    "desk organizer", "bowling ball",
+    "desk organizer", "bowling ball","coding kit", "robotics kit", "microcontroller board", "raspberry pi", 
+    "arduino kit", "stem kit", "circuit board kit",
 ]
 
 
